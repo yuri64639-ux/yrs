@@ -4,16 +4,16 @@ import pandas as pd
 from datetime import datetime
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
+st.set_page_config(page_title="Sistema Mobile - Pedidos", layout="centered")
 
 # --- CONTROLE DE ACESSO (SENHA) ---
-SENHA_CORRETA = "orla123"  # <-- Mude a senha do seu bar aqui se quiser
+SENHA_CORRETA = "sistema123"  # <-- Altere a sua senha de acesso aqui se desejar
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
 if not st.session_state["autenticado"]:
-    st.subheader("🔑 Acesso ao Sistema Orla Bar")
+    st.subheader("🔑 Acesso ao Sistema de Pedidos")
     senha_digitada = st.text_input("Digite a senha do estabelecimento:", type="password")
     if st.button("Entrar", type="primary", use_container_width=True):
         if senha_digitada == SENHA_CORRETA:
@@ -65,7 +65,7 @@ CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
 # --- INTERFACE MOBILE ---
-st.title("📱 Gestão Orla Bar")
+st.title("📱 Gestão de Pedidos")
 
 aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = st.tabs([
     "🏃‍♂️ Lançar", 
@@ -97,30 +97,33 @@ with aba_garcom:
         lista_produtos = cursor.fetchall()
         
         with st.form("form_pedido", clear_on_submit=True):
-            mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
+            mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Comanda 12")
             
-            # CORREÇÃO AQUI (Linha 105): Mapeia os dados corretamente (id, nome, categoria, preco)
+            # Mapeia os dados corretamente da tupla (id, nome, categoria, preco)
             dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
             
-            produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
-            quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
-                
-            botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
-            
-            if botao_enviar:
-                if mesa.strip() == "":
-                    st.error("Informe a mesa ou pulseira.")
-                else:
-                    p_id = dict_produtos[produto_selecionado]
-                    horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if not dict_produtos:
+                st.info("Nenhum item encontrado nesta categoria.")
+            else:
+                produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
+                quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
                     
-                    cursor.execute(
-                        "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
-                        (mesa.strip(), p_id, quantidade, horario_atual)
-                    )
-                    conn.commit()
-                    st.success("✅ Pedido enviado!")
-                    st.rerun()
+                botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
+                
+                if botao_enviar:
+                    if mesa.strip() == "":
+                        st.error("Informe a mesa ou pulseira.")
+                    else:
+                        p_id = dict_produtos[produto_selecionado]
+                        horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        cursor.execute(
+                            "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
+                            (mesa.strip(), p_id, quantidade, horario_atual)
+                        )
+                        conn.commit()
+                        st.success("✅ Pedido enviado!")
+                        st.rerun()
 
 # --- REUTILIZÁVEL PARA TELAS DE PREPARO ---
 def renderizar_tela_preparo(categorias_alvo, titulo_tela):
@@ -232,11 +235,6 @@ with aba_relatorio:
             titulo_periodo = f"do mês {mes_escolhido}"
         
         st.write("---")
-        
-        fat_periodo = df_filtrado_periodo["Total"].sum()
-        qtd_periodo = df_filtrado_periodo["Quantidade"].sum()
-        
-        st.metric(label=f"💰 Faturamento Total ({titulo_periodo})", value=f"R$ {fat_periodo:.2f}")
 
 
             
