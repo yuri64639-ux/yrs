@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
+st.set_page_config(page_title="Sistema Mobile - Bar", layout="centered")
 
 # --- BANCO DE DADOS (CONCURRÊNCIA ATIVADA) ---
 def conectar_banco():
