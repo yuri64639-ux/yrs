@@ -193,7 +193,7 @@ with aba_relatorio:
         
         st.metric("Faturamento do Dia", f"R$ {df_f['Total'].sum():.2f}")
         st.markdown("#### Itens Vendidos")
-        st.dataframe(df_f.groupby("Produto")["Qtd", "Total"].sum().reset_index(), hide_index=True, use_container_width=True)
+        st.dataframe(df_f.groupby("Produto")[["Qtd", "Total"]].sum().reset_index(), hide_
 
 # --- 6. ABA DE GERÊNCIA (CARDÁPIO) ---
 with aba_gerencia:
