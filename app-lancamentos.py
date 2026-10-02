@@ -64,7 +64,8 @@ with aba_garcom:
     cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
     categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
     
-    if not categories_disponiveis:
+    # CORRIGIDO: Agora a variável está escrita corretamente em português
+    if not categorias_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
     else:
         filtro_categorias = ["Todas"] + categorias_disponiveis
@@ -106,7 +107,9 @@ with aba_garcom:
 def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     st.subheader(titulo_tela)
     
-    # Formata a lista de categorias para a query SQL (ex: 'Drinks', 'Bebidas')
+    if not categorias_alvo:
+        return
+        
     placeholders = ",".join("?" for _ in categorias_alvo)
     query = f"""
         SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status, p.horario 
@@ -184,7 +187,6 @@ with aba_gerencia:
     st.subheader("⚙️ Configurar Cardápio")
     
     novo_nome = st.text_input("Nome do Item:")
-    # Une as listas para o usuário escolher na hora do cadastro
     nova_categoria = st.selectbox("Categoria correspondente:", CATEGORIAS_BAR + CATEGORIAS_COZINHA)
     novo_preco = st.number_input("Preço (R$):", min_value=0.0, value=0.0, step=0.50, format="%.2f")
     
@@ -199,5 +201,6 @@ with aba_gerencia:
                 st.rerun()
             except sqlite3.IntegrityError:
                 st.error("Este produto já existe no banco.")
+
 
             
