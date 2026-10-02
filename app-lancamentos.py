@@ -47,7 +47,7 @@ CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
 # --- INTERFACE MOBILE ---
-st.title("📱 Gestão Orla Bar")
+st.title("📱  Bar")
 
 aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_gerencia = st.tabs([
     "🏃‍♂️ Lançar", 
