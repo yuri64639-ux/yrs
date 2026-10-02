@@ -23,27 +23,23 @@ cursor.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nom
 cursor.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
 conn.commit()
 
-# CORREÇÃO DEFINITIVA: Migração das colunas caso o banco de dados já exista de versões anteriores
-try:
-    cursor.execute("ALTER TABLE produtos ADD COLUMN insumo_id INTEGER;")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass
-
-try:
-    cursor.execute("ALTER TABLE produtos ADD COLUMN qtd_insumo REAL;")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass
-
-try:
-    cursor.execute("ALTER TABLE pedidos ADD COLUMN taxa_paga INTEGER DEFAULT 1;")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass
+# Migrações automáticas de tabelas antigas
+for col, tipo in [("insumo_id", "INTEGER"), ("qtd_insumo", "REAL")]:
+    try: cursor.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo};"); conn.commit()
+    except sqlite3.OperationalError: pass
+try: cursor.execute("ALTER TABLE pedidos ADD COLUMN taxa_paga INTEGER DEFAULT 1;"); conn.commit()
+except sqlite3.OperationalError: pass
 
 st.fragment(run_every=5)
 CATS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
+
+# --- ALERTA GLOBAL DE ESTOQUE MÍNIMO (CRÍTICO <= 4) ---
+cursor.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4")
+itens_criticos = cursor.fetchall()
+if itens_criticos:
+    with st.expander("⚠️ ALERTA: Itens abaixo do estoque mínimo (4 ou menos)", expanded=True):
+        for item, qtd in itens_criticos:
+            st.warning(f"O insumo **{item}** está com estoque crítico: apenas **{qtd}** restante(s)!")
 
 st.title("📱 Gestão Bar & Restaurante")
 ab_g, ab_c, ab_b, ab_co, ab_r, ab_e, ab_m = st.tabs(["🏃 Lanz", "🍳 Coz", "🍹 Bar", "🎟️ Contas", "📊 Relat", "📦 Estq", "⚙️ Card"])
@@ -135,9 +131,12 @@ with ab_e:
             try: cursor.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?)", (ni.strip(), qi)); conn.commit(); st.rerun()
             except sqlite3.IntegrityError: st.error("Insumo já cadastrado.")
     
-    df_est = pd.read_sql_query("SELECT id, item as Insumo, quantidade as 'Qtd' FROM estoque ORDER BY item", conn)
+    df_est = pd.read_sql_query("SELECT id, item as Insumo, quantidade as 'Qtd Atual' FROM estoque ORDER BY item", conn)
     if not df_est.empty:
+        # Adiciona marcação visual na própria tabela de exibição
+        df_est["Status"] = df_est["Qtd Atual"].apply(lambda q: "⚠️ BAIXO" if q <= 4 else "✅ Ok")
         st.dataframe(df_est, hide_index=True, use_container_width=True)
+        
         ins_add = st.selectbox("Reabastecer:", df_est["Insumo"].tolist())
         q_add = st.number_input("Adicionar Qtd:", min_value=0.1, step=1.0)
         if st.button("Confirmar Entrada", use_container_width=True):
