@@ -87,7 +87,7 @@ with aba_garcom:
     if not categorias_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
     else:
-        filtro_categorias = ["Todas"] + categories_disponiveis
+        filtro_categorias = ["Todas"] + categorias_disponiveis
         categoria_selecionada = st.selectbox("📂 Categoria:", filtro_categorias)
         
         if categoria_selecionada == "Todas":
