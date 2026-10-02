@@ -2,39 +2,35 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import time
 
 # 1. CONFIGURAÇÃO INICIAL CONFIGURADA PARA CELULAR
 st.set_page_config(
-    page_title="Cria Bar Mobile", 
-    layout="centered",               # Mantém o conteúdo centralizado e estreito
-    initial_sidebar_state="collapsed" # Esconde o menu lateral por padrão no celular
+    page_title="Cria Bar - Multi-Garçom", 
+    layout="centered",               
+    initial_sidebar_state="collapsed" 
 )
 
-# Estilização CSS para melhorar o visual no celular (botões e espaçamento touch)
+# Injeta a atualização automática de 5 segundos no app usando fragmentos nativos
+if "contador_refresh" not in st.session_state:
+    st.session_state.contador_refresh = 0
+
+# Estilização CSS para o celular
 st.markdown("""
     <style>
-        /* Aumenta os botões para facilitar o toque no celular */
-        .stButton>button {
-            width: 100% !important;
-            height: 48px !important;
-            font-size: 16px !important;
-        }
-        /* Ajusta o espaçamento das abas em telas pequenas */
-        .stTabs [data-baseweb="tab"] {
-            font-size: 14px !important;
-            padding: 8px 10px !important;
-        }
+        .stButton>button { width: 100% !important; height: 48px !important; font-size: 16px !important; }
+        .stTabs [data-baseweb="tab"] { font-size: 14px !important; padding: 8px 10px !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. INICIALIZAÇÃO DO BANCO DE DADOS
+# 2. INICIALIZAÇÃO DO BANCO DE DADOS (Agora com a coluna 'garcom')
 def iniciar_banco():
     conexao = sqlite3.connect("restaurante_financeiro.db")
     cursor = conexao.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS lancamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT, tipo TEXT, categoria TEXT, valor REAL, descricao TEXT
+            data TEXT, tipo TEXT, categoria TEXT, valor REAL, descricao TEXT, garcom TEXT
         )
     """)
     cursor.execute("""
@@ -52,18 +48,22 @@ def iniciar_banco():
 
 iniciar_banco()
 
-# 3. INTERFACE PRINCIPAL
-st.title("📱 Cria Bar Pocket")
-st.markdown("Gestão rápida para o seu restaurante na palma da mão.")
+# 3. IDENTIFICAÇÃO DO USUÁRIO (Obrigatório para os Garçons)
+st.title("📱 Cria Bar Coletivo")
 
-# Abas compactas ideais para telas de smartphones
-aba_fin, aba_card, aba_est = st.tabs(["💰 Caixa", "📋 Cardápio", "📦 Estoque"])
+nome_garcom = st.text_input("👤 Nome do Garçom / Operador", value="Balcão").strip()
+
+if not nome_garcom:
+    st.warning("⚠️ Por favor, digite seu nome para liberar os lançamentos.")
+    st.stop()
+
+# Abas do aplicativo
+aba_fin, aba_card, aba_est = st.tabs(["💰 Lançar Caixa", "📋 Cardápio", "📦 Estoque"])
 
 # --- ABA 1: GESTÃO FINANCEIRA ---
 with aba_fin:
     st.subheader("Novo Lançamento")
     with st.form("form_financeiro_mobile", clear_on_submit=True):
-        # Campos empilhados verticalmente para telas verticais de celular
         data_mov = st.date_input("Data", datetime.now())
         tipo_mov = st.selectbox("Tipo de Operação", ["Receita (Entrada)", "Despesa (Saída)"])
         valor_mov = st.number_input("Valor (R$)", min_value=0.01, step=1.00, format="%.2f")
@@ -80,31 +80,38 @@ with aba_fin:
             tipo_limpo = "Receita" if "Receita" in tipo_mov else "Despesa"
             conexao = sqlite3.connect("restaurante_financeiro.db")
             cursor = conexao.cursor()
-            cursor.execute("INSERT INTO lancamentos (data, tipo, categoria, valor, descricao) VALUES (?, ?, ?, ?, ?)", 
-                           (str(data_mov), tipo_limpo, categoria_mov, valor_mov, descricao_mov))
+            cursor.execute("""
+                INSERT INTO lancamentos (data, tipo, categoria, valor, descricao, garcom) 
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (str(data_mov), tipo_limpo, categoria_mov, valor_mov, descricao_mov, nome_garcom))
             conexao.commit()
             conexao.close()
-            st.success("Lançamento salvo!")
+            st.success(f"Lançamento registrado por {nome_garcom}!")
             st.rerun()
 
     st.markdown("---")
-    st.subheader("Resumo Financeiro")
-    conexao = sqlite3.connect("restaurante_financeiro.db")
-    df_fin = pd.read_sql_query("SELECT * FROM lancamentos ORDER BY data DESC LIMIT 20", conexao)
-    conexao.close()
     
-    if not df_fin.empty:
-        total_rec = df_fin[df_fin["tipo"] == "Receita"]["valor"].sum()
-        total_des = df_fin[df_fin["tipo"] == "Despesa"]["valor"].sum()
-        saldo = total_rec - total_des
+    # TRECHO AUTO-ATUALIZÁVEL (Painel de Resumo)
+    st.subheader("Resumo do Caixa (Sincronizado)")
+    
+    # Criamos um fragmento isolado que recarrega os dados dinamicamente
+    @st.fragment(run_every=5)
+    def renderizar_dados_atualizados():
+        conexao = sqlite3.connect("restaurante_financeiro.db")
+        df_fin = pd.read_sql_query("SELECT data, tipo, valor, garcom FROM lancamentos ORDER BY id DESC LIMIT 10", conexao)
+        conexao.close()
         
-        # Cards de métrica simplificados
-        st.metric("Saldo do Período", f"R$ {saldo:.2f}", delta=f"R$ {total_rec:.2f} Entradas")
-        
-        # Exibição adaptada para celular (rolagem horizontal nativa do Streamlit)
-        st.dataframe(df_fin.rename(columns={"data":"Data", "tipo":"Tipo", "valor":"Valor (R$)"})[["Data", "Tipo", "Valor (R$)"]], use_container_width=True)
-    else:
-        st.info("Nenhum registro encontrado.")
+        if not df_fin.empty:
+            total_rec = df_fin[df_fin["tipo"] == "Receita"]["valor"].sum()
+            st.caption(f"🔄 Última sincronização automática em tempo real: {datetime.now().strftime('%H:%M:%S')}")
+            
+            # Tabela adaptada para rolar no celular mostrando o garçom responsável
+            df_formatado = df_fin.rename(columns={"data":"Data", "tipo":"Tipo", "valor":"R$", "garcom":"Por"})
+            st.dataframe(df_formatado, use_container_width=True, hide_index=True)
+        else:
+            st.info("Aguardando os primeiros lançamentos dos garçons...")
+
+    renderizar_dados_atualizados()
 
 # --- ABA 2: GERENCIAR CARDÁPIO ---
 with aba_card:
@@ -160,10 +167,10 @@ with aba_est:
     st.markdown("---")
     st.subheader("Lista de Insumos")
     conexao = sqlite3.connect("restaurante_financeiro.db")
-    df_estoque = pd.read_sql_query("SELECT nome_item, quantidade, unidade_medida, quantidade_minima FROM estoque", conexao)
+    df_estoque = pd.read_sql_query("SELECT nome_item, quantidade, quantidade_minima FROM estoque", conexao)
     conexao.close()
     
     if not df_estoque.empty:
-        # Coluna visual simples indicando alerta
-        df_estoque['Alerta'] = df_estoque.apply(lambda r: "🚨" if r['quantidade'] <= r['quantidade_minima'] else "✅", axis=1)
-        st.dataframe(df_estoque.rename(columns={"nome_item":"Item", "quantidade":"Qtd", "Alerta":"Sinal"}), use_container_width=True)
+        df_estoque['Sinal'] = df_estoque.apply(lambda r: "🚨" if r['quantidade'] <= r['quantidade_minima'] else "✅", axis=1)
+        st.dataframe(df_estoque.rename(columns={"nome_item":"Item", "quantidade":"Qtd"}), use_container_width=True)
+
