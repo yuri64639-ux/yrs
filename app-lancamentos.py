@@ -23,23 +23,20 @@ cursor.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nom
 cursor.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
 conn.commit()
 
-# Migrações automáticas de tabelas antigas
-for col, tipo in [("insumo_id", "INTEGER"), ("qtd_insumo", "REAL")]:
-    try: cursor.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo};"); conn.commit()
+# Migrações automáticas estruturadas
+for col, tipo, tabela in [("insumo_id", "INTEGER", "produtos"), ("qtd_insumo", "REAL", "produtos"), ("taxa_paga", "INTEGER DEFAULT 1", "pedidos")]:
+    try: cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {col} {tipo};"); conn.commit()
     except sqlite3.OperationalError: pass
-try: cursor.execute("ALTER TABLE pedidos ADD COLUMN taxa_paga INTEGER DEFAULT 1;"); conn.commit()
-except sqlite3.OperationalError: pass
 
 st.fragment(run_every=5)
 CATS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
 
-# --- ALERTA GLOBAL DE ESTOQUE MÍNIMO (CRÍTICO <= 4) ---
+# --- ALERTA DE ESTOQUE CRÍTICO ---
 cursor.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4")
-itens_criticos = cursor.fetchall()
-if itens_criticos:
-    with st.expander("⚠️ ALERTA: Itens abaixo do estoque mínimo (4 ou menos)", expanded=True):
-        for item, qtd in itens_criticos:
-            st.warning(f"O insumo **{item}** está com estoque crítico: apenas **{qtd}** restante(s)!")
+criticos = cursor.fetchall()
+if criticos:
+    with st.expander("⚠️ Itens com Estoque Baixo (4 ou menos)", expanded=True):
+        for item, qtd in criticos: st.warning(f"**{item}**: apenas **{qtd}** restante(s)!")
 
 st.title("📱 Gestão Bar & Restaurante")
 ab_g, ab_c, ab_b, ab_co, ab_r, ab_e, ab_m = st.tabs(["🏃 Lanz", "🍳 Coz", "🍹 Bar", "🎟️ Contas", "📊 Relat", "📦 Estq", "⚙️ Card"])
@@ -54,7 +51,7 @@ with ab_g:
     else:
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa / Comanda:")
-            dict_p = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
+            dict_p = {f"{p[1]} (R$ {p[3]:.2f})": p for p in prods}
             p_sel = st.selectbox("Item:", list(dict_p.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             
@@ -63,9 +60,9 @@ with ab_g:
                 ok = True
                 if ins_id:
                     cursor.execute("SELECT item, quantidade FROM estoque WHERE id = ?", (ins_id,))
-                    n_i, q_a = cursor.fetchone()
-                    if q_a < (q_ins * q):
-                        st.error(f"❌ Estoque insuficiente de '{n_i}' ({q_a} disponíveis).")
+                    res = cursor.fetchone()
+                    if res and res[1] < (q_ins * q):
+                        st.error(f"❌ Estoque insuficiente de '{res[0]}' ({res[1]} disponíveis).")
                         ok = False
                 if ok:
                     cursor.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), p_id, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
@@ -133,10 +130,8 @@ with ab_e:
     
     df_est = pd.read_sql_query("SELECT id, item as Insumo, quantidade as 'Qtd Atual' FROM estoque ORDER BY item", conn)
     if not df_est.empty:
-        # Adiciona marcação visual na própria tabela de exibição
         df_est["Status"] = df_est["Qtd Atual"].apply(lambda q: "⚠️ BAIXO" if q <= 4 else "✅ Ok")
         st.dataframe(df_est, hide_index=True, use_container_width=True)
-        
         ins_add = st.selectbox("Reabastecer:", df_est["Insumo"].tolist())
         q_add = st.number_input("Adicionar Qtd:", min_value=0.1, step=1.0)
         if st.button("Confirmar Entrada", use_container_width=True):
@@ -152,9 +147,10 @@ with ab_m:
         n = st.text_input("Nome do Produto:")
         c = st.selectbox("Categoria:", CATS)
         p = st.number_input("Preço (R$):", min_value=0.0, step=0.5)
-        dict_i = {ins[1]: ins[0] for ins in insumos}
+        dict_i = {p[1]: p[0] for p in insumos}
         i_sel = st.selectbox("Insumo Gasto (Opcional):", ["Nenhum"] + list(dict_i.keys()))
         qi_gasto = st.number_input("Qtd gasta por unidade:", min_value=0.0, step=1.0, value=0.0)
+        
         if st.form_submit_button("💾 Salvar Produto", use_container_width=True) and n.strip() and p > 0:
             try:
                 cursor.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?)", 
