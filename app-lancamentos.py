@@ -1,6 +1,3 @@
-
-
-            
 import sqlite3
 import streamlit as st
 import pandas as pd
@@ -102,7 +99,9 @@ with aba_garcom:
         with st.form("form_pedido", clear_on_submit=True):
             mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
             
-            dict_produtos = {f"{p} (R$ {p:.2f})": p for p in lista_produtos}
+            # CORREÇÃO AQUI (Linha 105): Mapeia os dados corretamente (id, nome, categoria, preco)
+            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            
             produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
             quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
                 
@@ -238,3 +237,7 @@ with aba_relatorio:
         qtd_periodo = df_filtrado_periodo["Quantidade"].sum()
         
         st.metric(label=f"💰 Faturamento Total ({titulo_periodo})", value=f"R$ {fat_periodo:.2f}")
+
+
+            
+
