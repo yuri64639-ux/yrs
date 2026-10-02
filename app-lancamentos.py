@@ -40,7 +40,6 @@ def conectar_banco():
         )
     """)
     
-    # Criado com o campo taxa_servico para gerenciar os 10% no caixa
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pedidos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,9 +82,9 @@ with aba_garcom:
     st.subheader("📋 Novo Pedido")
     
     cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
-    categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
+    categorias_disponiveis = [c for c in cursor.fetchall() if c]
     
-    if not categorias_disponiveis:
+    if not categories_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
     else:
         filtro_categorias = ["Todas"] + categorias_disponiveis
@@ -101,11 +100,10 @@ with aba_garcom:
         with st.form("form_pedido", clear_on_submit=True):
             mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
             
-            # Ajustado para ler corretamente os índices da consulta SQL do cardápio
-            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            dict_produtos = {f"{p} (R$ {p:.2f})": p for p in lista_produtos}
             
             if not dict_produtos:
-                st.info("Nenhum item cadastrado nesta categoria.")
+                st.info("Nenhum item encontrado nesta categoria.")
             else:
                 produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
                 quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
@@ -117,11 +115,10 @@ with aba_garcom:
                         st.error("Informe a mesa ou pulseira.")
                     else:
                         p_id = dict_produtos[produto_selecionado]
-                        # Grava a data completa para permitir filtros no relatório diário/mensal
                         horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         cursor.execute(
-                            "INSERT INTO pedidos (mesa, produto_id, quantity = quantidade, horario) VALUES (?, ?, ?, ?)" if False else "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
+                            "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
                             (mesa.strip(), p_id, quantidade, horario_atual)
                         )
                         conn.commit()
@@ -164,11 +161,11 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
                         conn.commit()
                         st.rerun()
 
-# --- 2. ABA DA COZINHA (APENAS COMIDAS) ---
+# --- 2. ABA DA COZINHA ---
 with aba_cozinha:
     renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha")
 
-# --- 3. ABA DO BAR (APENAS DRINKS E BEBIDAS) ---
+# --- 3. ABA DO BAR ---
 with aba_bar:
     renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
 
@@ -202,9 +199,9 @@ with aba_comandas:
                 st.markdown(f"### 🎫 {comanda}")
                 st.dataframe(df_filtrado[["Produto", "Quantidade", "Total Item (R$)"]], hide_index=True, use_container_width=True)
                 
-                st.write(f"🔹 **Subtotal:** R$ {subtotal:.2f}")
-                st.write(f"🔸 **Serviço (10%):** R$ {taxa_calculada:.2f}")
-                st.markdown(f"#### 💰 Total com 10%: **R$ {total_geral:.2f}**")
+                st.write(f"🔹 **Subtotal dos Consumos:** R$ {subtotal:.2f}")
+                st.write(f"🔸 **Taxa de Serviço (10%):** R$ {taxa_calculada:.2f}")
+                st.markdown(f"#### 💰 Total com os 10%: **R$ {total_geral:.2f}**")
                 
                 st.write("---")
                 st.warning("❓ **O cliente aceitou pagar a taxa de 10% de serviço?**")
@@ -229,3 +226,13 @@ with aba_relatorio:
     
     query_vendas = """
         SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_servico
+        FROM pedidos p
+        JOIN produtos pr ON p.produto_id = pr.id
+        WHERE p.status = 'Finalizado (Pago)'
+    """
+    cursor.execute(query_vendas)
+    vendas_realizadas = cursor.fetchall()
+    
+    if not vendas_realizadas:
+        st.info("ℹ️ Nenhuma venda finalizada para gerar relatórios ainda.")
+    else:
