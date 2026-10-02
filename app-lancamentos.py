@@ -20,13 +20,15 @@ if not st.session_state["logado"]:
 conn = sqlite3.connect("sistema_restaurante.db", check_same_thread=False, timeout=20)
 cursor = conn.cursor()
 cursor.execute("PRAGMA journal_mode=WAL;")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);
-""")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT);
-""")
-conn.commit()
+cursor.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);")
+cursor.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
+
+# Migração rápida caso a coluna taxa_paga não exista no banco antigo
+try:
+    cursor.execute("ALTER TABLE pedidos ADD COLUMN taxa_paga INTEGER DEFAULT 1;")
+    conn.commit()
+except sqlite3.OperationalError:
+    pass
 
 st.fragment(run_every=5)
 CATEGORIAS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
@@ -75,7 +77,7 @@ def tela_preparo(cats, titulo):
 with aba_cozinha: tela_preparo(["Porções", "Pratos Principais", "Sobremesas"], "🍳 Cozinha")
 with aba_bar: tela_preparo(["Bebidas", "Drinks"], "🍹 Bar")
 
-# --- 4. CONTAS ABERTAS ---
+# --- 4. CONTAS ABERTAS (COM OPÇÃO DE RETIRAR 10%) ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
     df = pd.read_sql_query("SELECT p.mesa, pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
@@ -85,17 +87,31 @@ with aba_comandas:
     else:
         for comanda, dados in df.groupby("mesa"):
             with st.container(border=True):
-                st.markdown(f"### 🎫 {comanda} — Total: **R$ {dados['Total'].sum():.2f}**")
+                subtotal = dados['Total'].sum()
+                
+                st.markdown(f"### 🎫 {comanda}")
+                # Caixa de seleção para pagar ou não a taxa de 10%
+                pagar_taxa = st.checkbox("Incluir taxa de serviço (10%)", value=True, key=f"tx_{comanda}")
+                
+                taxa = subtotal * 0.10 if pagar_taxa else 0.0
+                total_geral = subtotal + taxa
+                
+                st.markdown(f"Subtotal: R$ {subtotal:.2f} | Taxa: R$ {taxa:.2f}")
+                st.markdown(f"#### Total Geral: **R$ {total_geral:.2f}**")
+                
                 st.dataframe(dados[["Produto", "Qtd", "Total"]], hide_index=True, use_container_width=True)
-                if st.button(f"💵 Fechar Conta", key=f"f_{comanda}", use_container_width=True):
-                    cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)' WHERE mesa = ?", (comanda,))
+                
+                if st.button(f"💵 Fechar Conta ({comanda})", key=f"f_{comanda}", use_container_width=True):
+                    status_taxa = 1 if pagar_taxa else 0
+                    cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = ? WHERE mesa = ? AND status != 'Finalizado (Pago)'", (status_taxa, comanda))
                     conn.commit()
+                    st.success("Conta fechada!")
                     st.rerun()
 
 # --- 5. RELATÓRIO DE VENDAS ---
 with aba_relatorio:
     st.subheader("📊 Relatório do Dia")
-    df_v = pd.read_sql_query("SELECT pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total, p.horario FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'", conn)
+    df_v = pd.read_sql_query("SELECT pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total, p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'", conn)
     
     if df_v.empty:
         st.info("Nenhuma venda realizada ainda.")
@@ -104,8 +120,20 @@ with aba_relatorio:
         dia_sel = st.selectbox("Escolha o Dia:", sorted(df_v["Dia"].unique(), reverse=True))
         df_f = df_v[df_v["Dia"] == dia_sel]
         
-        st.metric("Faturamento", f"R$ {df_f['Total'].sum():.2f}")
-        # Correção definitiva da agregação do Pandas
+        # O relatório calcula o faturamento real somando a taxa apenas das comandas que aceitaram pagar
+        subtotal_dia = df_f['Total'].sum()
+        
+        # Agrupa por comanda/horário aproximado para calcular a taxa correta por venda finalizada
+        df_f["Taxa_Calculada"] = df_f.apply(lambda r: r["Total"] * 0.10 if r["taxa_paga"] == 1 else 0.0, axis=1)
+        total_taxas_dia = df_f["Taxa_Calculada"].sum()
+        faturamento_total_real = subtotal_dia + total_taxas_dia
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Consumo (Produtos)", f"R$ {subtotal_dia:.2f}")
+        col2.metric("Caixinha (10% Recebidos)", f"R$ {total_taxas_dia:.2f}")
+        col3.metric("Faturamento Geral", f"R$ {faturamento_total_real:.2f}")
+        
+        st.markdown("#### Itens Vendidos")
         resumo = df_f.groupby("Produto", as_index=False)[["Qtd", "Total"]].sum()
         st.dataframe(resumo, hide_index=True, use_container_width=True)
 
