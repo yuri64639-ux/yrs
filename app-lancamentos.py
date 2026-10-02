@@ -6,20 +6,18 @@ import streamlit as st
 st.set_page_config(page_title="Sistema", layout="centered")
 PASS, ADMIN = "orla123", "admin123"
 
-# --- LOGIN INICIAL ---
+# --- LOGIN ---
 if "logado" not in st.session_state: st.session_state["logado"] = False
 if not st.session_state["logado"]:
     st.subheader("Acesso")
     senha = st.text_input("Senha:", type="password")
-    if st.button("Entrar", type="primary", use_container_width=True):
-        if senha == PASS:
-            st.session_state["logado"] = True; st.rerun()
-        else: st.error("Incorreta.")
+    if st.button("Entrar", type="primary", use_container_width=True) and senha == PASS:
+        st.session_state["logado"] = True; st.rerun()
     st.stop()
 
-# --- ESTADO DE AUTENTICAÇÃO GERENCIAL ---
 if "admin_ok" not in st.session_state: st.session_state["admin_ok"] = False
 
+# --- BANCO DE DADOS ---
 conn = sqlite3.connect("restaurante.db", check_same_thread=False, timeout=20)
 cur = conn.cursor()
 cur.execute("PRAGMA journal_mode=WAL;")
@@ -43,40 +41,37 @@ if crit := cur.fetchall():
 st.title("Gestao")
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["Lancar", "Cozinha", "Bar", "Contas", "Cancelar", "Relatorio", "Estoque", "Cardapio"])
 
-# --- FUNÇÃO AUXILIAR PARA BOTÃO DE SENHA NAS ABAS RESTRITAS ---
-def verificar_admin(chave_input):
+def v_admin(key):
     if not st.session_state["admin_ok"]:
-        sc = st.text_input("Senha Gerencia:", type="password", key=chave_input)
-        if st.button("🔓 Validar Senha", key=f"btn_{chave_input}", use_container_width=True):
-            if sc == ADMIN:
-                st.session_state["admin_ok"] = True; st.rerun()
-            else: st.error("Incorreta.")
+        if st.text_input("Senha Gerencia:", type="password", key=key) == ADMIN and st.button("🔓 Validar", key=f"b_{key}", use_container_width=True):
+            st.session_state["admin_ok"] = True; st.rerun()
         return False
     return True
 
+# --- LANÇAR PEDIDO ---
 with ab_g:
     st.subheader("Novo Pedido")
     cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos ORDER BY nome")
     if prods := cur.fetchall():
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa:")
-            dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
+            dp = {f"{p} (R$ {p:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             if st.form_submit_button("Enviar", type="primary", use_container_width=True) and m.strip():
                 pid, _, _, iid, qins = dp[ps]
                 ok = True
                 if iid:
-                    cur.execute("SELECT item, quantidade FROM estoque WHERE id = ?", (iid,))
+                    cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,))
                     res = cur.fetchone()
-                    if res and res[1] < (qins * q):
-                        st.error(f"Estoque insuficiente."); ok = False
+                    if res and res[0] < (qins * q): st.error("Estoque insuficiente."); ok = False
                 if ok:
                     cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
                     conn.commit(); st.success("Enviado!"); st.rerun()
     else: st.warning("Cadastre produtos.")
 
+# --- TELAS DE PREPARO ---
 def prep(cats, title):
     st.subheader(title)
     cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({','.join('?'*len(cats))}) ORDER BY p.id DESC", cats)
@@ -90,6 +85,7 @@ def prep(cats, title):
 with ab_c: prep(["Porções", "Pratos Principais", "Sobremesas"], "Cozinha")
 with ab_b: prep(["Bebidas", "Drinks"], "Bar")
 
+# --- CONTAS ABERTAS ---
 with ab_co:
     st.subheader("Contas Abertas")
     df = pd.read_sql_query("SELECT p.mesa, pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
@@ -101,25 +97,31 @@ with ab_co:
                 st.markdown(f"Mesa {mesa}")
                 tx = sub * 0.10 if st.checkbox("Taxa 10%", value=True, key=f"tx_{mesa}") else 0.0
                 st.markdown(f"Total: R$ {sub + tx:.2f}")
-                st.dataframe(dados, hide_index=True, use_container_width=True)
+                st.dataframe(dados[["Produto", "Qtd", "Total"]], hide_index=True, use_container_width=True)
                 if st.button(f"Fechar {mesa}", use_container_width=True):
                     cur.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = ? WHERE mesa = ?", (1 if tx > 0 else 0, mesa))
                     conn.commit(); st.rerun()
 
+# --- CANCELAR UM POR UM ---
 with ab_can:
-    st.subheader("Cancelar")
-    if verificar_admin("p_cancelar"):
+    st.subheader("Cancelar Unidades")
+    if d_admin("p_can"):
         dfa = pd.read_sql_query("SELECT p.id as ID, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
         if dfa.empty: st.info("Sem pedidos.")
         else:
             st.dataframe(dfa, hide_index=True, use_container_width=True)
-            idc = st.selectbox("ID:", ["Selecione..."] + dfa["ID"].tolist())
-            if idc != "Selecione..." and st.button("Confirmar", type="primary"):
-                cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (idc,))
-                if v := cur.fetchone():
-                    if v[0]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
-                cur.execute("DELETE FROM pedidos WHERE id = ?", (idc,)); conn.commit(); st.rerun()
+            opc = {f"ID #{r['ID']} | Mesa {r['mesa']} - {r['nome']} ({r['quantidade']} un)": r['ID'] for _, r in dfa.iterrows()}
+            sel = st.selectbox("Item:", ["Selecione..."] + list(opc.keys()))
+            if sel != "Selecione..." and st.button("🚨 Remover 1 Unidade", type="primary", use_container_width=True):
+                id_p = opc[sel]
+                cur.execute("SELECT pr.insumo_id, pr.qtd_insumo, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (id_p,))
+                iid, qins, q_p = cur.fetchone()
+                if iid and qins: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (qins, iid))
+                if q_p > 1: cur.execute("UPDATE pedidos SET quantidade = quantidade - 1 WHERE id = ?", (id_p,))
+                else: cur.execute("DELETE FROM pedidos WHERE id = ?", (id_p,))
+                conn.commit(); st.success("Removido!"); st.rerun()
 
+# --- RELATÓRIO ---
 with ab_r:
     st.subheader("Relatorio")
     dfv = pd.read_sql_query("SELECT pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total, p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'", conn)
@@ -131,9 +133,10 @@ with ab_r:
         st.metric("Total", f"R$ {dff['Total'].sum():.2f}")
         st.dataframe(dff.groupby("Produto", as_index=False)[["Qtd", "Total"]].sum(), hide_index=True)
 
+# --- ESTOQUE ---
 with ab_e:
     st.subheader("Estoque")
-    if verificar_admin("p_estoque"):
+    if d_admin("p_est"):
         with st.form("fe"):
             ni = st.text_input("Insumo:")
             qi = st.number_input("Qtd:", min_value=0.0)
@@ -143,12 +146,12 @@ with ab_e:
         dfe = pd.read_sql_query("SELECT id, item, quantidade FROM estoque", conn)
         if not dfe.empty: st.dataframe(dfe, hide_index=True)
 
+# --- CARDÁPIO ---
 with ab_m:
     st.subheader("Cardapio")
-    if verificar_admin("p_cardapio"):
+    if d_admin("p_card"):
         cur.execute("SELECT id, item FROM estoque")
-        ins = cur.fetchall()
-        di = {i[1]: i[0] for i in ins}
+        di = {i[1]: i[0] for i in cur.fetchall()}
         with st.form("fc"):
             n = st.text_input("Produto:")
             c = st.selectbox("Cat:", CATS)
