@@ -23,6 +23,25 @@ cursor.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nom
 cursor.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
 conn.commit()
 
+# CORREÇÃO DEFINITIVA: Migração das colunas caso o banco de dados já exista de versões anteriores
+try:
+    cursor.execute("ALTER TABLE produtos ADD COLUMN insumo_id INTEGER;")
+    conn.commit()
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE produtos ADD COLUMN qtd_insumo REAL;")
+    conn.commit()
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE pedidos ADD COLUMN taxa_paga INTEGER DEFAULT 1;")
+    conn.commit()
+except sqlite3.OperationalError:
+    pass
+
 st.fragment(run_every=5)
 CATS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
 
@@ -39,7 +58,7 @@ with ab_g:
     else:
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa / Comanda:")
-            dict_p = {f"{p[1]} (R$ {p[3]:.2f})": p for p in prods}
+            dict_p = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
             p_sel = st.selectbox("Item:", list(dict_p.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             
