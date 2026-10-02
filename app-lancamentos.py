@@ -4,25 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Bar", layout="centered")
-
-# --- CONTROLE DE ACESSO (SENHA) ---
-SENHA_CORRETA = "sistema123"  # <-- Altere a sua senha de acesso aqui se desejar
-
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-
-if not st.session_state["autenticado"]:
-    st.subheader("🔑 Acesso ao Sistema de Pedidos")
-    senha_digitada = st.text_input("Digite a senha do estabelecimento:", type="password")
-    if st.button("Entrar", type="primary", use_container_width=True):
-        if senha_digitada == SENHA_CORRETA:
-            st.session_state["autenticado"] = True
-            st.success("Acesso liberado!")
-            st.rerun()
-        else:
-            st.error("Senha incorreta. Tente novamente.")
-    st.stop()  # Interrompe o código aqui se não estiver logado
+st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
 
 # --- BANCO DE DADOS (CONCURRÊNCIA ATIVADA) ---
 def conectar_banco():
@@ -48,7 +30,6 @@ def conectar_banco():
             quantidade INTEGER,
             status TEXT DEFAULT 'Pendente',
             horario TEXT,
-            taxa_servico REAL DEFAULT 0.0,
             FOREIGN KEY (produto_id) REFERENCES produtos(id)
         )
     """)
@@ -68,12 +49,11 @@ CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 # --- INTERFACE MOBILE ---
 st.title("📱 Gestão Orla Bar")
 
-aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = st.tabs([
+aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_gerencia = st.tabs([
     "🏃‍♂️ Lançar", 
     "🍳 Cozinha", 
     "🍹 Bar",
     "🎟️ Contas",
-    "📊 Relatório",
     "⚙️ Cardápio"
 ])
 
@@ -82,7 +62,7 @@ with aba_garcom:
     st.subheader("📋 Novo Pedido")
     
     cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
-    categorias_disponiveis = [c for c in cursor.fetchall() if c]
+    categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
     
     if not categories_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
@@ -100,38 +80,33 @@ with aba_garcom:
         with st.form("form_pedido", clear_on_submit=True):
             mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
             
-            dict_produtos = {f"{p} (R$ {p:.2f})": p for p in lista_produtos}
+            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
             
-            if not dict_produtos:
-                st.info("Nenhum item encontrado nesta categoria.")
-            else:
-                produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
-                quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
-                    
-                botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
+            quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
                 
-                if botao_enviar:
-                    if mesa.strip() == "":
-                        st.error("Informe a mesa ou pulseira.")
-                    else:
-                        p_id = dict_produtos[produto_selecionado]
-                        horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        cursor.execute(
-                            "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
-                            (mesa.strip(), p_id, quantidade, horario_atual)
-                        )
-                        conn.commit()
-                        st.success("✅ Pedido enviado!")
-                        st.rerun()
+            botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
+            
+            if botao_enviar:
+                if mesa.strip() == "":
+                    st.error("Informe a mesa ou pulseira.")
+                else:
+                    p_id = dict_produtos[produto_selecionado]
+                    horario_atual = datetime.now().strftime("%H:%M:%S")
+                    
+                    cursor.execute(
+                        "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
+                        (mesa.strip(), p_id, quantidade, horario_atual)
+                    )
+                    conn.commit()
+                    st.success("✅ Pedido enviado!")
+                    st.rerun()
 
 # --- FUNCIONALIDADE REUTILIZÁVEL PARA TELAS DE PREPARO (BAR E COZINHA) ---
 def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     st.subheader(titulo_tela)
     
-    if not categorias_alvo:
-        return
-        
+    # Formata a lista de categorias para a query SQL (ex: 'Drinks', 'Bebidas')
     placeholders = ",".join("?" for _ in categorias_alvo)
     query = f"""
         SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status, p.horario 
@@ -140,7 +115,7 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
         WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({placeholders})
         ORDER BY p.id DESC
     """
-    cursor.execute(query, categories_alvo)
+    cursor.execute(query, categorias_alvo)
     pedidos_ativos = cursor.fetchall()
     
     if not pedidos_ativos:
@@ -148,10 +123,9 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     else:
         for p_id, p_mesa, pr_nome, p_qtd, p_status, p_hora in pedidos_ativos:
             cor_status = "🔴 Pendente" if p_status == "Pendente" else "🟡 Preparando"
-            hora_limpa = p_hora[11:19] if (p_hora and len(p_hora) > 10) else p_hora
                 
             with st.container(border=True):
-                st.markdown(f"**{p_mesa}** — *{hora_limpa}*")
+                st.markdown(f"**{p_mesa}** — *{p_hora}*")
                 st.markdown(f"### {p_qtd}x {pr_nome}")
                 st.text(f"Status: {cor_status}")
                 
@@ -161,15 +135,15 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
                         conn.commit()
                         st.rerun()
 
-# --- 2. ABA DA COZINHA ---
+# --- 2. ABA DA COZINHA (APENAS COMIDAS) ---
 with aba_cozinha:
-    renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha")
+    renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha (Porções e Pratos)")
 
-# --- 3. ABA DO BAR ---
+# --- 3. ABA DO BAR (APENAS DRINKS E BEBIDAS) ---
 with aba_bar:
-    renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
+    renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar (Drinks e Bebidas)")
 
-# --- 4. ABA: COMANDAS / PULSEIRAS ABERTAS (COM PERGUNTA DE TAXA) ---
+# --- 4. ABA: COMANDAS / PULSEIRAS ABERTAS ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
     
@@ -191,48 +165,37 @@ with aba_comandas:
         
         for comanda in comandas_abertas:
             df_filtrado = df_consumo[df_consumo["Identificador"] == comanda]
-            subtotal = df_filtrado["Total Item (R$)"].sum()
-            taxa_calculada = subtotal * 0.10
-            total_geral = subtotal + taxa_calculada
+            valor_total_comanda = df_filtrado["Total Item (R$)"].sum()
             
             with st.container(border=True):
                 st.markdown(f"### 🎫 {comanda}")
+                st.markdown(f"#### Total: **R$ {valor_total_comanda:.2f}**")
+                
                 st.dataframe(df_filtrado[["Produto", "Quantidade", "Total Item (R$)"]], hide_index=True, use_container_width=True)
                 
-                st.write(f"🔹 **Subtotal dos Consumos:** R$ {subtotal:.2f}")
-                st.write(f"🔸 **Taxa de Serviço (10%):** R$ {taxa_calculada:.2f}")
-                st.markdown(f"#### 💰 Total com os 10%: **R$ {total_geral:.2f}**")
-                
-                st.write("---")
-                st.warning("❓ **O cliente aceitou pagar a taxa de 10% de serviço?**")
-                
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button(f"🟢 Sim, Com 10%", key=f"pago_10_{comanda}", use_container_width=True):
-                        cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.10 WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
-                        conn.commit()
-                        st.success("Conta fechada com taxa!")
-                        st.rerun()
-                with c2:
-                    if st.button(f"🔴 Não, Sem 10%", key=f"pago_sem_{comanda}", use_container_width=True):
-                        cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.0 WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
-                        conn.commit()
-                        st.success("Conta fechada sem taxa!")
-                        st.rerun()
+                if st.button(f"💵 Fechar Conta ({comanda})", key=f"fechar_{comanda}", use_container_width=True):
+                    cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)' WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
+                    conn.commit()
+                    st.success("Conta fechada com sucesso!")
+                    st.rerun()
 
-# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS COM GESTÃO DOS 10% ---
-with aba_relatorio:
-    st.subheader("📊 Relatório de Vendas")
+# --- 5. ABA DE CADASTRO DE PRODUTOS ---
+with aba_gerencia:
+    st.subheader("⚙️ Configurar Cardápio")
     
-    query_vendas = """
-        SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_servico
-        FROM pedidos p
-        JOIN produtos pr ON p.produto_id = pr.id
-        WHERE p.status = 'Finalizado (Pago)'
-    """
-    cursor.execute(query_vendas)
-    vendas_realizadas = cursor.fetchall()
+    novo_nome = st.text_input("Nome do Item:")
+    # Une as listas para o usuário escolher na hora do cadastro
+    nova_categoria = st.selectbox("Categoria correspondente:", CATEGORIAS_BAR + CATEGORIAS_COZINHA)
+    novo_preco = st.number_input("Preço (R$):", min_value=0.0, value=0.0, step=0.50, format="%.2f")
     
-    if not vendas_realizadas:
-        st.info("ℹ️ Nenhuma venda finalizada para gerar relatórios ainda.")
-    else:
+    if st.button("💾 Salvar Produto", type="primary", use_container_width=True):
+        if novo_nome.strip() == "" or novo_preco <= 0:
+            st.error("Preencha nome e preço válidos.")
+        else:
+            try:
+                cursor.execute("INSERT INTO produtos (nome, categoria, preco) VALUES (?, ?, ?)", (novo_nome.strip(), nova_categoria, novo_preco))
+                conn.commit()
+                st.success("Cadastrado com sucesso!")
+                st.rerun()
+            except sqlite3.IntegrityError:
+                st.error("Este produto já existe no banco.")
