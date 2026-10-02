@@ -41,7 +41,6 @@ if crit := cur.fetchall():
 st.title("Gestao")
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["Lancar", "Cozinha", "Bar", "Contas", "Cancelar", "Relatorio", "Estoque", "Cardapio"])
 
-# --- FUNÇÃO DE VALIDAÇÃO DE SENHA CORRIGIDA ---
 def v_admin(key):
     if not st.session_state["admin_ok"]:
         sc = st.text_input("Senha Gerencia:", type="password", key=key)
@@ -59,8 +58,8 @@ with ab_g:
     if prods := cur.fetchall():
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa:")
-            # CORREÇÃO DEFINITIVA DA TUPLA: p[1] é o nome do produto e p[2] é o preço de venda
-            dp = {f"{p} (R$ {p:.2f})": p for p in prods}
+            # CORREÇÃO DA TUPLA: p[1] é o nome e p[2] é o preço
+            dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             if st.form_submit_button("Enviar", type="primary", use_container_width=True) and m.strip():
@@ -69,7 +68,7 @@ with ab_g:
                 if iid:
                     cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,))
                     res = cur.fetchone()
-                    if res and res[0] < (qins * q): st.error("Estoque insuficiente."); ok = False
+                    if res and res < (qins * q): st.error("Estoque insuficiente."); ok = False
                 if ok:
                     cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
