@@ -24,7 +24,7 @@ if not st.session_state["autenticado"]:
             st.rerun()
         else:
             st.error("Senha incorreta. Tente novamente.")
-    st.stop()  # Interrompe o código aqui se não estiver logado
+    st.stop()
 
 
 # --- BANCO DE DADOS (CONCURRÊNCIA ATIVADA) ---
@@ -69,6 +69,7 @@ st.fragment(run_every=5)
 # Categorias do estabelecimento
 CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
+TODAS_CATEGORIAS = CATEGORIAS_BAR + CATEGORIAS_COZINHA
 
 # --- INTERFACE MOBILE ---
 st.title("📱 Gestão Bar & Restaurante")
@@ -87,9 +88,7 @@ aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = (
 with aba_garcom:
     st.subheader("📋 Novo Pedido")
 
-    cursor.execute(
-        "SELECT DISTINCT categoria FROM produtos ORDER BY categoria"
-    )
+    cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
     categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
 
     if not categorias_disponiveis:
@@ -115,7 +114,7 @@ with aba_garcom:
                 "Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12"
             )
 
-            # Mapeamento estrutural do dicionário {Nome formatado: id_produto}
+            # Correção do mapeamento estrutural puxando os índices da tupla (id, nome, categoria, preco)
             dict_produtos = {
                 f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos
             }
@@ -163,7 +162,7 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
         WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({placeholders})
         ORDER BY p.id DESC
     """
-    cursor.execute(query, categorias_alvo)
+    cursor.execute(query, categories_alvo)
     pedidos_ativos = cursor.fetchall()
 
     if not pedidos_ativos:
@@ -292,3 +291,4 @@ with aba_relatorio:
     cursor.execute(query_vendas)
     vendas_realizadas = cursor.fetchall()
 
+    if not vendas_realizadas:
