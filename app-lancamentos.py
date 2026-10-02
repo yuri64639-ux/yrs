@@ -103,7 +103,7 @@ with ab_can:
         if not (itens := cur.fetchall()): st.info("Vazio.")
         else:
             for pid, mesa, nome, qtd in itens:
-                col_txt, col_btn = st.columns([3, 1])
+                col_txt, col_btn = st.columns()
                 col_txt.write(f"🔹 **Mesa {mesa}**: {qtd}x {nome}")
                 if col_btn.button("❌", key=f"del_{pid}"):
                     if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (pid,)).fetchone():
@@ -140,6 +140,14 @@ with ab_m:
             n, c, p = st.text_input("Produto:"), st.selectbox("Cat:", CATS), st.number_input("Preço:", min_value=0.0)
             sel_i, qg = st.selectbox("Insumo:", ["Nenhum"] + list(di.keys())), st.number_input("Gasto qtd:", min_value=0.0)
             if st.form_submit_button("Salvar") and n.strip() and p > 0:
-                cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?)", (n.strip(), c, p, di[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
+                cur.execute("""
+                    INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) 
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(nome) DO UPDATE SET 
+                        categoria = excluded.categoria,
+                        preco = excluded.preco,
+                        insumo_id = excluded.insumo_id,
+                        qtd_insumo = excluded.qtd_insumo
+                """, (n.strip(), c, p, di[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
                 conn.commit(); st.rerun()
         st.dataframe(pd.read_sql_query("SELECT id, nome, categoria, preco FROM produtos", conn), hide_index=True)
