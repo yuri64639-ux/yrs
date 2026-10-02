@@ -8,10 +8,9 @@ st.set_page_config(page_title="Sistema Mobile", layout="centered")
 # --- LOGIN ---
 if "logado" not in st.session_state: st.session_state["logado"] = False
 if not st.session_state["logado"]:
-    st.subheader("🔑 Acesso ao Sistema")
+    st.subheader("🔑 Acesso")
     if st.text_input("Senha:", type="password") == "orla123" and st.button("Entrar", type="primary", use_container_width=True):
-        st.session_state["logado"] = True
-        st.rerun()
+        st.session_state["logado"] = True; st.rerun()
     st.stop()
 
 # --- BANCO DE DADOS ---
@@ -23,7 +22,6 @@ cursor.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nom
 cursor.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
 conn.commit()
 
-# Migrações automáticas estruturadas
 for col, tipo, tabela in [("insumo_id", "INTEGER", "produtos"), ("qtd_insumo", "REAL", "produtos"), ("taxa_paga", "INTEGER DEFAULT 1", "pedidos")]:
     try: cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {col} {tipo};"); conn.commit()
     except sqlite3.OperationalError: pass
@@ -31,7 +29,7 @@ for col, tipo, tabela in [("insumo_id", "INTEGER", "produtos"), ("qtd_insumo", "
 st.fragment(run_every=5)
 CATS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
 
-# --- ALERTA DE ESTOQUE CRÍTICO ---
+# --- ALERTA DE ESTOQUE MÍNIMO ---
 cursor.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4")
 criticos = cursor.fetchall()
 if criticos:
@@ -51,7 +49,7 @@ with ab_g:
     else:
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa / Comanda:")
-            dict_p = {f"{p[1]} (R$ {p[3]:.2f})": p for p in prods}
+            dict_p = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
             p_sel = st.selectbox("Item:", list(dict_p.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             
@@ -62,8 +60,7 @@ with ab_g:
                     cursor.execute("SELECT item, quantidade FROM estoque WHERE id = ?", (ins_id,))
                     res = cursor.fetchone()
                     if res and res[1] < (q_ins * q):
-                        st.error(f"❌ Estoque insuficiente de '{res[0]}' ({res[1]} disponíveis).")
-                        ok = False
+                        st.error(f"❌ Estoque insuficiente de '{res[0]}' ({res[1]} disponíveis)."); ok = False
                 if ok:
                     cursor.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), p_id, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if ins_id: cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (q_ins * q, ins_id))
@@ -147,7 +144,7 @@ with ab_m:
         n = st.text_input("Nome do Produto:")
         c = st.selectbox("Categoria:", CATS)
         p = st.number_input("Preço (R$):", min_value=0.0, step=0.5)
-        dict_i = {p[1]: p[0] for p in insumos}
+        dict_i = {i[1]: i[0] for i in insumos}
         i_sel = st.selectbox("Insumo Gasto (Opcional):", ["Nenhum"] + list(dict_i.keys()))
         qi_gasto = st.number_input("Qtd gasta por unidade:", min_value=0.0, step=1.0, value=0.0)
         
