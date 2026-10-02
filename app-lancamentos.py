@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Pedidos", layout="centered")
+st.set_page_config(page_title="Sistema Mobile - Bar", layout="centered")
 
 # --- CONTROLE DE ACESSO (SENHA) ---
 SENHA_CORRETA = "sistema123"  # <-- Altere a sua senha de acesso aqui se desejar
@@ -40,6 +40,7 @@ def conectar_banco():
         )
     """)
     
+    # Criado com o campo taxa_servico para gerenciar os 10% no caixa
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pedidos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +62,7 @@ cursor = conn.cursor()
 # Atualização automática em tempo real a cada 5 segundos
 st.fragment(run_every=5)
 
-# Categorias do estabelecimento
+# Mapeamento de quais categorias pertencem ao BAR e quais pertencem à COZINHA
 CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
@@ -77,7 +78,7 @@ aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = st
     "⚙️ Cardápio"
 ])
 
-# --- 1. ABA DO GARÇOM ---
+# --- 1. ABA DO GARÇOM (LANÇAMENTO VERTICAL) ---
 with aba_garcom:
     st.subheader("📋 Novo Pedido")
     
@@ -98,11 +99,13 @@ with aba_garcom:
         lista_produtos = cursor.fetchall()
         
         with st.form("form_pedido", clear_on_submit=True):
-            mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Comanda 12")
+            mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
+            
+            # Ajustado para ler corretamente os índices da consulta SQL do cardápio
             dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
             
             if not dict_produtos:
-                st.info("Nenhum item encontrado nesta categoria.")
+                st.info("Nenhum item cadastrado nesta categoria.")
             else:
                 produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
                 quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
@@ -114,19 +117,24 @@ with aba_garcom:
                         st.error("Informe a mesa ou pulseira.")
                     else:
                         p_id = dict_produtos[produto_selecionado]
+                        # Grava a data completa para permitir filtros no relatório diário/mensal
                         horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         cursor.execute(
-                            "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
+                            "INSERT INTO pedidos (mesa, produto_id, quantity = quantidade, horario) VALUES (?, ?, ?, ?)" if False else "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
                             (mesa.strip(), p_id, quantidade, horario_atual)
                         )
                         conn.commit()
                         st.success("✅ Pedido enviado!")
                         st.rerun()
 
-# --- REUTILIZÁVEL PARA TELAS DE PREPARO ---
+# --- FUNCIONALIDADE REUTILIZÁVEL PARA TELAS DE PREPARO (BAR E COZINHA) ---
 def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     st.subheader(titulo_tela)
+    
+    if not categorias_alvo:
+        return
+        
     placeholders = ",".join("?" for _ in categorias_alvo)
     query = f"""
         SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status, p.horario 
@@ -135,18 +143,18 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
         WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({placeholders})
         ORDER BY p.id DESC
     """
-    cursor.execute(query, categorias_alvo)
+    cursor.execute(query, categories_alvo)
     pedidos_ativos = cursor.fetchall()
     
     if not pedidos_ativos:
         st.success("🎉 Tudo pronto por aqui!")
     else:
-        for p_id, p_mesa, pr_nome, p_qtd, p_status, p_horario_completo in pedidos_ativos:
+        for p_id, p_mesa, pr_nome, p_qtd, p_status, p_hora in pedidos_ativos:
             cor_status = "🔴 Pendente" if p_status == "Pendente" else "🟡 Preparando"
-            hora_exibicao = p_horario_completo[11:19] if (p_horario_completo and len(p_horario_completo) > 10) else p_horario_completo
+            hora_limpa = p_hora[11:19] if (p_hora and len(p_hora) > 10) else p_hora
                 
             with st.container(border=True):
-                st.markdown(f"**{p_mesa}** — *{hora_exibicao}*")
+                st.markdown(f"**{p_mesa}** — *{hora_limpa}*")
                 st.markdown(f"### {p_qtd}x {pr_nome}")
                 st.text(f"Status: {cor_status}")
                 
@@ -156,13 +164,15 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
                         conn.commit()
                         st.rerun()
 
+# --- 2. ABA DA COZINHA (APENAS COMIDAS) ---
 with aba_cozinha:
     renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha")
 
+# --- 3. ABA DO BAR (APENAS DRINKS E BEBIDAS) ---
 with aba_bar:
     renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
 
-# --- 4. ABA: CONTAS ABERTAS (COM PERGUNTA DA TAXA) ---
+# --- 4. ABA: COMANDAS / PULSEIRAS ABERTAS (COM PERGUNTA DE TAXA) ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
     
@@ -192,46 +202,30 @@ with aba_comandas:
                 st.markdown(f"### 🎫 {comanda}")
                 st.dataframe(df_filtrado[["Produto", "Quantidade", "Total Item (R$)"]], hide_index=True, use_container_width=True)
                 
-                st.write(f"🔹 **Subtotal dos Consumos:** R$ {subtotal:.2f}")
-                st.write(f"🔸 **Taxa de Serviço (10%):** R$ {taxa_calculada:.2f}")
-                st.markdown(f"#### 💰 Total com os 10%: **R$ {total_geral:.2f}**")
+                st.write(f"🔹 **Subtotal:** R$ {subtotal:.2f}")
+                st.write(f"🔸 **Serviço (10%):** R$ {taxa_calculada:.2f}")
+                st.markdown(f"#### 💰 Total com 10%: **R$ {total_geral:.2f}**")
                 
                 st.write("---")
                 st.warning("❓ **O cliente aceitou pagar a taxa de 10% de serviço?**")
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button(f"🟢 Sim, Pagou com 10%", key=f"pago_10_{comanda}", use_container_width=True):
-                        cursor.execute(
-                            "UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.10 WHERE mesa = ? AND status != 'Finalizado (Pago)'", 
-                            (comanda,)
-                        )
+                    if st.button(f"🟢 Sim, Com 10%", key=f"pago_10_{comanda}", use_container_width=True):
+                        cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.10 WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
                         conn.commit()
-                        st.success("Conta fechada com taxa inclusa!")
+                        st.success("Conta fechada com taxa!")
                         st.rerun()
                 with c2:
-                    if st.button(f"🔴 Não, Fechar sem 10%", key=f"pago_sem_{comanda}", use_container_width=True):
-                        cursor.execute(
-                            "UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.0 WHERE mesa = ? AND status != 'Finalizado (Pago)'", 
-                            (comanda,)
-                        )
+                    if st.button(f"🔴 Não, Sem 10%", key=f"pago_sem_{comanda}", use_container_width=True):
+                        cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.0 WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
                         conn.commit()
-                        st.success("Conta fechada apenas com o valor dos produtos!")
+                        st.success("Conta fechada sem taxa!")
                         st.rerun()
 
-# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS COM TAXA DE SERVIÇO ---
+# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS COM GESTÃO DOS 10% ---
 with aba_relatorio:
     st.subheader("📊 Relatório de Vendas")
     
     query_vendas = """
         SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_servico
-        FROM pedidos p
-        JOIN produtos pr ON p.produto_id = pr.id
-        WHERE p.status = 'Finalizado (Pago)'
-    """
-    cursor.execute(query_vendas)
-    vendas_realizadas = cursor.fetchall()
-    
-    if not vendas_realizadas:
-        st.info("ℹ️ Nenhuma venda finalizada para gerar relatórios ainda.")
-    else:
