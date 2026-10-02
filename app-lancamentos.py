@@ -48,6 +48,7 @@ def conectar_banco():
             quantidade INTEGER,
             status TEXT DEFAULT 'Pendente',
             horario TEXT,
+            taxa_servico REAL DEFAULT 0.0,
             FOREIGN KEY (produto_id) REFERENCES produtos(id)
         )
     """)
@@ -86,7 +87,7 @@ with aba_garcom:
     if not categorias_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
     else:
-        filtro_categorias = ["Todas"] + categorias_disponiveis
+        filtro_categorias = ["Todas"] + categories_disponiveis
         categoria_selecionada = st.selectbox("📂 Categoria:", filtro_categorias)
         
         if categoria_selecionada == "Todas":
@@ -98,9 +99,7 @@ with aba_garcom:
         
         with st.form("form_pedido", clear_on_submit=True):
             mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Comanda 12")
-            
-            # Mapeia os dados corretamente da tupla (id, nome, categoria, preco)
-            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            dict_produtos = {f"{p} (R$ {p:.2f})": p for p in lista_produtos}
             
             if not dict_produtos:
                 st.info("Nenhum item encontrado nesta categoria.")
@@ -163,7 +162,7 @@ with aba_cozinha:
 with aba_bar:
     renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
 
-# --- 4. ABA: CONTAS ABERTAS ---
+# --- 4. ABA: CONTAS ABERTAS (COM PERGUNTA DA TAXA) ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
     
@@ -185,26 +184,48 @@ with aba_comandas:
         
         for comanda in comandas_abertas:
             df_filtrado = df_consumo[df_consumo["Identificador"] == comanda]
-            valor_total_comanda = df_filtrado["Total Item (R$)"].sum()
+            subtotal = df_filtrado["Total Item (R$)"].sum()
+            taxa_calculada = subtotal * 0.10
+            total_geral = subtotal + taxa_calculada
             
             with st.container(border=True):
                 st.markdown(f"### 🎫 {comanda}")
-                st.markdown(f"#### Total: **R$ {valor_total_comanda:.2f}**")
                 
                 st.dataframe(df_filtrado[["Produto", "Quantidade", "Total Item (R$)"]], hide_index=True, use_container_width=True)
                 
-                if st.button(f"💵 Fechar Conta ({comanda})", key=f"fechar_{comanda}", use_container_width=True):
-                    cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)' WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
-                    conn.commit()
-                    st.success("Conta fechada com sucesso!")
-                    st.rerun()
+                st.write(f"🔹 **Subtotal dos Consumos:** R$ {subtotal:.2f}")
+                st.write(f"🔸 **Taxa de Serviço (10%):** R$ {taxa_calculada:.2f}")
+                st.markdown(f"#### 💰 Total com os 10%: **R$ {total_geral:.2f}**")
+                
+                st.write("---")
+                st.warning("❓ **O cliente aceitou pagar a taxa de 10% de serviço?**")
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button(f"🟢 Sim, Pagou com 10%", key=f"pago_10_{comanda}", use_container_width=True):
+                        cursor.execute(
+                            "UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.10 WHERE mesa = ? AND status != 'Finalizado (Pago)'", 
+                            (comanda,)
+                        )
+                        conn.commit()
+                        st.success("Conta fechada com taxa inclusa!")
+                        st.rerun()
+                with c2:
+                    if st.button(f"🔴 Não, Fechar sem 10%", key=f"pago_sem_{comanda}", use_container_width=True):
+                        cursor.execute(
+                            "UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_servico = 0.0 WHERE mesa = ? AND status != 'Finalizado (Pago)'", 
+                            (comanda,)
+                        )
+                        conn.commit()
+                        st.success("Conta fechada apenas com o valor dos produtos!")
+                        st.rerun()
 
-# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS ---
+# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS COM TAXA DE SERVIÇO ---
 with aba_relatorio:
     st.subheader("📊 Relatório de Vendas")
     
     query_vendas = """
-        SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario
+        SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_servico
         FROM pedidos p
         JOIN produtos pr ON p.produto_id = pr.id
         WHERE p.status = 'Finalizado (Pago)'
@@ -215,27 +236,3 @@ with aba_relatorio:
     if not vendas_realizadas:
         st.info("ℹ️ Nenhuma venda finalizada para gerar relatórios ainda.")
     else:
-        df_vendas = pd.DataFrame(vendas_realizadas, columns=["Produto", "Categoria", "Quantidade", "Preço", "Total", "Horario"])
-        
-        df_vendas["DataHora"] = pd.to_datetime(df_vendas["Horario"], errors="coerce")
-        df_vendas["Dia"] = df_vendas["DataHora"].dt.strftime("%d/%m/%Y")
-        df_vendas["Mes"] = df_vendas["DataHora"].dt.strftime("%m/%Y")
-        
-        tipo_filtro = st.radio("Agrupar relatório por:", ["Por Dia", "Por Mês"], horizontal=True)
-        
-        if tipo_filtro == "Por Dia":
-            dias_disponiveis = sorted(df_vendas["Dia"].dropna().unique(), reverse=True)
-            dia_escolhido = st.selectbox("Selecione o Dia:", dias_disponiveis)
-            df_filtrado_periodo = df_vendas[df_vendas["Dia"] == dia_escolhido]
-            titulo_periodo = f"do dia {dia_escolhido}"
-        else:
-            meses_disponiveis = sorted(df_vendas["Mes"].dropna().unique(), reverse=True)
-            mes_escolhido = st.selectbox("Selecione o Mês (MM/AAAA):", meses_disponiveis)
-            df_filtrado_periodo = df_vendas[df_vendas["Mes"] == mes_escolhido]
-            titulo_periodo = f"do mês {mes_escolhido}"
-        
-        st.write("---")
-
-
-            
-
