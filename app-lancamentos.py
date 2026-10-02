@@ -6,12 +6,19 @@ import streamlit as st
 st.set_page_config(page_title="Sistema", layout="centered")
 PASS, ADMIN = "orla123", "admin123"
 
+# --- LOGIN INICIAL ---
 if "logado" not in st.session_state: st.session_state["logado"] = False
 if not st.session_state["logado"]:
     st.subheader("Acesso")
-    if st.text_input("Senha:", type="password") == PASS and st.button("Entrar", type="primary", use_container_width=True):
-        st.session_state["logado"] = True; st.rerun()
+    senha = st.text_input("Senha:", type="password")
+    if st.button("Entrar", type="primary", use_container_width=True):
+        if senha == PASS:
+            st.session_state["logado"] = True; st.rerun()
+        else: st.error("Incorreta.")
     st.stop()
+
+# --- ESTADO DE AUTENTICAÇÃO GERENCIAL ---
+if "admin_ok" not in st.session_state: st.session_state["admin_ok"] = False
 
 conn = sqlite3.connect("restaurante.db", check_same_thread=False, timeout=20)
 cur = conn.cursor()
@@ -36,6 +43,17 @@ if crit := cur.fetchall():
 st.title("Gestao")
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["Lancar", "Cozinha", "Bar", "Contas", "Cancelar", "Relatorio", "Estoque", "Cardapio"])
 
+# --- FUNÇÃO AUXILIAR PARA BOTÃO DE SENHA NAS ABAS RESTRITAS ---
+def verificar_admin(chave_input):
+    if not st.session_state["admin_ok"]:
+        sc = st.text_input("Senha Gerencia:", type="password", key=chave_input)
+        if st.button("🔓 Validar Senha", key=f"btn_{chave_input}", use_container_width=True):
+            if sc == ADMIN:
+                st.session_state["admin_ok"] = True; st.rerun()
+            else: st.error("Incorreta.")
+        return False
+    return True
+
 with ab_g:
     st.subheader("Novo Pedido")
     cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos ORDER BY nome")
@@ -52,7 +70,7 @@ with ab_g:
                     cur.execute("SELECT item, quantidade FROM estoque WHERE id = ?", (iid,))
                     res = cur.fetchone()
                     if res and res[1] < (qins * q):
-                        st.error(f"Estoque insuficiente de '{res[0]}'."); ok = False
+                        st.error(f"Estoque insuficiente."); ok = False
                 if ok:
                     cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
@@ -90,7 +108,7 @@ with ab_co:
 
 with ab_can:
     st.subheader("Cancelar")
-    if st.text_input("Senha Gerencia:", type="password", key="pc") == ADMIN:
+    if verificar_admin("p_cancelar"):
         dfa = pd.read_sql_query("SELECT p.id as ID, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
         if dfa.empty: st.info("Sem pedidos.")
         else:
@@ -115,7 +133,7 @@ with ab_r:
 
 with ab_e:
     st.subheader("Estoque")
-    if st.text_input("Senha Gerencia:", type="password", key="pe") == ADMIN:
+    if verificar_admin("p_estoque"):
         with st.form("fe"):
             ni = st.text_input("Insumo:")
             qi = st.number_input("Qtd:", min_value=0.0)
@@ -127,7 +145,7 @@ with ab_e:
 
 with ab_m:
     st.subheader("Cardapio")
-    if st.text_input("Senha Gerencia:", type="password", key="pm") == ADMIN:
+    if verificar_admin("p_cardapio"):
         cur.execute("SELECT id, item FROM estoque")
         ins = cur.fetchall()
         di = {i[1]: i[0] for i in ins}
