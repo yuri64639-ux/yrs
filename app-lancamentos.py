@@ -55,7 +55,7 @@ with ab_g:
     if prods := cur.fetchall():
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa:")
-            dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
+            dp = {f"{p} (R$ {p:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
             if st.form_submit_button("Enviar", type="primary") and m.strip():
@@ -103,11 +103,11 @@ with ab_can:
         if not (itens := cur.fetchall()): st.info("Vazio.")
         else:
             for pid, mesa, nome, qtd in itens:
-                col_txt, col_btn = st.columns()
+                col_txt, col_btn = st.columns([3, 1]) # Corrigido: definindo proporção de 3 para 1 nas colunas
                 col_txt.write(f"🔹 **Mesa {mesa}**: {qtd}x {nome}")
                 if col_btn.button("❌", key=f"del_{pid}"):
                     if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (pid,)).fetchone():
-                        if v[0]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
+                        if v[0] and v[1]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
                     cur.execute("DELETE FROM pedidos WHERE id = ?", (pid,))
                     conn.commit(); st.rerun()
 
@@ -141,7 +141,7 @@ with ab_m:
             sel_i, qg = st.selectbox("Insumo:", ["Nenhum"] + list(di.keys())), st.number_input("Gasto qtd:", min_value=0.0)
             if st.form_submit_button("Salvar") and n.strip() and p > 0:
                 cur.execute("""
-                    INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) 
+                    INSERT INTO produtos (nome, category, preco, insumo_id, qtd_insumo) 
                     VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(nome) DO UPDATE SET 
                         categoria = excluded.categoria,
