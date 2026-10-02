@@ -4,16 +4,16 @@ import pandas as pd
 import streamlit as st
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
+st.set_page_config(page_title="Sistema Mobile - Gestão", layout="centered")
 
 # --- CONTROLE DE ACESSO (SENHA) ---
-SENHA_CORRETA = "orla123"  # <-- Mude a senha do seu bar aqui se quiser
+SENHA_CORRETA = "orla123"  # <-- Altere a senha do seu estabelecimento aqui se quiser
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
 if not st.session_state["autenticado"]:
-    st.subheader("🔑 Acesso ao Sistema Orla Bar")
+    st.subheader("🔑 Acesso ao Sistema")
     senha_digitada = st.text_input(
         "Digite a senha do estabelecimento:", type="password"
     )
@@ -71,7 +71,7 @@ CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
 # --- INTERFACE MOBILE ---
-st.title("📱 Gestão Orla Bar")
+st.title("📱 Gestão Bar & Restaurante")
 aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = (
     st.tabs([
         "🏃‍♂️ Lançar",
@@ -115,7 +115,7 @@ with aba_garcom:
                 "Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12"
             )
 
-            # Correção do mapeamento estrutural do dicionário {Nome formatado: id_produto}
+            # Mapeamento estrutural do dicionário {Nome formatado: id_produto}
             dict_produtos = {
                 f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos
             }
@@ -221,6 +221,7 @@ with aba_cozinha:
 with aba_bar:
     renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
 
+
 # --- 4. ABA: CONTAS ABERTAS ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
@@ -276,6 +277,7 @@ with aba_comandas:
                     conn.commit()
                     st.success("Conta fechada com sucesso!")
                     st.rerun()
+
 
 # --- 5. RELATÓRIO SEPARADO POR DIA E MÊS ---
 with aba_relatorio:
