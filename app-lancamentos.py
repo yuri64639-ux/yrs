@@ -1,10 +1,31 @@
+
+
+            
 import sqlite3
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 
 # Configuração otimizada para telas verticais de celular
-st.set_page_config(page_title="Sistema Mobile - Bar", layout="centered")
+st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
+
+# --- CONTROLE DE ACESSO (SENHA) ---
+SENHA_CORRETA = "orla123"  # <-- Mude a senha do seu bar aqui se quiser
+
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+
+if not st.session_state["autenticado"]:
+    st.subheader("🔑 Acesso ao Sistema Orla Bar")
+    senha_digitada = st.text_input("Digite a senha do estabelecimento:", type="password")
+    if st.button("Entrar", type="primary", use_container_width=True):
+        if senha_digitada == SENHA_CORRETA:
+            st.session_state["autenticado"] = True
+            st.success("Acesso liberado!")
+            st.rerun()
+        else:
+            st.error("Senha incorreta. Tente novamente.")
+    st.stop()  # Interrompe o código aqui se não estiver logado
 
 # --- BANCO DE DADOS (CONCURRÊNCIA ATIVADA) ---
 def conectar_banco():
@@ -42,29 +63,29 @@ cursor = conn.cursor()
 # Atualização automática em tempo real a cada 5 segundos
 st.fragment(run_every=5)
 
-# Mapeamento de quais categorias pertencem ao BAR e quais pertencem à COZINHA
+# Categorias do estabelecimento
 CATEGORIAS_BAR = ["Bebidas", "Drinks"]
 CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
 # --- INTERFACE MOBILE ---
-st.title("📱  Bar")
+st.title("📱 Gestão Orla Bar")
 
-aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_gerencia = st.tabs([
+aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_relatorio, aba_gerencia = st.tabs([
     "🏃‍♂️ Lançar", 
     "🍳 Cozinha", 
     "🍹 Bar",
     "🎟️ Contas",
+    "📊 Relatório",
     "⚙️ Cardápio"
 ])
 
-# --- 1. ABA DO GARÇOM (LANÇAMENTO VERTICAL) ---
+# --- 1. ABA DO GARÇOM ---
 with aba_garcom:
     st.subheader("📋 Novo Pedido")
     
     cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
-    categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
+    categorias_disponiveis = [c for c in cursor.fetchall() if c]
     
-    # CORRIGIDO: Agora a variável está escrita corretamente em português
     if not categorias_disponiveis:
         st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
     else:
@@ -81,9 +102,8 @@ with aba_garcom:
         with st.form("form_pedido", clear_on_submit=True):
             mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
             
-            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            dict_produtos = {f"{p} (R$ {p:.2f})": p for p in lista_produtos}
             produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
-            
             quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
                 
             botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
@@ -93,7 +113,7 @@ with aba_garcom:
                     st.error("Informe a mesa ou pulseira.")
                 else:
                     p_id = dict_produtos[produto_selecionado]
-                    horario_atual = datetime.now().strftime("%H:%M:%S")
+                    horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
                     cursor.execute(
                         "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
@@ -103,13 +123,9 @@ with aba_garcom:
                     st.success("✅ Pedido enviado!")
                     st.rerun()
 
-# --- FUNCIONALIDADE REUTILIZÁVEL PARA TELAS DE PREPARO (BAR E COZINHA) ---
+# --- REUTILIZÁVEL PARA TELAS DE PREPARO ---
 def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     st.subheader(titulo_tela)
-    
-    if not categorias_alvo:
-        return
-        
     placeholders = ",".join("?" for _ in categorias_alvo)
     query = f"""
         SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status, p.horario 
@@ -124,11 +140,12 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
     if not pedidos_ativos:
         st.success("🎉 Tudo pronto por aqui!")
     else:
-        for p_id, p_mesa, pr_nome, p_qtd, p_status, p_hora in pedidos_ativos:
+        for p_id, p_mesa, pr_nome, p_qtd, p_status, p_horario_completo in pedidos_ativos:
             cor_status = "🔴 Pendente" if p_status == "Pendente" else "🟡 Preparando"
+            hora_exibicao = p_horario_completo[11:19] if (p_horario_completo and len(p_horario_completo) > 10) else p_horario_completo
                 
             with st.container(border=True):
-                st.markdown(f"**{p_mesa}** — *{p_hora}*")
+                st.markdown(f"**{p_mesa}** — *{hora_exibicao}*")
                 st.markdown(f"### {p_qtd}x {pr_nome}")
                 st.text(f"Status: {cor_status}")
                 
@@ -138,15 +155,13 @@ def renderizar_tela_preparo(categorias_alvo, titulo_tela):
                         conn.commit()
                         st.rerun()
 
-# --- 2. ABA DA COZINHA (APENAS COMIDAS) ---
 with aba_cozinha:
-    renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha (Porções e Pratos)")
+    renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha")
 
-# --- 3. ABA DO BAR (APENAS DRINKS E BEBIDAS) ---
 with aba_bar:
-    renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar (Drinks e Bebidas)")
+    renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar")
 
-# --- 4. ABA: COMANDAS / PULSEIRAS ABERTAS ---
+# --- 4. ABA: CONTAS ABERTAS ---
 with aba_comandas:
     st.subheader("🎟️ Contas Abertas")
     
@@ -182,25 +197,44 @@ with aba_comandas:
                     st.success("Conta fechada com sucesso!")
                     st.rerun()
 
-# --- 5. ABA DE CADASTRO DE PRODUTOS ---
-with aba_gerencia:
-    st.subheader("⚙️ Configurar Cardápio")
+# --- 5. RELATÓRIO SEPARADO POR DIA E MÊS ---
+with aba_relatorio:
+    st.subheader("📊 Relatório de Vendas")
     
-    novo_nome = st.text_input("Nome do Item:")
-    nova_categoria = st.selectbox("Categoria correspondente:", CATEGORIAS_BAR + CATEGORIAS_COZINHA)
-    novo_preco = st.number_input("Preço (R$):", min_value=0.0, value=0.0, step=0.50, format="%.2f")
+    query_vendas = """
+        SELECT pr.nome, pr.categoria, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item, p.horario
+        FROM pedidos p
+        JOIN produtos pr ON p.produto_id = pr.id
+        WHERE p.status = 'Finalizado (Pago)'
+    """
+    cursor.execute(query_vendas)
+    vendas_realizadas = cursor.fetchall()
     
-    if st.button("💾 Salvar Produto", type="primary", use_container_width=True):
-        if novo_nome.strip() == "" or novo_preco <= 0:
-            st.error("Preencha nome e preço válidos.")
+    if not vendas_realizadas:
+        st.info("ℹ️ Nenhuma venda finalizada para gerar relatórios ainda.")
+    else:
+        df_vendas = pd.DataFrame(vendas_realizadas, columns=["Produto", "Categoria", "Quantidade", "Preço", "Total", "Horario"])
+        
+        df_vendas["DataHora"] = pd.to_datetime(df_vendas["Horario"], errors="coerce")
+        df_vendas["Dia"] = df_vendas["DataHora"].dt.strftime("%d/%m/%Y")
+        df_vendas["Mes"] = df_vendas["DataHora"].dt.strftime("%m/%Y")
+        
+        tipo_filtro = st.radio("Agrupar relatório por:", ["Por Dia", "Por Mês"], horizontal=True)
+        
+        if tipo_filtro == "Por Dia":
+            dias_disponiveis = sorted(df_vendas["Dia"].dropna().unique(), reverse=True)
+            dia_escolhido = st.selectbox("Selecione o Dia:", dias_disponiveis)
+            df_filtrado_periodo = df_vendas[df_vendas["Dia"] == dia_escolhido]
+            titulo_periodo = f"do dia {dia_escolhido}"
         else:
-            try:
-                cursor.execute("INSERT INTO produtos (nome, categoria, preco) VALUES (?, ?, ?)", (novo_nome.strip(), nova_categoria, novo_preco))
-                conn.commit()
-                st.success("Cadastrado com sucesso!")
-                st.rerun()
-            except sqlite3.IntegrityError:
-                st.error("Este produto já existe no banco.")
-
-
-            
+            meses_disponiveis = sorted(df_vendas["Mes"].dropna().unique(), reverse=True)
+            mes_escolhido = st.selectbox("Selecione o Mês (MM/AAAA):", meses_disponiveis)
+            df_filtrado_periodo = df_vendas[df_vendas["Mes"] == mes_escolhido]
+            titulo_periodo = f"do mês {mes_escolhido}"
+        
+        st.write("---")
+        
+        fat_periodo = df_filtrado_periodo["Total"].sum()
+        qtd_periodo = df_filtrado_periodo["Quantidade"].sum()
+        
+        st.metric(label=f"💰 Faturamento Total ({titulo_periodo})", value=f"R$ {fat_periodo:.2f}")
