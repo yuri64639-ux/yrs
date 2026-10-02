@@ -41,10 +41,14 @@ if crit := cur.fetchall():
 st.title("Gestao")
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["Lancar", "Cozinha", "Bar", "Contas", "Cancelar", "Relatorio", "Estoque", "Cardapio"])
 
+# --- FUNÇÃO DE VALIDAÇÃO DE SENHA CORRIGIDA ---
 def v_admin(key):
     if not st.session_state["admin_ok"]:
-        if st.text_input("Senha Gerencia:", type="password", key=key) == ADMIN and st.button("🔓 Validar", key=f"b_{key}", use_container_width=True):
-            st.session_state["admin_ok"] = True; st.rerun()
+        sc = st.text_input("Senha Gerencia:", type="password", key=key)
+        if st.button("🔓 Validar", key=f"b_{key}", use_container_width=True):
+            if sc == ADMIN:
+                st.session_state["admin_ok"] = True; st.rerun()
+            else: st.error("Incorreta.")
         return False
     return True
 
@@ -55,6 +59,7 @@ with ab_g:
     if prods := cur.fetchall():
         with st.form("f_ped", clear_on_submit=True):
             m = st.text_input("Mesa:")
+            # CORREÇÃO DEFINITIVA DA TUPLA: p[1] é o nome do produto e p[2] é o preço de venda
             dp = {f"{p} (R$ {p:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
@@ -105,7 +110,7 @@ with ab_co:
 # --- CANCELAR UM POR UM ---
 with ab_can:
     st.subheader("Cancelar Unidades")
-    if d_admin("p_can"):
+    if v_admin("p_can"):
         dfa = pd.read_sql_query("SELECT p.id as ID, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
         if dfa.empty: st.info("Sem pedidos.")
         else:
@@ -136,7 +141,7 @@ with ab_r:
 # --- ESTOQUE ---
 with ab_e:
     st.subheader("Estoque")
-    if d_admin("p_est"):
+    if v_admin("p_est"):
         with st.form("fe"):
             ni = st.text_input("Insumo:")
             qi = st.number_input("Qtd:", min_value=0.0)
@@ -149,9 +154,9 @@ with ab_e:
 # --- CARDÁPIO ---
 with ab_m:
     st.subheader("Cardapio")
-    if d_admin("p_card"):
+    if v_admin("p_card"):
         cur.execute("SELECT id, item FROM estoque")
-        di = {i[1]: i[0] for i in cur.fetchall()}
+        di = {i: i for i in cur.fetchall()}
         with st.form("fc"):
             n = st.text_input("Produto:")
             c = st.selectbox("Cat:", CATS)
