@@ -1,176 +1,203 @@
-import streamlit as st
 import sqlite3
+import streamlit as st
 import pandas as pd
 from datetime import datetime
-import time
 
-# 1. CONFIGURAÇÃO INICIAL CONFIGURADA PARA CELULAR
-st.set_page_config(
-    page_title="Cria Bar - Multi-Garçom", 
-    layout="centered",               
-    initial_sidebar_state="collapsed" 
-)
+# Configuração otimizada para telas verticais de celular
+st.set_page_config(page_title="Sistema Mobile - Orla Bar", layout="centered")
 
-# Injeta a atualização automática de 5 segundos no app usando fragmentos nativos
-if "contador_refresh" not in st.session_state:
-    st.session_state.contador_refresh = 0
-
-# Estilização CSS para o celular
-st.markdown("""
-    <style>
-        .stButton>button { width: 100% !important; height: 48px !important; font-size: 16px !important; }
-        .stTabs [data-baseweb="tab"] { font-size: 14px !important; padding: 8px 10px !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# 2. INICIALIZAÇÃO DO BANCO DE DADOS (Agora com a coluna 'garcom')
-def iniciar_banco():
-    conexao = sqlite3.connect("restaurante_financeiro.db")
-    cursor = conexao.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS lancamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT, tipo TEXT, categoria TEXT, valor REAL, descricao TEXT, garcom TEXT
-        )
-    """)
+# --- BANCO DE DADOS (CONCURRÊNCIA ATIVADA) ---
+def conectar_banco():
+    conn = sqlite3.connect("sistema_restaurante.db", check_same_thread=False, timeout=20)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL;")
+    cursor.execute("PRAGMA synchronous=NORMAL;")
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, categoria TEXT, preco REAL
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE,
+            categoria TEXT,
+            preco REAL
         )
     """)
+    
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS estoque (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, nome_item TEXT UNIQUE, quantidade REAL, unidade_medida TEXT, quantidade_minima REAL
+        CREATE TABLE IF NOT EXISTS pedidos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mesa TEXT,
+            produto_id INTEGER,
+            quantidade INTEGER,
+            status TEXT DEFAULT 'Pendente',
+            horario TEXT,
+            FOREIGN KEY (produto_id) REFERENCES produtos(id)
         )
     """)
-    conexao.commit()
-    conexao.close()
+    conn.commit()
+    return conn
 
-iniciar_banco()
+conn = conectar_banco()
+cursor = conn.cursor()
 
-# 3. IDENTIFICAÇÃO DO USUÁRIO (Obrigatório para os Garçons)
-st.title("📱 Cria Bar Coletivo")
+# Atualização automática em tempo real a cada 5 segundos
+st.fragment(run_every=5)
 
-nome_garcom = st.text_input("👤 Nome do Garçom / Operador", value="Balcão").strip()
+# Mapeamento de quais categorias pertencem ao BAR e quais pertencem à COZINHA
+CATEGORIAS_BAR = ["Bebidas", "Drinks"]
+CATEGORIAS_COZINHA = ["Porções", "Pratos Principais", "Sobremesas"]
 
-if not nome_garcom:
-    st.warning("⚠️ Por favor, digite seu nome para liberar os lançamentos.")
-    st.stop()
+# --- INTERFACE MOBILE ---
+st.title("📱 Gestão Orla Bar")
 
-# Abas do aplicativo
-aba_fin, aba_card, aba_est = st.tabs(["💰 Lançar Caixa", "📋 Cardápio", "📦 Estoque"])
+aba_garcom, aba_cozinha, aba_bar, aba_comandas, aba_gerencia = st.tabs([
+    "🏃‍♂️ Lançar", 
+    "🍳 Cozinha", 
+    "🍹 Bar",
+    "🎟️ Contas",
+    "⚙️ Cardápio"
+])
 
-# --- ABA 1: GESTÃO FINANCEIRA ---
-with aba_fin:
-    st.subheader("Novo Lançamento")
-    with st.form("form_financeiro_mobile", clear_on_submit=True):
-        data_mov = st.date_input("Data", datetime.now())
-        tipo_mov = st.selectbox("Tipo de Operação", ["Receita (Entrada)", "Despesa (Saída)"])
-        valor_mov = st.number_input("Valor (R$)", min_value=0.01, step=1.00, format="%.2f")
-        
-        if "Receita" in tipo_mov:
-            categoria_mov = st.selectbox("Categoria", ["Salão / Mesas", "Delivery", "Balcão", "Eventos"])
-        else:
-            categoria_mov = st.selectbox("Categoria", ["Insumos", "Bebidas", "Funcionários", "Estrutura", "Marketing"])
-            
-        descricao_mov = st.text_input("Descrição / Notas")
-        botao_salvar = st.form_submit_button("Confirmar Lançamento")
-        
-        if botao_salvar:
-            tipo_limpo = "Receita" if "Receita" in tipo_mov else "Despesa"
-            conexao = sqlite3.connect("restaurante_financeiro.db")
-            cursor = conexao.cursor()
-            cursor.execute("""
-                INSERT INTO lancamentos (data, tipo, categoria, valor, descricao, garcom) 
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (str(data_mov), tipo_limpo, categoria_mov, valor_mov, descricao_mov, nome_garcom))
-            conexao.commit()
-            conexao.close()
-            st.success(f"Lançamento registrado por {nome_garcom}!")
-            st.rerun()
-
-    st.markdown("---")
+# --- 1. ABA DO GARÇOM (LANÇAMENTO VERTICAL) ---
+with aba_garcom:
+    st.subheader("📋 Novo Pedido")
     
-    # TRECHO AUTO-ATUALIZÁVEL (Painel de Resumo)
-    st.subheader("Resumo do Caixa (Sincronizado)")
+    cursor.execute("SELECT DISTINCT categoria FROM produtos ORDER BY categoria")
+    categorias_disponiveis = [c[0] for c in cursor.fetchall() if c[0]]
     
-    # Criamos um fragmento isolado que recarrega os dados dinamicamente
-    @st.fragment(run_every=5)
-    def renderizar_dados_atualizados():
-        conexao = sqlite3.connect("restaurante_financeiro.db")
-        df_fin = pd.read_sql_query("SELECT data, tipo, valor, garcom FROM lancamentos ORDER BY id DESC LIMIT 10", conexao)
-        conexao.close()
+    if not categories_disponiveis:
+        st.warning("⚠️ Cadastre os produtos na aba 'Cardápio' primeiro.")
+    else:
+        filtro_categorias = ["Todas"] + categorias_disponiveis
+        categoria_selecionada = st.selectbox("📂 Categoria:", filtro_categorias)
         
-        if not df_fin.empty:
-            total_rec = df_fin[df_fin["tipo"] == "Receita"]["valor"].sum()
-            st.caption(f"🔄 Última sincronização automática em tempo real: {datetime.now().strftime('%H:%M:%S')}")
-            
-            # Tabela adaptada para rolar no celular mostrando o garçom responsável
-            df_formatado = df_fin.rename(columns={"data":"Data", "tipo":"Tipo", "valor":"R$", "garcom":"Por"})
-            st.dataframe(df_formatado, use_container_width=True, hide_index=True)
+        if categoria_selecionada == "Todas":
+            cursor.execute("SELECT id, nome, categoria, preco FROM produtos ORDER BY categoria, nome")
         else:
-            st.info("Aguardando os primeiros lançamentos dos garçons...")
-
-    renderizar_dados_atualizados()
-
-# --- ABA 2: GERENCIAR CARDÁPIO ---
-with aba_card:
-    st.subheader("Cadastrar Item e Preço")
-    with st.form("form_cardapio_mobile", clear_on_submit=True):
-        nome_prod = st.text_input("Nome do Produto").strip()
-        cat_prod = st.selectbox("Categoria", ["Pratos", "Bebidas", "Porções", "Sobremesas"])
-        preco_prod = st.number_input("Preço de Venda (R$)", min_value=0.00, step=0.50, format="%.2f")
+            cursor.execute("SELECT id, nome, categoria, preco FROM produtos WHERE categoria = ? ORDER BY nome", (categoria_selecionada,))
         
-        botao_prod = st.form_submit_button("Adicionar ao Cardápio")
-        if botao_prod and nome_prod != "":
+        lista_produtos = cursor.fetchall()
+        
+        with st.form("form_pedido", clear_on_submit=True):
+            mesa = st.text_input("Mesa / Pulseira / Comanda:", placeholder="Ex: Pulseira 12")
+            
+            dict_produtos = {f"{p[1]} (R$ {p[3]:.2f})": p[0] for p in lista_produtos}
+            produto_selecionado = st.selectbox("Item do Cardápio:", list(dict_produtos.keys()))
+            
+            quantidade = st.number_input("Quantidade:", min_value=1, value=1, step=1)
+                
+            botao_enviar = st.form_submit_button("🔥 Enviar Pedido", type="primary", use_container_width=True)
+            
+            if botao_enviar:
+                if mesa.strip() == "":
+                    st.error("Informe a mesa ou pulseira.")
+                else:
+                    p_id = dict_produtos[produto_selecionado]
+                    horario_atual = datetime.now().strftime("%H:%M:%S")
+                    
+                    cursor.execute(
+                        "INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)",
+                        (mesa.strip(), p_id, quantidade, horario_atual)
+                    )
+                    conn.commit()
+                    st.success("✅ Pedido enviado!")
+                    st.rerun()
+
+# --- FUNCIONALIDADE REUTILIZÁVEL PARA TELAS DE PREPARO (BAR E COZINHA) ---
+def renderizar_tela_preparo(categorias_alvo, titulo_tela):
+    st.subheader(titulo_tela)
+    
+    # Formata a lista de categorias para a query SQL (ex: 'Drinks', 'Bebidas')
+    placeholders = ",".join("?" for _ in categorias_alvo)
+    query = f"""
+        SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status, p.horario 
+        FROM pedidos p
+        JOIN produtos pr ON p.produto_id = pr.id
+        WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({placeholders})
+        ORDER BY p.id DESC
+    """
+    cursor.execute(query, categorias_alvo)
+    pedidos_ativos = cursor.fetchall()
+    
+    if not pedidos_ativos:
+        st.success("🎉 Tudo pronto por aqui!")
+    else:
+        for p_id, p_mesa, pr_nome, p_qtd, p_status, p_hora in pedidos_ativos:
+            cor_status = "🔴 Pendente" if p_status == "Pendente" else "🟡 Preparando"
+                
+            with st.container(border=True):
+                st.markdown(f"**{p_mesa}** — *{p_hora}*")
+                st.markdown(f"### {p_qtd}x {pr_nome}")
+                st.text(f"Status: {cor_status}")
+                
+                if p_status == "Pendente":
+                    if st.button("🚚 Prontificar", key=f"pronto_{titulo_tela}_{p_id}", use_container_width=True):
+                        cursor.execute("UPDATE pedidos SET status = 'Entregue' WHERE id = ?", (p_id,))
+                        conn.commit()
+                        st.rerun()
+
+# --- 2. ABA DA COZINHA (APENAS COMIDAS) ---
+with aba_cozinha:
+    renderizar_tela_preparo(CATEGORIAS_COZINHA, "🍳 Cozinha (Porções e Pratos)")
+
+# --- 3. ABA DO BAR (APENAS DRINKS E BEBIDAS) ---
+with aba_bar:
+    renderizar_tela_preparo(CATEGORIAS_BAR, "🍹 Bar (Drinks e Bebidas)")
+
+# --- 4. ABA: COMANDAS / PULSEIRAS ABERTAS ---
+with aba_comandas:
+    st.subheader("🎟️ Contas Abertas")
+    
+    query_comandas = """
+        SELECT p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as total_item
+        FROM pedidos p
+        JOIN produtos pr ON p.produto_id = pr.id
+        WHERE p.status != 'Finalizado (Pago)'
+        ORDER BY p.mesa, pr.nome
+    """
+    cursor.execute(query_comandas)
+    itens_consumidos = cursor.fetchall()
+    
+    if not itens_consumidos:
+        st.info("Nenhuma comanda ativa.")
+    else:
+        df_consumo = pd.DataFrame(itens_consumidos, columns=["Identificador", "Produto", "Quantidade", "Preço Unitário (R$)", "Total Item (R$)"])
+        comandas_abertas = df_consumo["Identificador"].unique()
+        
+        for comanda in comandas_abertas:
+            df_filtrado = df_consumo[df_consumo["Identificador"] == comanda]
+            valor_total_comanda = df_filtrado["Total Item (R$)"].sum()
+            
+            with st.container(border=True):
+                st.markdown(f"### 🎫 {comanda}")
+                st.markdown(f"#### Total: **R$ {valor_total_comanda:.2f}**")
+                
+                st.dataframe(df_filtrado[["Produto", "Quantidade", "Total Item (R$)"]], hide_index=True, use_container_width=True)
+                
+                if st.button(f"💵 Fechar Conta ({comanda})", key=f"fechar_{comanda}", use_container_width=True):
+                    cursor.execute("UPDATE pedidos SET status = 'Finalizado (Pago)' WHERE mesa = ? AND status != 'Finalizado (Pago)'", (comanda,))
+                    conn.commit()
+                    st.success("Conta fechada com sucesso!")
+                    st.rerun()
+
+# --- 5. ABA DE CADASTRO DE PRODUTOS ---
+with aba_gerencia:
+    st.subheader("⚙️ Configurar Cardápio")
+    
+    novo_nome = st.text_input("Nome do Item:")
+    # Une as listas para o usuário escolher na hora do cadastro
+    nova_categoria = st.selectbox("Categoria correspondente:", CATEGORIAS_BAR + CATEGORIAS_COZINHA)
+    novo_preco = st.number_input("Preço (R$):", min_value=0.0, value=0.0, step=0.50, format="%.2f")
+    
+    if st.button("💾 Salvar Produto", type="primary", use_container_width=True):
+        if novo_nome.strip() == "" or novo_preco <= 0:
+            st.error("Preencha nome e preço válidos.")
+        else:
             try:
-                conexao = sqlite3.connect("restaurante_financeiro.db")
-                cursor = conexao.cursor()
-                cursor.execute("INSERT INTO produtos (nome, categoria, preco) VALUES (?, ?, ?)", (nome_prod, cat_prod, preco_prod))
-                conexao.commit()
-                conexao.close()
-                st.success(f"'{nome_prod}' adicionado!")
+                cursor.execute("INSERT INTO produtos (nome, categoria, preco) VALUES (?, ?, ?)", (novo_nome.strip(), nova_categoria, novo_preco))
+                conn.commit()
+                st.success("Cadastrado com sucesso!")
                 st.rerun()
             except sqlite3.IntegrityError:
-                st.error("Item já existente!")
+                st.error("Este produto já existe no banco.")
 
-    st.markdown("---")
-    conexao = sqlite3.connect("restaurante_financeiro.db")
-    df_prod = pd.read_sql_query("SELECT nome, preco FROM produtos ORDER BY nome", conexao)
-    conexao.close()
-    if not df_prod.empty:
-        st.dataframe(df_prod.rename(columns={"nome":"Item", "preco":"Preço (R$)"}), use_container_width=True)
-
-# --- ABA 3: CONTROLE DE ESTOQUE ---
-with aba_est:
-    st.subheader("Cadastro de Estoque")
-    with st.form("form_estoque_mobile", clear_on_submit=True):
-        item_est = st.text_input("Nome do Insumo").strip()
-        unidade_est = st.selectbox("Unidade", ["un", "kg", "L", "pct"])
-        qtd_inicial = st.number_input("Estoque Atual", min_value=0.0, step=1.0)
-        qtd_minima = st.number_input("Aviso Mínimo", min_value=0.0, step=1.0)
-        
-        botao_est = st.form_submit_button("Salvar Insumo")
-        if botao_est and item_est != "":
-            try:
-                conexao = sqlite3.connect("restaurante_financeiro.db")
-                cursor = conexao.cursor()
-                cursor.execute("INSERT INTO estoque (nome_item, quantidade, unidade_medida, quantidade_minima) VALUES (?, ?, ?, ?)", 
-                               (item_est, qtd_inicial, unidade_est, qtd_minima))
-                conexao.commit()
-                conexao.close()
-                st.success(f"'{item_est}' monitorado!")
-                st.rerun()
-            except sqlite3.IntegrityError:
-                st.error("Item já monitorado!")
-
-    st.markdown("---")
-    st.subheader("Lista de Insumos")
-    conexao = sqlite3.connect("restaurante_financeiro.db")
-    df_estoque = pd.read_sql_query("SELECT nome_item, quantidade, quantidade_minima FROM estoque", conexao)
-    conexao.close()
-    
-    if not df_estoque.empty:
-        df_estoque['Sinal'] = df_estoque.apply(lambda r: "🚨" if r['quantidade'] <= r['quantidade_minima'] else "✅", axis=1)
-        st.dataframe(df_estoque.rename(columns={"nome_item":"Item", "quantidade":"Qtd"}), use_container_width=True)
-
+            
