@@ -1,155 +1,144 @@
 from datetime import datetime
 import sqlite3
-import pandas as pd
 import streamlit as st
 
+# --- CONFIGURAÇÃO MOBILE ---
 st.set_page_config(page_title="Sistema", layout="centered")
+st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
+
 PASS, ADMIN = "orla123", "admin123"
 
 # --- LOGIN ---
-if "logado" not in st.session_state: st.session_state["logado"] = False
+if "logado" not in st.session_state:
+    st.session_state["logado"] = False
+
 if not st.session_state["logado"]:
     senha = st.text_input("Senha:", type="password")
-    if st.button("Entrar", type="primary", use_container_width=True) and senha == PASS:
-        st.session_state["logado"] = True; st.rerun()
+    if st.button("Entrar", type="primary") and senha == PASS:
+        st.session_state["logado"] = True
+        st.rerun()
     st.stop()
 
-# --- BANCO ---
-conn = sqlite3.connect("restaurante.db", check_same_thread=False, timeout=20)
+# --- BANCO DE DADOS ---
+conn = sqlite3.connect("restaurante.db", check_same_thread=False)
 cur = conn.cursor()
-cur.execute("PRAGMA journal_mode=WAL;")
 cur.execute("CREATE TABLE IF NOT EXISTS estoque (id INTEGER PRIMARY KEY, item TEXT UNIQUE, quantidade REAL);")
 cur.execute("CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL, insumo_id INTEGER, qtd_insumo REAL);")
 cur.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);")
 conn.commit()
 
-for col, t, tab in [("insumo_id", "INTEGER", "produtos"), ("qtd_insumo", "REAL", "produtos"), ("taxa_paga", "INTEGER DEFAULT 1", "pedidos")]:
-    try: cur.execute(f"ALTER TABLE {tab} ADD COLUMN {col} {t};"); conn.commit()
-    except: pass
+# --- AVISO DE ESTOQUE ---
+if crit := cur.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4").fetchall():
+    st.error(f"⚠️ Estoque Baixo: " + ", ".join([f"{i} ({q})" for i, q in crit]))
 
-# --- ALERTA ESTOQUE ---
-@st.fragment(run_every=5)
-def alerta_estoque():
-    c_frag = sqlite3.connect("restaurante.db").cursor()
-    if crit := c_frag.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4").fetchall():
-        with st.expander("Alerta Estoque Baixo", expanded=True):
-            for i, q in crit: st.warning(f"{i}: {q} restante(s)")
-alerta_estoque()
-
-st.title("Gestão")
-CATS = ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]
-ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["Lançar", "Cozinha", "Bar", "Contas", "Cancelar", "Relatório", "Estoque", "Cardápio"])
+st.title("📱 Gestão Orla")
+ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["📝 Pedido", "🍳 Cozinha", "🍹 Bar", "💵 Contas", "❌ Cancelar", "📊 Vendas", "📦 Estoque", "🍽️ Cardápio"])
 
 def verificar_admin(chave):
     if f"ok_{chave}" not in st.session_state: st.session_state[f"ok_{chave}"] = False
     if not st.session_state[f"ok_{chave}"]:
-        with st.form(f"f_adm_{chave}"):
+        with st.form(f"f_{chave}"):
             if st.form_submit_button("🔓 Liberar Aba") and st.text_input("Senha Gerência:", type="password", key=f"s_{chave}") == ADMIN:
                 st.session_state[f"ok_{chave}"] = True; st.rerun()
         return False
     return True
 
-# --- LANÇAR ---
+# --- LANÇAR PEDIDO ---
 with ab_g:
-    cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos ORDER BY nome")
-    if prods := cur.fetchall():
+    if prods := cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos ORDER BY nome").fetchall():
         with st.form("f_ped", clear_on_submit=True):
-            m = st.text_input("Mesa:")
-            # CORREÇÃO DA FORMATAÇÃO: Acessando p[1] para nome e p[2] para o preço numérico
+            m = st.text_input("Mesa/Comanda:")
             dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
             q = st.number_input("Qtd:", min_value=1, value=1)
-            if st.form_submit_button("Enviar", type="primary") and m.strip():
+            if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
                 pid, _, _, iid, qins = dp[ps]
                 if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q):
                     st.error("Estoque insuficiente.")
                 else:
                     cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
-                    conn.commit(); st.rerun()
-    else: st.warning("Cadastre produtos.")
+                    conn.commit(); st.success("Enviado!"); st.rerun()
+    else: st.warning("Cadastre produtos no Cardápio.")
 
-# --- PREPARO (COZINHA / BAR) ---
-def prep(cats, title):
-    cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND pr.categoria IN ({','.join('?'*len(cats))}) ORDER BY p.id DESC", cats)
-    for pid, mesa, nome, qtd, status in cur.fetchall():
+# --- TELAS DE PREPARO (COZINHA e BAR) ---
+def tela_preparo(categorias, chave):
+    pedidos = cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND p.status != 'Entregue' AND pr.categoria IN ({','.join('?'*len(categorias))}) ORDER BY p.id ASC", categorias).fetchall()
+    if not pedidos: st.info("Tudo pronto por aqui!")
+    for pid, mesa, nome, qtd, status in pedidos:
         with st.container(border=True):
-            st.write(f"**{mesa}** -> {qtd}x {nome}")
-            if st.button("Preparar" if status == "Pendente" else "Prontificar", key=f"b_{pid}_{title}"):
+            lbl = "🔴 Pendente" if status == "Pendente" else "🟡 Em preparo"
+            st.write(f"**Mesa {mesa}** ➔ {qtd}x {nome} ({lbl})")
+            if st.button("Avançar Status" if status == "Pendente" else "Marcar como Entregue", key=f"b_{pid}_{chave}"):
                 cur.execute("UPDATE pedidos SET status = ? WHERE id = ?", ("Preparando" if status == "Pendente" else "Entregue", pid))
                 conn.commit(); st.rerun()
 
-with ab_c: prep(["Porções", "Pratos Principais", "Sobremesas"], "Cozinha")
-with ab_b: prep(["Bebidas", "Drinks"], "Bar")
+with ab_c: tela_preparo(["Porções", "Pratos Principais", "Sobremesas"], "coz")
+with ab_b: tela_preparo(["Bebidas", "Drinks"], "bar")
 
 # --- CONTAS ---
 with ab_co:
-    df = pd.read_sql_query("SELECT p.mesa, pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
-    if df.empty: st.info("Vazio.")
+    pedidos = cur.execute("SELECT p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall()
+    if not pedidos: st.info("Nenhuma mesa aberta.")
     else:
-        for mesa, dados in df.groupby("mesa"):
-            with st.container(border=True):
-                sub = dados['Total'].sum()
-                tx = sub * 0.10 if st.checkbox("Taxa 10%", value=True, key=f"tx_{mesa}") else 0.0
-                st.write(f"**Mesa {mesa}** | Total: R$ {sub + tx:.2f}")
-                st.dataframe(dados, hide_index=True)
-                if st.button(f"Fechar Mesa {mesa}"):
-                    cur.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = ? WHERE mesa = ?", (1 if tx > 0 else 0, mesa))
+        mesas = set([p[0] for p in pedidos])
+        for m in sorted(mesas):
+            itens = [p for p in pedidos if p[0] == m]
+            sub = sum([i[4] for i in itens])
+            with st.expander(f"📋 Mesa {m} ➔ R$ {sub:.2f}"):
+                for i in itens: st.write(f"▪️ {i[2]}x {i[1]} (R$ {i[4]:.2f})")
+                tx = sub * 0.10 if st.checkbox("Taxa 10%", value=True, key=f"t_{m}") else 0.0
+                st.markdown(f"### Total: R$ {sub + tx:.2f}")
+                if st.button(f"💵 Fechar Mesa {m}"):
+                    cur.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = ? WHERE mesa = ? AND status != 'Finalizado (Pago)'", (1 if tx > 0 else 0, m))
                     conn.commit(); st.rerun()
 
-# --- CANCELAR ITEM POR ITEM ---
+# --- CANCELAR ---
 with ab_can:
-    if verificar_admin("cancelar"):
-        cur.execute("SELECT p.id, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'")
-        if not (itens := cur.fetchall()): st.info("Vazio.")
-        else:
+    if verificar_admin("canc"):
+        if itens := cur.execute("SELECT p.id, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall():
             for pid, mesa, nome, qtd in itens:
-                col_txt, col_btn = st.columns([3, 1])
-                col_txt.write(f"🔹 **Mesa {mesa}**: {qtd}x {nome}")
-                if col_btn.button("❌", key=f"del_{pid}"):
+                if st.button(f"❌ M-{mesa}: {qtd}x {nome}", key=f"c_{pid}"):
                     if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (pid,)).fetchone():
-                        if v[0] and v[1]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
+                        if v[0]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
                     cur.execute("DELETE FROM pedidos WHERE id = ?", (pid,))
                     conn.commit(); st.rerun()
+        else: st.info("Vazio.")
 
-# --- RELATÓRIO ---
+# --- RELATÓRIO DE VENDAS ---
 with ab_r:
-    dfv = pd.read_sql_query("SELECT pr.nome as Produto, p.quantidade as Qtd, (p.quantidade * pr.preco) as Total, p.horario FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'", conn)
-    if dfv.empty: st.info("Sem vendas.")
+    vendas = cur.execute("SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco) as item_tot, p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'").fetchall()
+    if not vendas: st.info("Sem vendas.")
     else:
-        dfv["Dia"] = pd.to_datetime(dfv["horario"]).dt.strftime("%d/%m/%Y")
-        ds = st.selectbox("Dia:", sorted(dfv["Dia"].unique(), reverse=True))
-        dff = dfv[dfv["Dia"] == ds]
-        st.metric("Total", f"R$ {dff['Total'].sum():.2f}")
-        st.dataframe(dff.groupby("Produto", as_index=False)[["Qtd", "Total"]].sum(), hide_index=True)
+        dias = sorted(list(set([datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") for v in vendas])), reverse=True)
+        sel_dia = st.selectbox("Dia:", dias)
+        v_dia = [v for v in vendas if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel_dia]
+        total = sum([v[2] for v in v_dia]) + sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
+        st.metric("Caixa do Dia", f"R$ {total:.2f}")
+        for n in set([v[0] for v in v_dia]):
+            q = sum([v[1] for v in v_dia if v[0] == n])
+            st.write(f"▪️ **{n}**: {int(q)} un")
 
 # --- ESTOQUE ---
 with ab_e:
-    if verificar_admin("estoque"):
-        with st.form("fe"):
+    if verificar_admin("est"):
+        with st.form("f_e"):
             ni, qi = st.text_input("Insumo:"), st.number_input("Qtd:", min_value=0.0)
             if st.form_submit_button("Salvar") and ni.strip():
                 cur.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
                 conn.commit(); st.rerun()
-        st.dataframe(pd.read_sql_query("SELECT id, item, quantidade FROM estoque", conn), hide_index=True)
+        for i, q in cur.execute("SELECT item, quantidade FROM estoque ORDER BY item").fetchall():
+            st.write(f"📦 **{i}**: {q}")
 
 # --- CARDÁPIO ---
 with ab_m:
-    if verificar_admin("cardapio"):
-        di = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
-        with st.form("fc"):
-            n, c, p = st.text_input("Produto:"), st.selectbox("Cat:", CATS), st.number_input("Preço:", min_value=0.0)
-            sel_i, qg = st.selectbox("Insumo:", ["Nenhum"] + list(di.keys())), st.number_input("Gasto qtd:", min_value=0.0)
+    if verificar_admin("card"):
+        insumos = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
+        with st.form("f_c"):
+            n, c, p = st.text_input("Produto:"), st.selectbox("Categoria:", ["Bebidas", "Drinks", "Porções", "Pratos Principais", "Sobremesas"]), st.number_input("Preço:", min_value=0.0)
+            sel_i, qg = st.selectbox("Descontar Insumo?", ["Nenhum"] + list(insumos.keys())), st.number_input("Qtd Gasto:", min_value=0.0)
             if st.form_submit_button("Salvar") and n.strip() and p > 0:
-                # CORREÇÃO: "category" alterado para "categoria" de volta para o português padrão
-                cur.execute("""
-                    INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) 
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(nome) DO UPDATE SET 
-                        categoria = excluded.categoria,
-                        preco = excluded.preco,
-                        insumo_id = excluded.insumo_id,
-                        qtd_insumo = excluded.qtd_insumo
-                """, (n.strip(), c, p, di[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
+                cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, insumos[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
                 conn.commit(); st.rerun()
-        st.dataframe(pd.read_sql_query("SELECT id, nome, categoria, preco FROM produtos", conn), hide_index=True)
+        for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall():
+            st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
