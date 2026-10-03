@@ -42,36 +42,44 @@ def admin(ch):
         return False
     return True
 
-# --- PEDIDO ---
+# --- PEDIDO (BOTÕES ALINHADOS VERTICALMENTE) ---
 with tabs[0]:
     if "setor" not in st.session_state: st.session_state.setor = "Cozinha"
     if "sub_bar" not in st.session_state: st.session_state.sub_bar = "Drinks"
     
-    st.write("**Setor de Preparo:**")
+    st.subheader("📍 Escolha o Setor")
     if st.button("🍹 BAR", type="primary" if st.session_state.setor == "Bar" else "secondary"): 
         st.session_state.setor = "Bar"; st.rerun()
     if st.button("🍳 COZINHA", type="primary" if st.session_state.setor == "Cozinha" else "secondary"): 
         st.session_state.setor = "Cozinha"; st.rerun()
 
+    st.markdown("---")
+
     if st.session_state.setor == "Bar":
-        st.write("**Filtro do Bar:**")
+        st.subheader("🔍 Tipo de Bebida")
         if st.button("🍸 Drinks", type="primary" if st.session_state.sub_bar == "Drinks" else "secondary"): 
             st.session_state.sub_bar = "Drinks"; st.rerun()
         if st.button("🍺 Cervejas", type="primary" if st.session_state.sub_bar == "Cervejas" else "secondary"): 
             st.session_state.sub_bar = "Cervejas"; st.rerun()
         if st.button("🥤 Sem Álcool", type="primary" if st.session_state.sub_bar == "Sem Álcool" else "secondary"): 
             st.session_state.sub_bar = "Sem Álcool"; st.rerun()
-        prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (st.session_state.sub_bar,)).fetchall()
+        cats = [st.session_state.sub_bar]
     else: 
-        prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE 'Porções' OR categoria LIKE 'Pratos Principais' OR categoria LIKE 'Sobremesas' ORDER BY nome").fetchall()
+        cats = ["Porções", "Pratos Principais", "Sobremesas"]
 
+    # Busca no banco de dados respeitando maiúsculas/minúsculas usando LIKE
+    condicoes = " OR ".join(["categoria LIKE ?" for _ in cats])
+    prods = cur.execute(f"SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE {condicoes} ORDER BY nome", cats).fetchall()
+
+    st.markdown("---")
     with st.form("f_ped", clear_on_submit=True):
-        m = st.text_input("Mesa:")
+        st.caption(f"Filtrado por: {st.session_state.setor} -> " + (st.session_state.sub_bar if st.session_state.setor == "Bar" else "Todos os Pratos"))
+        m = st.text_input("Mesa / Comanda:")
         if prods:
             dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
             ps = st.selectbox("Item:", list(dp.keys()))
-            q = st.number_input("Qtd:", min_value=1, value=1)
-            if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
+            q = st.number_input("Quantidade:", min_value=1, value=1)
+            if st.form_submit_button("🚀 Enviar Pedido", type="primary") and m.strip():
                 pid, _, _, iid, qins = dp[ps]
                 if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): 
                     st.error("Estoque insuficiente.")
@@ -131,13 +139,17 @@ with tabs[5]:
         dias = sorted(list(set([datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") for v in vds])), reverse=True)
         sel = st.selectbox("Dia:", dias)
         v_dia = [v for v in vds if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel]
+        
         p_tot = sum([v[2] for v in v_dia])
         t_tot = sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
+        
         st.metric("📦 Produtos", f"R$ {p_tot:.2f}")
         st.metric("💰 Taxas (10%)", f"R$ {t_tot:.2f}")
         st.metric("💵 Total Geral", f"R$ {p_tot + t_tot:.2f}")
+        
         for n in set([v[0] for v in v_dia]):
-            st.write(f"▪️ **{n}**: {int(sum([v[1] for v in v_dia if v[0] == n]))} un")
+            q = sum([v[1] for v in v_dia if v[0] == n])
+            st.write(f"▪️ **{n}**: {int(q)} un")
 
 # --- ESTOQUE ---
 with tabs[6]:
@@ -147,7 +159,8 @@ with tabs[6]:
             if st.form_submit_button("Salvar") and ni.strip():
                 cur.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
                 conn.commit(); st.rerun()
-        for i, q in cur.execute("SELECT item, quantidade FROM estoque ORDER BY item").fetchall(): st.write(f"📦 **{i}**: {q}")
+        for i, q in cur.execute("SELECT item, quantidade FROM estoque ORDER BY item").fetchall(): 
+            st.write(f"📦 **{i}**: {q}")
 
 # --- CARDÁPIO ---
 with tabs[7]:
@@ -162,4 +175,5 @@ with tabs[7]:
             if st.form_submit_button("Salvar") and n.strip() and p > 0:
                 cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, ins[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
                 conn.commit(); st.rerun()
-        for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall(): st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
+        for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall(): 
+            st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
