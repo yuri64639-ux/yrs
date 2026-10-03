@@ -105,13 +105,16 @@ with ab_can:
                     conn.commit(); st.rerun()
         else: st.info("Vazio.")
 
-# --- RELATÓRIO DE VENDAS (COM 10% SEPARADO) ---
+# --- RELATÓRIO DE VENDAS CORES E DATAS CORRIGIDAS ---
 with ab_r:
     vendas = cur.execute("SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco) as item_tot, p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'").fetchall()
-    if not vendas: st.info("Sem vendas.")
+    if not vendas: st.info("Sem vendas registradas.")
     else:
+        # Extração correta da data do formato YYYY-MM-DD HH:MM:SS para DD/MM/YYYY
         dias = sorted(list(set([datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") for v in vendas])), reverse=True)
-        sel_dia = st.selectbox("Dia:", dias)
+        sel_dia = st.selectbox("Escolha o Dia:", dias)
+        
+        # Filtrando as vendas daquele dia selecionado
         v_dia = [v for v in vendas if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel_dia]
         
         tot_produtos = sum([v[2] for v in v_dia])
@@ -124,7 +127,10 @@ with ab_r:
         
         st.markdown("---")
         st.markdown("**Quantidade por Item Vendido:**")
-        for n in set([v[0] for v in v_dia]):
+        
+        # Agrupa itens unicos vendidos no dia
+        itens_unicos = set([v[0] for v in v_dia])
+        for n in itens_unicos:
             q = sum([v[1] for v in v_dia if v[0] == n])
             st.write(f"▪️ **{n}**: {int(q)} un")
 
