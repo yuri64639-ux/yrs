@@ -61,12 +61,10 @@ with tabs[0]:
             st.session_state.sub_bar = "Cervejas"; st.rerun()
         if st.button("🥤 Sem Álcool", type="primary" if st.session_state.sub_bar == "Sem Álcool" else "secondary"): 
             st.session_state.sub_bar = "Sem Álcool"; st.rerun()
-        cats = [st.session_state.sub_bar]
+        prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (st.session_state.sub_bar,)).fetchall()
     else: 
-        cats = ["Porções", "Pratos Principais", "Sobremesas"]
+        prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE 'Porções' OR categoria LIKE 'Pratos Principais' OR categoria LIKE 'Sobremesas' ORDER BY nome").fetchall()
 
-    prods = cur.execute(f"SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria IN ({','.join('?'*len(cats))}) ORDER BY nome", cats).fetchall()
-    
     with st.form("f_ped", clear_on_submit=True):
         m = st.text_input("Mesa:")
         if prods:
@@ -85,7 +83,8 @@ with tabs[0]:
             st.warning("Nenhum produto cadastrado nesta categoria.")
 # --- PREPARO ---
 def prep(cats, ch):
-    peds = cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND p.status != 'Entregue' AND pr.categoria IN ({','.join('?'*len(cats))}) ORDER BY p.id ASC", cats).fetchall()
+    condicoes = " OR ".join(["pr.categoria LIKE ?" for _ in cats])
+    peds = cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND p.status != 'Entregue' AND ({condicoes}) ORDER BY p.id ASC", cats).fetchall()
     if not peds: st.info("Tudo pronto!")
     for pid, mesa, nome, qtd, status in peds:
         with st.container(border=True):
@@ -132,11 +131,12 @@ with tabs[5]:
         dias = sorted(list(set([datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") for v in vds])), reverse=True)
         sel = st.selectbox("Dia:", dias)
         v_dia = [v for v in vds if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel]
-        p_tot = sum([v[2] for v in v_dia]); t_tot = sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
+        p_tot = sum([v[2] for v in v_dia])
+        t_tot = sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
         st.metric("📦 Produtos", f"R$ {p_tot:.2f}")
         st.metric("💰 Taxas (10%)", f"R$ {t_tot:.2f}")
         st.metric("💵 Total Geral", f"R$ {p_tot + t_tot:.2f}")
-        for n in set([v[0] for v in v_dia]): 
+        for n in set([v[0] for v in v_dia]):
             st.write(f"▪️ **{n}**: {int(sum([v[1] for v in v_dia if v[0] == n]))} un")
 
 # --- ESTOQUE ---
@@ -145,7 +145,7 @@ with tabs[6]:
         with st.form("f_e"):
             ni, qi = st.text_input("Insumo:"), st.number_input("Qtd:", min_value=0.0)
             if st.form_submit_button("Salvar") and ni.strip():
-                cur.execute("INSERT INTO estoque (item, bandwidth = quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade" if False else "INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
+                cur.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
                 conn.commit(); st.rerun()
         for i, q in cur.execute("SELECT item, quantidade FROM estoque ORDER BY item").fetchall(): st.write(f"📦 **{i}**: {q}")
 
