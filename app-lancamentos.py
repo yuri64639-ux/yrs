@@ -24,18 +24,9 @@ if crit := cur.execute("SELECT item, quantidade FROM estoque WHERE quantidade <=
 
 st.title("📱 Gestão de Restaurante")
 
-tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Entradas", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas", "🍽️ Cardápio", "⚙️ Gerência"])
+# Barra principal limpa: apenas lançamentos, contas e a pasta de Gerência
+tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Entradas", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas", "⚙️ Gerência"])
 
-def admin(ch):
-    if f"ok_{ch}" not in st.session_state: st.session_state[f"ok_{ch}"] = False
-    if not st.session_state[f"ok_{ch}"]:
-        with st.form(f"f_{ch}"):
-            if st.form_submit_button("🔓 Liberar") and st.text_input("Senha:", type="password", key=f"s_{ch}") == ADMIN:
-                st.session_state[f"ok_{ch}"] = True; st.rerun()
-        return False
-    return True
-
-# --- FUNÇÃO PADRÃO DE LANÇAMENTO DIRETO NA ABA (CORRIGIDA) ---
 def lançar_pedido_aba(idx_tab, categoria_nome, legenda):
     with tabs[idx_tab]:
         prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (categoria_nome,)).fetchall()
@@ -43,7 +34,6 @@ def lançar_pedido_aba(idx_tab, categoria_nome, legenda):
             st.subheader(legenda)
             m = st.text_input("Mesa / Comanda:", key=f"m_{categoria_nome}")
             if prods:
-                # CORREÇÃO: p[1] acessa o Nome e p[2] acessa o Preço numérico
                 dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
                 ps = st.selectbox("Escolha o Item:", list(dp.keys()), key=f"ps_{categoria_nome}")
                 q = st.number_input("Quantidade:", min_value=1, value=1, key=f"q_{categoria_nome}")
@@ -79,23 +69,8 @@ with tabs[6]:
                     cur.execute("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = ? WHERE mesa = ? AND status != 'Finalizado (Pago)'", (1 if tx > 0 else 0, m))
                     conn.commit(); st.rerun()
 
-# --- CARDÁPIO ---
+# --- PASTA DA GERÊNCIA (REÚNE RELATÓRIO, ESTOQUE, CANCELAR E CARDÁPIO) ---
 with tabs[7]:
-    ins = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
-    with st.form("f_c"):
-        n = st.text_input("Nome do Produto:")
-        c = st.selectbox("Categoria:", ["Porções", "Pratos Principais", "Sobremesas", "Drinks", "Cervejas", "Sem Álcool"])
-        p = st.number_input("Preço de Venda:", min_value=0.0)
-        sel_i = st.selectbox("Insumo para descontar:", ["Nenhum"] + list(ins.keys()))
-        qg = st.number_input("Gasto por unidade vendida:", min_value=0.0)
-        if st.form_submit_button("Salvar no Cardápio") and n.strip() and p > 0:
-            cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, ins[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
-            conn.commit(); st.rerun()
-    for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall(): 
-        st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
-
-# --- GERÊNCIA PROTEGIDA (RELATÓRIO, ESTOQUE E CANCELAR CORRIGIDOS) ---
-with tabs[8]:
     if "ok_gerencia" not in st.session_state: st.session_state["ok_gerencia"] = False
     if not st.session_state["ok_gerencia"]:
         with st.form("f_adm_geral"):
@@ -104,10 +79,11 @@ with tabs[8]:
             if st.form_submit_button("🔓 Liberar Painel") and senha_adm == ADMIN:
                 st.session_state["ok_gerencia"] = True; st.rerun()
     else:
-        if st.button("🔒 Bloquear Painel"):
+        if st.button("🔒 Bloquear Painel Geral"):
             st.session_state["ok_gerencia"] = False; st.rerun()
             
         st.markdown("---")
+        # 1. RELATÓRIO DE VENDAS
         st.subheader("📊 Relatório de Vendas")
         vds = cur.execute("SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco), p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'").fetchall()
         if not vds: st.info("Sem vendas.")
@@ -125,6 +101,7 @@ with tabs[8]:
                 st.write(f"▪️ **{n}**: {int(q)} un")
 
         st.markdown("---")
+        # 2. CONTROLE DE ESTOQUE
         st.subheader("📦 Controle de Estoque")
         with st.form("f_e_gerencia"):
             ni, qi = st.text_input("Novo Insumo:"), st.number_input("Quantidade:", min_value=0.0)
@@ -135,6 +112,7 @@ with tabs[8]:
             st.write(f"📦 **{i}**: {q:.0f} (g/ml/un)")
 
         st.markdown("---")
+        # 3. CANCELAR PEDIDOS ATIVOS
         st.subheader("❌ Cancelar Pedidos Ativos")
         if itens := cur.execute("SELECT p.id, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall():
             for pid, mesa, nome, qtd in itens:
@@ -143,3 +121,19 @@ with tabs[8]:
                         if v[0] and v[1]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
                     cur.execute("DELETE FROM pedidos WHERE id = ?", (pid,)); conn.commit(); st.rerun()
         else: st.info("Nenhum pedido ativo.")
+
+        st.markdown("---")
+        # 4. GESTÃO DO CARDÁPIO (MUDOU PARA CÁ)
+        st.subheader("🍽️ Configuração do Cardápio")
+        ins = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
+        with st.form("f_c_gerencia"):
+            n = st.text_input("Nome do Produto:")
+            c = st.selectbox("Categoria:", ["Porções", "Pratos Principais", "Sobremesas", "Drinks", "Cervejas", "Sem Álcool"])
+            p = st.number_input("Preço de Venda:", min_value=0.0)
+            sel_i = st.selectbox("Descontar Insumo?", ["Nenhum"] + list(ins.keys()))
+            qg = st.number_input("Gasto por unidade vendida:", min_value=0.0)
+            if st.form_submit_button("💾 Salvar no Cardápio") and n.strip() and p > 0:
+                cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, ins[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
+                conn.commit(); st.rerun()
+        for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall(): 
+            st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
