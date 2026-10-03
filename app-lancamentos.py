@@ -42,10 +42,11 @@ def admin(ch):
         return False
     return True
 
-# --- PEDIDO (BOTÕES ALINHADOS VERTICALMENTE) ---
+# --- PEDIDO (FILTROS VERTICAIS PARA BAR E COZINHA) ---
 with tabs[0]:
     if "setor" not in st.session_state: st.session_state.setor = "Cozinha"
     if "sub_bar" not in st.session_state: st.session_state.sub_bar = "Drinks"
+    if "sub_coz" not in st.session_state: st.session_state.sub_coz = "Pratos Principais"
     
     st.subheader("📍 Escolha o Setor")
     if st.button("🍹 BAR", type="primary" if st.session_state.setor == "Bar" else "secondary"): 
@@ -65,15 +66,20 @@ with tabs[0]:
             st.session_state.sub_bar = "Sem Álcool"; st.rerun()
         cats = [st.session_state.sub_bar]
     else: 
-        cats = ["Porções", "Pratos Principais", "Sobremesas"]
+        st.subheader("🔍 Tipo de Prato")
+        if st.button("🍟 Entrada / Porções", type="primary" if st.session_state.sub_coz == "Porções" else "secondary"): 
+            st.session_state.sub_coz = "Porções"; st.rerun()
+        if st.button("🍽️ Principal", type="primary" if st.session_state.sub_coz == "Pratos Principais" else "secondary"): 
+            st.session_state.sub_coz = "Pratos Principais"; st.rerun()
+        if st.button("🍰 Sobremesa", type="primary" if st.session_state.sub_coz == "Sobremesas" else "secondary"): 
+            st.session_state.sub_coz = "Sobremesas"; st.rerun()
+        cats = [st.session_state.sub_coz]
 
-    # Busca no banco de dados respeitando maiúsculas/minúsculas usando LIKE
-    condicoes = " OR ".join(["categoria LIKE ?" for _ in cats])
-    prods = cur.execute(f"SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE {condicoes} ORDER BY nome", cats).fetchall()
+    prods = cur.execute(f"SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (cats[0],)).fetchall()
 
     st.markdown("---")
     with st.form("f_ped", clear_on_submit=True):
-        st.caption(f"Filtrado por: {st.session_state.setor} -> " + (st.session_state.sub_bar if st.session_state.setor == "Bar" else "Todos os Pratos"))
+        st.caption(f"Filtrado por: {st.session_state.setor} -> " + (st.session_state.sub_bar if st.session_state.setor == "Bar" else st.session_state.sub_coz))
         m = st.text_input("Mesa / Comanda:")
         if prods:
             dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
