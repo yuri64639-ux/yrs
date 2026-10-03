@@ -23,6 +23,16 @@ if crit := cur.execute("SELECT item, quantidade FROM estoque WHERE quantidade <=
     st.error("⚠️ Estoque Baixo: " + ", ".join([f"{i} ({q})" for i, q in crit]))
 
 st.title("📱 Gestão")
+
+# --- LEMBRETE: ÚLTIMA COMANDA ABERTA ---
+ult_ped = cur.execute("SELECT mesa, horario FROM pedidos WHERE status != 'Finalizado (Pago)' ORDER BY id DESC LIMIT 1").fetchone()
+if ult_ped:
+    try:
+        minutos = int((datetime.now() - datetime.strptime(ult_ped[1], "%Y-%m-%d %H:%M:%S")).total_seconds() / 60)
+        tempo_txt = f"há {minutos} min" if minutos > 0 else "agora há pouco"
+    except: tempo_txt = ""
+    st.info(f"📌 **Lembrete:** Última comanda ativa aberta: **Mesa {ult_ped[0]}** ({tempo_txt}).")
+
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["📝 Pedido", "🍳 Cozinha", "🍹 Bar", "💵 Contas", "❌ Cancelar", "📊 Vendas", "📦 Estoque", "🍽️ Cardápio"])
 
 def verificar_admin(ch):
