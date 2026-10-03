@@ -100,12 +100,12 @@ with ab_can:
             for pid, mesa, nome, qtd in itens:
                 if st.button(f"❌ M-{mesa}: {qtd}x {nome}", key=f"c_{pid}"):
                     if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (pid,)).fetchone():
-                        if v[0]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
+                        if v[0] and v[1]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
                     cur.execute("DELETE FROM pedidos WHERE id = ?", (pid,))
                     conn.commit(); st.rerun()
         else: st.info("Vazio.")
 
-# --- RELATÓRIO DE VENDAS ---
+# --- RELATÓRIO DE VENDAS (COM 10% SEPARADO) ---
 with ab_r:
     vendas = cur.execute("SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco) as item_tot, p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'").fetchall()
     if not vendas: st.info("Sem vendas.")
@@ -113,8 +113,19 @@ with ab_r:
         dias = sorted(list(set([datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") for v in vendas])), reverse=True)
         sel_dia = st.selectbox("Dia:", dias)
         v_dia = [v for v in vendas if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel_dia]
-        total = sum([v[2] for v in v_dia]) + sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
-        st.metric("Caixa do Dia", f"R$ {total:.2f}")
+        
+        # Cálculos separados
+        tot_produtos = sum([v[2] for v in v_dia])
+        tot_taxas = sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
+        faturamento_geral = tot_produtos + tot_taxas
+        
+        # Exibição organizada para celular em 3 blocos informativos
+        st.metric("📦 Valor em Produtos", f"R$ {tot_produtos:.2f}")
+        st.metric("💰 Total de 10% (Garçom)", f"R$ {tot_taxas:.2f}")
+        st.metric("💵 Faturamento Geral (Total)", f"R$ {faturamento_geral:.2f}")
+        
+        st.markdown("---")
+        st.markdown("**Quantidade por Item Vendido:**")
         for n in set([v[0] for v in v_dia]):
             q = sum([v[1] for v in v_dia if v[0] == n])
             st.write(f"▪️ **{n}**: {int(q)} un")
