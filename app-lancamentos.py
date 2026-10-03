@@ -47,17 +47,23 @@ with tabs[0]:
     if "setor" not in st.session_state: st.session_state.setor = "Cozinha"
     if "sub_bar" not in st.session_state: st.session_state.sub_bar = "Drinks"
     
-    c1, c2 = st.columns(2)
-    if c1.button("🍹 BAR", type="primary" if st.session_state.setor == "Bar" else "secondary"): st.session_state.setor = "Bar"; st.rerun()
-    if c2.button("🍳 COZINHA", type="primary" if st.session_state.setor == "Cozinha" else "secondary"): st.session_state.setor = "Cozinha"; st.rerun()
+    st.write("**Setor de Preparo:**")
+    if st.button("🍹 BAR", type="primary" if st.session_state.setor == "Bar" else "secondary"): 
+        st.session_state.setor = "Bar"; st.rerun()
+    if st.button("🍳 COZINHA", type="primary" if st.session_state.setor == "Cozinha" else "secondary"): 
+        st.session_state.setor = "Cozinha"; st.rerun()
 
     if st.session_state.setor == "Bar":
-        cb1, cb2, cb3 = st.columns(3)
-        if cb1.button("🍸 Drinks", type="primary" if st.session_state.sub_bar == "Drinks" else "secondary"): st.session_state.sub_bar = "Drinks"; st.rerun()
-        if cb2.button("🍺 Cervejas", type="primary" if st.session_state.sub_bar == "Cervejas" else "secondary"): st.session_state.sub_bar = "Cervejas"; st.rerun()
-        if cb3.button("🥤 Sem Álcool", type="primary" if st.session_state.sub_bar == "Sem Álcool" else "secondary"): st.session_state.sub_bar = "Sem Álcool"; st.rerun()
+        st.write("**Filtro do Bar:**")
+        if st.button("🍸 Drinks", type="primary" if st.session_state.sub_bar == "Drinks" else "secondary"): 
+            st.session_state.sub_bar = "Drinks"; st.rerun()
+        if st.button("🍺 Cervejas", type="primary" if st.session_state.sub_bar == "Cervejas" else "secondary"): 
+            st.session_state.sub_bar = "Cervejas"; st.rerun()
+        if st.button("🥤 Sem Álcool", type="primary" if st.session_state.sub_bar == "Sem Álcool" else "secondary"): 
+            st.session_state.sub_bar = "Sem Álcool"; st.rerun()
         cats = [st.session_state.sub_bar]
-    else: cats = ["Porções", "Pratos Principais", "Sobremesas"]
+    else: 
+        cats = ["Porções", "Pratos Principais", "Sobremesas"]
 
     prods = cur.execute(f"SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria IN ({','.join('?'*len(cats))}) ORDER BY nome", cats).fetchall()
     
@@ -69,20 +75,23 @@ with tabs[0]:
             q = st.number_input("Qtd:", min_value=1, value=1)
             if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
                 pid, _, _, iid, qins = dp[ps]
-                if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): st.error("Estoque insuficiente.")
+                if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): 
+                    st.error("Estoque insuficiente.")
                 else:
                     cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
                     conn.commit(); st.success("Enviado!"); st.rerun()
-        else: st.warning("Nenhum produto cadastrado.")# --- PREPARO ---
+        else: 
+            st.warning("Nenhum produto cadastrado nesta categoria.")
+# --- PREPARO ---
 def prep(cats, ch):
     peds = cur.execute(f"SELECT p.id, p.mesa, pr.nome, p.quantidade, p.status FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' AND p.status != 'Entregue' AND pr.categoria IN ({','.join('?'*len(cats))}) ORDER BY p.id ASC", cats).fetchall()
     if not peds: st.info("Tudo pronto!")
-    for p in peds:
+    for pid, mesa, nome, qtd, status in peds:
         with st.container(border=True):
-            st.write(f"**Mesa {p[1]}** ➔ {p[3]}x {p[2]} (" + ("🔴" if p[4] == "Pendente" else "🟡") + ")")
-            if st.button("Avançar" if p[4] == "Pendente" else "Entregar", key=f"b_{p[0]}_{ch}"):
-                cur.execute("UPDATE pedidos SET status = ? WHERE id = ?", ("Preparando" if p[4] == "Pendente" else "Entregue", p[0]))
+            st.write(f"**Mesa {mesa}** ➔ {qtd}x {nome} (" + ("🔴" if status == "Pendente" else "🟡") + ")")
+            if st.button("Avançar" if status == "Pendente" else "Entregar", key=f"b_{pid}_{ch}"):
+                cur.execute("UPDATE pedidos SET status = ? WHERE id = ?", ("Preparando" if status == "Pendente" else "Entregue", pid))
                 conn.commit(); st.rerun()
 
 with tabs[1]: prep(["Porções", "Pratos Principais", "Sobremesas"], "coz")
@@ -108,11 +117,11 @@ with tabs[3]:
 with tabs[4]:
     if admin("canc"):
         if itens := cur.execute("SELECT p.id, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall():
-            for p in itens:
-                if st.button(f"❌ M-{p[1]}: {p[3]}x {p[2]}", key=f"c_{p[0]}"):
-                    if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (p[0],)).fetchone():
-                        if v[0]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
-                    cur.execute("DELETE FROM pedidos WHERE id = ?", (p[0],)); conn.commit(); st.rerun()
+            for pid, mesa, nome, qtd in itens:
+                if st.button(f"❌ M-{mesa}: {qtd}x {nome}", key=f"c_{pid}"):
+                    if v := cur.execute("SELECT pr.insumo_id, (p.quantidade * pr.qtd_insumo) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.id = ?", (pid,)).fetchone():
+                        if v[0] and v[1]: cur.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE id = ?", (v[1], v[0]))
+                    cur.execute("DELETE FROM pedidos WHERE id = ?", (pid,)); conn.commit(); st.rerun()
         else: st.info("Vazio.")
 
 # --- VENDAS ---
@@ -127,7 +136,8 @@ with tabs[5]:
         st.metric("📦 Produtos", f"R$ {p_tot:.2f}")
         st.metric("💰 Taxas (10%)", f"R$ {t_tot:.2f}")
         st.metric("💵 Total Geral", f"R$ {p_tot + t_tot:.2f}")
-        for n in set([v[0] for v in v_dia]): st.write(f"▪️ **{n}**: {int(sum([v[1] for v in v_dia if v[0] == n]))} un")
+        for n in set([v[0] for v in v_dia]): 
+            st.write(f"▪️ **{n}**: {int(sum([v[1] for v in v_dia if v[0] == n]))} un")
 
 # --- ESTOQUE ---
 with tabs[6]:
@@ -135,7 +145,7 @@ with tabs[6]:
         with st.form("f_e"):
             ni, qi = st.text_input("Insumo:"), st.number_input("Qtd:", min_value=0.0)
             if st.form_submit_button("Salvar") and ni.strip():
-                cur.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
+                cur.execute("INSERT INTO estoque (item, bandwidth = quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade" if False else "INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
                 conn.commit(); st.rerun()
         for i, q in cur.execute("SELECT item, quantidade FROM estoque ORDER BY item").fetchall(): st.write(f"📦 **{i}**: {q}")
 
@@ -145,7 +155,7 @@ with tabs[7]:
         ins = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
         with st.form("f_c"):
             n = st.text_input("Produto:")
-            c = st.selectbox("Categoria:", ["Bebidas", "Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"])
+            c = st.selectbox("Categoria:", ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"])
             p = st.number_input("Preço:", min_value=0.0)
             sel_i = st.selectbox("Descontar Insumo?", ["Nenhum"] + list(ins.keys()))
             qg = st.number_input("Qtd Gasto:", min_value=0.0)
@@ -153,4 +163,3 @@ with tabs[7]:
                 cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, ins[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
                 conn.commit(); st.rerun()
         for n, c, p in cur.execute("SELECT nome, categoria, preco FROM produtos ORDER BY categoria, nome").fetchall(): st.write(f"🔹 *{c}* | **{n}** — R$ {p:.2f}")
-
