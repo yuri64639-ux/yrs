@@ -20,11 +20,12 @@ cur.execute("CREATE TABLE IF NOT EXISTS pedidos (id INTEGER PRIMARY KEY, mesa TE
 conn.commit()
 
 if crit := cur.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 200").fetchall():
-    st.error("⚠️ Estoque Crítico/Baixo (Menos de 200g/un/ml): " + ", ".join([f"{i} ({q:.0f})" for i, q in crit]))
+    st.error("⚠️ Estoque Baixo (Menos de 200g/un/ml): " + ", ".join([f"{i} ({q:.0f})" for i, q in crit]))
 
 st.title("📱 Gestão de Restaurante")
 
-tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍳 Cozinha", "💵 Contas", "❌ Cancelar", "📊 Vendas", "📦 Estoque", "🍽️ Cardápio"])
+# Abas principais reconstruídas com categorias de comida isoladas por abas
+tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Entradas", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas", "❌ Cancelar", "📊 Vendas", "📦 Estoque", "🍽️ Cardápio"])
 
 def admin(ch):
     if f"ok_{ch}" not in st.session_state: st.session_state[f"ok_{ch}"] = False
@@ -35,50 +36,35 @@ def admin(ch):
         return False
     return True
 
-def lançar_pedido_aba(categoria_nome, legenda):
-    prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (categoria_nome,)).fetchall()
-    with st.form(f"f_ped_{categoria_nome}", clear_on_submit=True):
-        st.subheader(legenda)
-        m = st.text_input("Mesa / Comanda:", key=f"m_{categoria_nome}")
-        if prods:
-            dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
-            ps = st.selectbox("Escolha o Item:", list(dp.keys()), key=f"ps_{categoria_nome}")
-            q = st.number_input("Quantidade:", min_value=1, value=1, key=f"q_{categoria_nome}")
-            if st.form_submit_button("🚀 Enviar Pedido", type="primary") and m.strip():
-                pid, _, _, iid, qins = dp[ps]
-                if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): 
-                    st.error(f"Estoque insuficiente. Restam apenas {res[0]:.0f}g/ml/un")
-                else:
-                    cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
-                    conn.commit(); st.success("Pedido enviado!"); st.rerun()
-        else: st.warning(f"Nenhum item cadastrado em '{categoria_nome}'.")
+# --- FUNÇÃO PADRÃO DE LANÇAMENTO DIRETO NA ABA ---
+def lançar_pedido_aba(idx_tab, categoria_nome, legenda):
+    with tabs[idx_tab]:
+        prods = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria LIKE ? ORDER BY nome", (categoria_nome,)).fetchall()
+        with st.form(f"f_ped_{categoria_nome}", clear_on_submit=True):
+            st.subheader(legenda)
+            m = st.text_input("Mesa / Comanda:", key=f"m_{categoria_nome}")
+            if prods:
+                dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods}
+                ps = st.selectbox("Escolha o Item:", list(dp.keys()), key=f"ps_{categoria_nome}")
+                q = st.number_input("Quantidade:", min_value=1, value=1, key=f"q_{categoria_nome}")
+                if st.form_submit_button("🚀 Enviar Pedido", type="primary") and m.strip():
+                    pid, _, _, iid, qins = dp[ps]
+                    if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): 
+                        st.error(f"Estoque insuficiente. Restam apenas {res[0]:.0f}g/ml/un")
+                    else:
+                        cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
+                        conn.commit(); st.success("Pedido enviado!"); st.rerun()
+            else: st.warning(f"Nenhum item cadastrado em '{categoria_nome}'.")
 
-with tabs[0]: lançar_pedido_aba("Drinks", "🍸 Lançar Drinks")
-with tabs[1]: lançar_pedido_aba("Cervejas", "🍺 Lançar Cervejas")
-with tabs[2]: lançar_pedido_aba("Sem Álcool", "🥤 Lançar Sem Álcool")
-
-# ABA DA COZINHA (Agrupa pratos e porções)
-with tabs[3]:
-    prods_coz = cur.execute("SELECT id, nome, preco, insumo_id, qtd_insumo FROM produtos WHERE categoria NOT LIKE 'Drinks' AND categoria NOT LIKE 'Cervejas' AND categoria NOT LIKE 'Sem Álcool' ORDER BY nome").fetchall()
-    with st.form("f_ped_cozinha", clear_on_submit=True):
-        st.subheader("🍳 Lançar Cozinha")
-        m = st.text_input("Mesa / Comanda:")
-        if prods_coz:
-            dp = {f"{p[1]} (R$ {p[2]:.2f})": p for p in prods_coz}
-            ps = st.selectbox("Escolha o Prato:", list(dp.keys()))
-            q = st.number_input("Quantidade:", min_value=1, value=1)
-            if st.form_submit_button("🚀 Enviar para Cozinha", type="primary") and m.strip():
-                pid, _, _, iid, qins = dp[ps]
-                if iid and (res := cur.execute("SELECT quantidade FROM estoque WHERE id = ?", (iid,)).fetchone()) and res[0] < (qins * q): 
-                    st.error(f"Estoque insuficiente. Restam apenas {res[0]:.0f}g")
-                else:
-                    cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (?, ?, ?, ?)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    if iid: cur.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE id = ?", (qins * q, iid))
-                    conn.commit(); st.success("Pedido Enviado!"); st.rerun()
-        else: st.warning("Nenhum prato cadastrado.")
+lançar_pedido_aba(0, "Drinks", "🍸 Lançar Drinks")
+lançar_pedido_aba(1, "Cervejas", "🍺 Lançar Cervejas")
+lançar_pedido_aba(2, "Sem Álcool", "🥤 Lançar Sem Álcool")
+lançar_pedido_aba(3, "Porções", "🍟 Lançar Entradas / Porções")
+lançar_pedido_aba(4, "Pratos Principais", "🍽️ Lançar Pratos Principais")
+lançar_pedido_aba(5, "Sobremesas", "🍰 Lançar Sobremesas")
 # --- CONTAS ---
-with tabs[4]:
+with tabs[6]:
     peds = cur.execute("SELECT p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall()
     if not peds: st.info("Nenhuma comanda aberta.")
     else:
@@ -94,7 +80,7 @@ with tabs[4]:
                     conn.commit(); st.rerun()
 
 # --- CANCELAR ---
-with tabs[5]:
+with tabs[7]:
     if admin("canc"):
         if itens := cur.execute("SELECT p.id, p.mesa, pr.nome, p.quantidade FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'").fetchall():
             for pid, mesa, nome, qtd in itens:
@@ -105,7 +91,7 @@ with tabs[5]:
         else: st.info("Vazio.")
 
 # --- VENDAS ---
-with tabs[6]:
+with tabs[8]:
     vds = cur.execute("SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco), p.horario, p.taxa_paga FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status = 'Finalizado (Pago)'").fetchall()
     if not vds: st.info("Sem vendas.")
     else:
@@ -120,12 +106,12 @@ with tabs[6]:
             q = sum([v[1] for v in v_dia if v[0] == n])
             st.write(f"▪️ **{n}**: {int(q)} un")
 
-# --- ESTOQUE (PROPORÇÕES EM GRAMAS E ML) ---
-with tabs[7]:
+# --- ESTOQUE ---
+with tabs[9]:
     if admin("est"):
         with st.form("f_e"):
-            st.caption("💡 Cadastre em gramas/ml. Exemplos:\n- 1 kg de batata = 1000\n- 500g de queijo = 500\n- Velho Barreiro = 750")
-            ni, qi = st.text_input("Insumo (Ex: Batata Palito):"), st.number_input("Quantidade atual:", min_value=0.0)
+            st.caption("💡 Cadastre em gramas/ml. Ex: 1 kg de carne = 1000 | Velho Barreiro = 750")
+            ni, qi = st.text_input("Insumo:"), st.number_input("Quantidade atual:", min_value=0.0)
             if st.form_submit_button("Salvar Insumo") and ni.strip():
                 cur.execute("INSERT INTO estoque (item, quantidade) VALUES (?, ?) ON CONFLICT(item) DO UPDATE SET quantidade = quantidade + excluded.quantidade", (ni.strip(), qi))
                 conn.commit(); st.rerun()
@@ -133,16 +119,16 @@ with tabs[7]:
             st.write(f"📦 **{i}**: {q:.0f} (un/g/ml)")
 
 # --- CARDÁPIO ---
-with tabs[8]:
+with tabs[10]:
     if admin("card"):
         ins = {i[1]: i[0] for i in cur.execute("SELECT id, item FROM estoque").fetchall()}
         with st.form("f_c"):
-            n = st.text_input("Nome do Produto (Ex: Batata Frita):")
+            n = st.text_input("Nome do Produto:")
             c = st.selectbox("Categoria:", ["Porções", "Pratos Principais", "Sobremesas", "Drinks", "Cervejas", "Sem Álcool"])
             p = st.number_input("Preço de Venda:", min_value=0.0)
             sel_i = st.selectbox("Insumo para descontar:", ["Nenhum"] + list(ins.keys()))
-            st.caption("💡 Defina em gramas o peso gasto por prato. Ex: Se a porção gasta 300g de batata, preencha 300.")
-            qg = st.number_input("Gasto por unidade vendida (g/ml/un):", min_value=0.0)
+            st.caption("💡 Defina em gramas/ml o peso gasto por prato/bebida.")
+            qg = st.number_input("Gasto por unidade vendida:", min_value=0.0)
             if st.form_submit_button("Salvar no Cardápio") and n.strip() and p > 0:
                 cur.execute("INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET categoria=excluded.categoria, preco=excluded.preco, insumo_id=excluded.insumo_id, qtd_insumo=excluded.qtd_insumo", (n.strip(), c, p, ins[sel_i] if sel_i != "Nenhum" else None, qg if sel_i != "Nenhum" else None))
                 conn.commit(); st.rerun()
