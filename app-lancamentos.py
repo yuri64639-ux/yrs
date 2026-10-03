@@ -3,7 +3,7 @@ import sqlite3
 import streamlit as st
 
 # --- CONFIGURAÇÃO MOBILE ---
-st.set_page_config(page_title="Sistema", layout="centered")
+st.set_page_config(page_title="Sistema de Gestão", layout="centered")
 st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
 
 PASS, ADMIN = "orla123", "admin123"
@@ -31,7 +31,7 @@ conn.commit()
 if crit := cur.execute("SELECT item, quantidade FROM estoque WHERE quantidade <= 4").fetchall():
     st.error(f"⚠️ Estoque Baixo: " + ", ".join([f"{i} ({q})" for i, q in crit]))
 
-st.title("📱 Gestão Orla")
+st.title("📱 Gestão de Restaurante")
 ab_g, ab_c, ab_b, ab_co, ab_can, ab_r, ab_e, ab_m = st.tabs(["📝 Pedido", "🍳 Cozinha", "🍹 Bar", "💵 Contas", "❌ Cancelar", "📊 Vendas", "📦 Estoque", "🍽️ Cardápio"])
 
 def verificar_admin(chave):
@@ -114,12 +114,10 @@ with ab_r:
         sel_dia = st.selectbox("Dia:", dias)
         v_dia = [v for v in vendas if datetime.strptime(v[3], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") == sel_dia]
         
-        # Cálculos separados
         tot_produtos = sum([v[2] for v in v_dia])
         tot_taxas = sum([v[2] * 0.10 for v in v_dia if v[4] == 1])
         faturamento_geral = tot_produtos + tot_taxas
         
-        # Exibição organizada para celular em 3 blocos informativos
         st.metric("📦 Valor em Produtos", f"R$ {tot_produtos:.2f}")
         st.metric("💰 Total de 10% (Garçom)", f"R$ {tot_taxas:.2f}")
         st.metric("💵 Faturamento Geral (Total)", f"R$ {faturamento_geral:.2f}")
