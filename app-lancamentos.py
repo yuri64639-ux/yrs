@@ -25,13 +25,19 @@ if not st.session_state.logado:
 # --- CONEXÃO DIRETA COM O BANCO DE DADOS EM NUVEM (POSTGRESQL) ---
 def obter_conexao():
     credenciais = st.secrets["connections"]["postgresql"]
+    
+    # Se você configurou a URL de conexão direta (Altamente recomendado para o Neon)
+    if "url" in credenciais:
+        return psycopg2.connect(credenciais["url"])
+        
+    # Fallback estruturado caso decida usar campos separados
     return psycopg2.connect(
-        host=credenciais["host"],
-        port=credenciais["port"],
-        database=credenciais["database"],
-        user=credenciais["username"],
-        password=credenciais["password"],
-        sslmode="require"  # ⚠️ Obrigatório para evitar conexões inseguras no Neon Tech
+        host=credenciais.get("host"),
+        port=credenciais.get("port", 5432),
+        database=credenciais.get("database"),
+        user=credenciais.get("username"),
+        password=credenciais.get("password"),
+        sslmode="require"
     )
 
 # Estabelece a conexão e cria o cursor
@@ -187,6 +193,3 @@ with tabs[7]:
                 st.metric("Total Faturado", f"R$ {total_faturado:.2f}")
             else:
                 st.info("Nenhuma venda finalizada encontrada.")
-
-
-
