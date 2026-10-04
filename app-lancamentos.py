@@ -6,7 +6,7 @@ import pandas as pd
 st.set_page_config(page_title="Orla Bar - Ficha Técnica", layout="centered")
 st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
 
-PASS, ADMIN = "orla123", "admin123"
+PASS, ADMIN = "adm123", "admin123"
 
 if "logado" not in st.session_state: st.session_state.logado = False
 if not st.session_state.logado:
