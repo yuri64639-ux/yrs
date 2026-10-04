@@ -30,7 +30,8 @@ def obter_conexao():
         port=credenciais["port"],
         database=credenciais["database"],
         user=credenciais["username"],
-        password=credenciais["password"]
+        password=credenciais["password"],
+        sslmode="require"  # ⚠️ Obrigatório para evitar conexões inseguras no Neon Tech
     )
 
 # Estabelece a conexão e cria o cursor
@@ -117,6 +118,7 @@ lançar_pedido_aba(2, "Sem Álcool", "🥤 Lançar Sem Álcool")
 lançar_pedido_aba(3, "Porções", "🍟 Lançar Entradas / Porções")
 lançar_pedido_aba(4, "Pratos Principais", "🍽️ Lançar Pratos Principais")
 lançar_pedido_aba(5, "Sobremesas", "🍰 Lançar Sobremesas")
+
 # --- CONTAS (FECHAMENTO DE COMANDAS) ---
 with tabs[6]:
     query_contas = """
@@ -173,107 +175,18 @@ with tabs[7]:
         # 1. RELATÓRIO DE VENDAS DIÁRIAS
         with st.expander("📊 Abrir Relatório de Vendas", expanded=False):
             query_relatorio = """
-                SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_paga 
-                FROM pedidos p 
-                JOIN produtos pr ON p.produto_id = pr.id 
+                SELECT pr.nome, p.quantidade, (p.quantidade * pr.preco) as total_item, p.horario, p.taxa_paga
+                FROM pedidos p
+                JOIN produtos pr ON p.produto_id = pr.id
                 WHERE p.status = 'Finalizado (Pago)'
             """
-            vds = pd.read_sql(query_relatorio, conn_raw)
-            
-            if vds.empty: 
-                st.info("Nenhuma venda finalizada encontrada no histórico.")
+            relatorio_df = pd.read_sql(query_relatorio, conn_raw)
+            if not relatorio_df.empty:
+                st.dataframe(relatorio_df)
+                total_faturado = relatorio_df['total_item'].sum()
+                st.metric("Total Faturado", f"R$ {total_faturado:.2f}")
             else:
-                vds['dia_formatado'] = vds['horario'].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y") if x else "-")
-                dias = sorted(list(set(vds['dia_formatado'].tolist())), reverse=True)
-                sel = st.selectbox("Filtrar Dia:", dias)
-                
-                v_dia = vds[vds['dia_formatado'] == sel]
-                p_tot = float(v_dia['total_item'].sum())
-                t_tot = float(v_dia[v_dia['taxa_paga'] == 1]['total_item'].sum() * 0.10)
-                
-                st.metric("📦 Total em Produtos", f"R$ {p_tot:.2f}")
-                st.metric("💰 Total em Taxas (10%)", f"R$ {t_tot:.2f}")
-                st.metric("💵 Faturamento Geral do Dia", f"R$ {p_tot + t_tot:.2f}")
-                
-                st.markdown("**Resumo de itens vendidos no dia:**")
-                for nome_item in set(v_dia['nome'].tolist()):
-                    total_qtd = v_dia[v_dia['nome'] == nome_item]['quantidade'].sum()
-                    st.write(f"▪️ **{nome_item}**: {int(total_qtd)} un")
+                st.info("Nenhuma venda finalizada encontrada.")
 
-        # 2. CONTROLE E ABASTECIMENTO DE ESTOQUE
-        with st.expander("📦 Abrir Controle de Estoque", expanded=False):
-            with st.form("f_e_gerencia", clear_on_submit=True):
-                ni = st.text_input("Nome do Novo Insumo (Ex: Gelo, Batata, Rum):")
-                qi = st.number_input("Quantidade Inicial:", min_value=0.0, step=100.0)
-                if st.form_submit_button("📥 Adicionar / Atualizar Estoque"):
-                    if ni.strip():
-                        with obter_conexao() as c_est:
-                            with c_est.cursor() as cur_est:
-                                cur_est.execute("""
-                                    INSERT INTO estoque (item, quantity) VALUES (%s, %s) if False else INSERT INTO estoque (item, quantidade) VALUES (%s, %s)
-                                    ON CONFLICT(item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade
-                                """, (ni.strip(), qi))
-                                c_est.commit()
-                        st.success(f"Insumo '{ni}' atualizado!")
-                        st.rerun()
-                        
-            est_atual = pd.read_sql("SELECT item, quantidade FROM estoque ORDER BY item", conn_raw)
-            if not est_atual.empty:
-                for _, row in est_atual.iterrows(): 
-                    st.write(f"📦 **{row['item']}**: {row['quantidade']:.0f} (g/ml/un)")
 
-        # 3. CANCELAR PEDIDOS ATIVOS E DEVOLVER INSUMOS
-        with st.expander("❌ Abrir Cancelar Pedidos Ativos", expanded=False):
-            if not peds.empty:
-                for _, row in peds.iterrows():
-                    if st.button(f"❌ Cancelar Mesa {row['mesa']}: {row['quantidade']}x {row['nome']}", key=f"c_{row['ped_id']}"):
-                        with obter_conexao() as c_del:
-                            with c_del.cursor() as cur_del:
-                                if row['insumo_id'] and not pd.isna(row['insumo_id']):
-                                    devolucao = float(row['quantidade'] * row['qtd_insumo'])
-                                    cur_del.execute(
-                                        "UPDATE estoque SET quantidade = quantidade + %s WHERE id = %s",
-                                        (devolucao, int(row['insumo_id']))
-                                    )
-                                cur_del.execute("DELETE FROM pedidos WHERE id = %s", (int(row['ped_id']),))
-                                c_del.commit()
-                        st.rerun()
-            else: 
-                st.info("Não há nenhum pedido ativo para cancelamento rápido.")
 
-        # 4. CONFIGURAÇÃO DO CARDÁPIO
-        with st.expander("🍽️ Abrir Configuração do Cardápio", expanded=False):
-            est_cadastro = pd.read_sql("SELECT id, item FROM estoque ORDER BY item", conn_raw)
-            ins = {row['item']: row['id'] for _, row in est_cadastro.iterrows()} if not est_cadastro.empty else {}
-            
-            with st.form("f_add_produto", clear_on_submit=True):
-                st.subheader("➕ Cadastrar Novo Produto")
-                nome_p = st.text_input("Nome Comercial do Produto:")
-                cat_p = st.selectbox("Categoria do Menu:", ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"])
-                preco_p = st.number_input("Preço de Venda Praticado (R$):", min_value=0.0, format="%.2f", step=1.0)
-                
-                vincular_insumo = st.checkbox("Este produto desconta insumo do estoque ao ser vendido?")
-                insumo_sel = None
-                qtd_ins_p = 0.0
-                
-                if vincular_insumo and ins:
-                    insumo_sel = st.selectbox("Selecione qual insumo ele gasta:", list(ins.keys()))
-                    qtd_ins_p = st.number_input("Quantidade g/ml/un gasta por venda única:", min_value=0.01, step=1.0)
-                elif vincular_insumo and not ins:
-                    st.warning("Cadastre primeiro um insumo na aba 'Controle de Estoque' acima para poder fazer o vínculo.")
-                
-                if st.form_submit_button("💾 Salvar no Cardápio"):
-                    if nome_p.strip():
-                        iid_p = int(ins[insumo_sel]) if (vincular_insumo and insumo_sel) else None
-                        with obter_conexao() as c_prod:
-                            with c_prod.cursor() as cur_prod:
-                                cur_prod.execute("""
-                                    INSERT INTO produtos (nome, categoria, preco, insumo_id, qtd_insumo) 
-                                    VALUES (%s, %s, %s, %s, %s) ON CONFLICT(nome) DO UPDATE 
-                                    SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco, insumo_id = EXCLUDED.insumo_id, qtd_insumo = EXCLUDED.qtd_insumo
-                                """, (nome_p.strip(), cat_p, preco_p, iid_p, float(qtd_ins_p)))
-                                c_prod.commit()
-                        st.success(f"O item '{nome_p}' foi configurado com sucesso!")
-                        st.rerun()
-
-conn_raw.close()
