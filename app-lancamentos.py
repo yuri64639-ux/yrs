@@ -6,7 +6,7 @@ import pandas as pd
 st.set_page_config(page_title="Orla Bar - Ficha Técnica", layout="centered")
 st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
 
-PASS, ADMIN = "adm123", "admin123"
+PASS, ADMIN = "orla123", "admin123"
 
 if "logado" not in st.session_state: st.session_state.logado = False
 if not st.session_state.logado:
@@ -72,7 +72,7 @@ for idx, cat in enumerate(cats):
             else: st.warning("Nenhum item cadastrado.")
 
 # --- FECHAMENTO DE COMANDAS ---
-with tabs[6]:
+with tabs:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn_raw)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -91,7 +91,7 @@ with tabs[6]:
                     st.success("Fechada!"); st.rerun()
 
 # --- PASTA DA GERÊNCIA PROTEGIDA ---
-with tabs[7]:
+with tabs:
     if "ok_g" not in st.session_state: st.session_state["ok_g"] = False
     if not st.session_state["ok_g"]:
         with st.form("f_adm"):
@@ -105,9 +105,10 @@ with tabs[7]:
         st.dataframe(df_est, use_container_width=True, hide_index=True)
 
         with st.expander("➕ Alimentar / Cadastrar Insumo"):
+            st.info("💡 **Regra de Unidades:** Converta Litros para **ml** e Quilos para **g** (Ex: 10 Litros = 10000 | 1 Kg = 1000)")
             with st.form("f_ins", clear_on_submit=True):
-                n_i = st.text_input("Insumo (Ex: Velho Barreiro, Açúcar, Limão):")
-                q_i = st.number_input("Quantidade (ml, g ou Un):", min_value=0.0, value=1000.0)
+                n_i = st.text_input("Nome do Insumo (Ex: Velho Barreiro, Batata Frita):")
+                q_i = st.number_input("Quantidade Total a Adicionar (g ou ml):", min_value=0.0, value=1000.0, step=100.0)
                 if st.form_submit_button("Salvar Insumo") and n_i.strip():
                     with obter_conexao() as c:
                         with c.cursor() as cur:
@@ -136,7 +137,7 @@ with tabs[7]:
                     
                     p_sel = d_p[st.selectbox("Selecione o Produto do Menu:", list(d_p.keys()))]
                     i_sel = d_i[st.selectbox("Selecione o Insumo que ele gasta:", list(d_i.keys()))]
-                    qtd_g_ml = st.number_input("Quantidade gasta por unidade vendida (g/ml/un):", min_value=0.01, value=80.0)
+                    qtd_g_ml = st.number_input("Quantidade gasta por cada venda (em g ou ml):", min_value=0.01, value=80.0, step=5.0)
                     
                     if st.form_submit_button("Vincular Ingrediente"):
                         with obter_conexao() as c:
