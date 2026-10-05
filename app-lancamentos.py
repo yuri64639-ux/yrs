@@ -92,11 +92,13 @@ def renderizar_lancamento_pedidos():
     
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     
-    if not busca_nome:
+    # Busca prévia no banco dependendo da entrada da lupa
+    if busca_nome:
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
+    else:
+        # Se a lupa estiver vazia, o filtro por Categorias é renderizado DEPOIS da Lupa
         cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
-    else:
-        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
         
     st.markdown("---")
     
@@ -121,7 +123,7 @@ def renderizar_lancamento_pedidos():
                 st.success(f"{q}x {item_escolhido['nome']} adicionado ao rascunho!")
                 st.rerun()
     else:
-        st.warning("Nenhum item encontrado. Continue digitando ou escolha outra categoria.")
+        st.warning("Nenhum item encontrado. Verifique a busca ou escolha outra categoria.")
 
     if st.session_state.carrinho:
         st.markdown("---")
