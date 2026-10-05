@@ -2,35 +2,57 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 
+# Configuração global da página
 st.set_page_config(page_title="Painel Gerencial", layout="centered")
+
 ADMIN = "admin123"
 
-if "ok_g" not in st.session_state: st.session_state["ok_g"] = False
+# Fluxo de segurança e controle de sessão
+if "ok_g" not in st.session_state: 
+    st.session_state["ok_g"] = False
+
 if not st.session_state["ok_g"]:
     with st.form("f_adm"):
         st.subheader("🔒 Acesso Restrito da Gerência")
         if st.form_submit_button("🔓 Liberar") and st.text_input("Senha Master:", type="password") == ADMIN:
-            st.session_state["ok_g"] = True; st.rerun()
+            st.session_state["ok_g"] = True
+            st.rerun()
     st.stop()
 
-if st.button("🔒 Bloquear Painel"): st.session_state["ok_g"] = False; st.rerun()
+if st.button("🔒 Bloquear Painel"): 
+    st.session_state["ok_g"] = False
+    st.rerun()
 
+# Conexão dinâmica com o Banco de Dados PostgreSQL
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
-    return psycopg2.connect(c["url"]) if "url" in c else psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
+    if "url" in c:
+        return psycopg2.connect(c["url"])
+    return psycopg2.connect(
+        host=c.get("host"), 
+        port=c.get("port", 5432), 
+        database=c.get("database"), 
+        user=c.get("username"), 
+        password=c.get("password"), 
+        sslmode="require"
+    )
 
 conn = ob_cx()
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
+
+# Consultas globais de dados
 df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque ORDER BY item", conn)
 df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", conn)
 
+# Definição e inicialização das Abas gerenciadas por indexadores explícitos
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
 with subtabs[0]:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
-    if not df_est_visual.empty: df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
+    if not df_est_visual.empty: 
+        df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
     st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
     with st.expander("➕ Alimentar Estoque"):
         with st.form("f_ins", clear_on_submit=True):
@@ -42,12 +64,14 @@ with subtabs[0]:
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
                 st.success("Estoque atualizado!")
+                st.rerun()
 
 # --- CANCELAMENTOS (INDEX 1) ---
 with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
-    if p_ab.empty: st.info("Nenhuma comanda aberta para cancelamento.")
+    if p_ab.empty: 
+        st.info("Nenhuma comanda aberta para cancelamento.")
     else:
         m_sel = st.selectbox("Selecione a Mesa:", sorted(list(set(p_ab['mesa'].tolist()))))
         for _, it in p_ab[p_ab['mesa'] == m_sel].iterrows():
@@ -58,10 +82,11 @@ with subtabs[1]:
                     cur.execute("SET search_path TO public;")
                     rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE produto_id = %s", c, params=[int(it['produto_id'])])
                     for _, r in rc.iterrows(): 
-                        cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE id = %s", ((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade']), int(r['insumo_id'])))
+                         cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE id = %s", ((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade']), int(r['insumo_id'])))
                     cur.execute("DELETE FROM public.pedidos WHERE id = %s", (int(it['id']),))
                     c.commit()
                 st.success("Item removido!")
+                st.rerun()
 
 # --- CADASTRO (INDEX 2) ---
 with subtabs[2]:
@@ -76,6 +101,7 @@ with subtabs[2]:
                 cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
                 c.commit()
             st.success("Produto gravado!")
+            st.rerun()
 # --- RECEITAS MULTIPLAS (INDEX 3) ---
 with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
@@ -98,8 +124,9 @@ with subtabs[3]:
                     if i3 != "---" and q3 > 0: cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i3], q3))
                     c.commit()
                 st.success("Receita configurada!")
+                st.rerun()
 
-# --- 📊 RELATÓRIOS COM SEPARAÇÃO DE FATURAMENTO E TAXA (INDEX 4) ---
+# --- 📊 RELATÓRIOS (INDEX 4) ---
 with subtabs[4]:
     st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("""
@@ -109,34 +136,34 @@ with subtabs[4]:
         WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)')
         ORDER BY p.horario DESC
     """, conn)
-    
+        
     if vendas_df.empty:
         st.info("Nenhuma comanda foi finalizada no sistema até o momento.")
     else:
         empresa_total = 0.0
         garcons_total = 0.0
         pendente_total = 0.0
-        
+                
         for mesa_id, grupo in vendas_df.groupby('mesa'):
             sub_mesa = float(grupo['subtotal'].sum())
             status_mesa = grupo['status'].iloc[0]
             taxa_marcada = int(grupo['taxa_paga'].iloc[0]) == 1
-            
+                        
             if status_mesa == 'Finalizado (Pago)':
                 empresa_total += sub_mesa
                 if taxa_marcada:
                     garcons_total += (sub_mesa * 0.10)
             else:
                 pendente_total += sub_mesa
-        
+                
         col_emp, col_garc, col_pen = st.columns(3)
         col_emp.metric("💰 Faturamento Líquido (Empresa)", f"R$ {empresa_total:.2f}")
         col_garc.metric("🍹 Caixinha Acumulada (10%)", f"R$ {garcons_total:.2f}")
         col_pen.metric("⚠️ Total Perdido (Não Pago)", f"R$ {pendente_total:.2f}")
-        
+                
         st.markdown("---")
         st.subheader("📋 Histórico Detalhado de Vendas")
-        
+                
         df_vendas_visual = vendas_df.copy()
         df_vendas_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa (10%)", "Horário"]
         df_vendas_visual["Taxa (10%)"] = df_vendas_visual["Taxa (10%)"].map({1: "Sim", 0: "Não"})
@@ -146,7 +173,7 @@ with subtabs[4]:
 with subtabs[5]:
     st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
     col_del1, col_del2 = st.columns(2)
-    
+        
     with col_del1:
         st.markdown("#### 🍔 Remover Produto do Cardápio")
         if not df_prods.empty:
@@ -161,7 +188,7 @@ with subtabs[5]:
                 st.rerun()
         else:
             st.info("Nenhum produto cadastrado.")
-
+            
     with col_del2:
         st.markdown("#### 📦 Remover Insumo do Estoque")
         if not df_est.empty:
@@ -177,24 +204,17 @@ with subtabs[5]:
         else:
             st.info("Nenhum insumo cadastrado.")
 
-# 🎨 DESIGN PROFISSIONAL E REMOÇÃO DOS MENUS SUPERIORES (CSS)
-st.markdown("""
-<style>
-    /* Oculta o botão 'Share', o menu de 3 pontinhos, o deploy e a barra do topo */
+# Interface limpa com remoção estrutural de cabeçalhos nativos do Streamlit
+st.markdown("""<style>
     stAppToolbar, [data-testid="stHeader"] {
         visibility: hidden !important;
         height: 0px !important;
         padding: 0px !important;
     }
-    
-    /* Remove o espaço em branco que sobrava no topo após esconder a barra */
     .block-container {
         padding-top: 2rem !important;
     }
-    
-    /* Oculta o rodapé 'Made with Streamlit' */
     footer {
         visibility: hidden !important;
     }
-</style>
-""", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
