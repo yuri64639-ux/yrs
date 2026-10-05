@@ -77,7 +77,7 @@ with subtabs[2]:
                 c.commit()
             st.success("Produto gravado!")
 # --- RECEITAS MULTIPLAS (INDEX 3) ---
-with subtabs:
+with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -100,7 +100,7 @@ with subtabs:
                 st.success("Receita configurada!")
 
 # --- 📊 RELATÓRIOS COM SEPARAÇÃO DE FATURAMENTO E TAXA (INDEX 4) ---
-with subtabs:
+with subtabs[4]:
     st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("""
         SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
@@ -143,7 +143,7 @@ with subtabs:
         st.dataframe(df_vendas_visual, use_container_width=True, hide_index=True)
 
 # --- 🗑️ EXCLUIR ITENS DO CARDÁPIO OU ESTOQUE (INDEX 5) ---
-with subtabs:
+with subtabs[5]:
     st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
     col_del1, col_del2 = st.columns(2)
     
