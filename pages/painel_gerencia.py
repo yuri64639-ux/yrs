@@ -44,7 +44,7 @@ cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "
 df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque ORDER BY item", conn)
 df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", conn)
 
-# Definição e inicialização das Abas gerenciadas por indexadores explícitos
+# Criação das Abas
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
@@ -63,7 +63,7 @@ with subtabs[0]:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.success("Estoque atualizado!")
+                st.success("Estoque updated!")
                 st.rerun()
 
 # --- CANCELAMENTOS (INDEX 1) ---
@@ -204,7 +204,7 @@ with subtabs[5]:
         else:
             st.info("Nenhum insumo cadastrado.")
 
-# Interface limpa com remoção estrutural de cabeçalhos nativos do Streamlit
+# Interface limpa do Streamlit via CSS
 st.markdown("""<style>
     stAppToolbar, [data-testid="stHeader"] {
         visibility: hidden !important;
