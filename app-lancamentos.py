@@ -46,17 +46,21 @@ for idx, cat in enumerate(cats):
                 if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
                     pid = int(dp[ps]['id'])
                     rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.quantidade FROM receitas r JOIN estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
-                    if all([r['quantidade'] >= (r['qtd_insumo'] * q) for _, r in rec.iterrows()]):
+                    
+                    # Converte a quantidade da receita (ml/g) para Litros/Kg (/1000) antes de validar estoque
+                    if all([r['quantidade'] >= ((r['qtd_insumo'] / 1000.0) * q) for _, r in rec.iterrows()]):
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                            for _, r in rec.iterrows(): cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s", ((r['qtd_insumo'] * q), int(r['insumo_id'])))
+                            for _, r in rec.iterrows(): 
+                                qtd_convertida_unidade = (r['qtd_insumo'] / 1000.0) * q
+                                cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida_unidade, int(r['insumo_id'])))
                             c.commit()
                         st.success("Enviado!"); st.rerun()
-                    else: st.error("Estoque insuficiente!")
+                    else: st.error("Estoque insuficiente para os ingredientes da receita!")
             else: st.warning("Nenhum item cadastrado.")
 
-# --- CONTAS (LINHA 59 CORRIGIDA COM O ÍNDICE CORRETO) ---
-with tabs[6]:
+# --- CONTAS ---
+with tabs:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -101,13 +105,19 @@ df_prods = pd.read_sql("SELECT id, nome FROM produtos ORDER BY nome", conn)
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
 # --- ESTOQUE ---
-with subtabs[0]:
-    st.subheader("📦 Estoque Atual")
-    st.dataframe(df_est, use_container_width=True, hide_index=True)
+with subtabs:
+    st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
+    # Renomeia a coluna visualmente para clareza operacional
+    df_est_visual = df_est.copy()
+    if not df_est_visual.empty:
+        df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
+    st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
+    
     with st.expander("➕ Alimentar Estoque"):
+        st.info("💡 Digite o valor inteiro em **Litros ou Quilos** (Ex: Para adicionar 10 Litros, digite 10.0)")
         with st.form("f_ins", clear_on_submit=True):
             n_i = st.text_input("Insumo:")
-            q_i = st.number_input("Qtd:", min_value=0.0, value=1000.0)
+            q_i = st.number_input("Qtd Inteira (Litros, Quilos ou Un):", min_value=0.0, value=1.0, step=1.0)
             if st.form_submit_button("Salvar") and n_i.strip():
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("INSERT INTO estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
@@ -115,7 +125,7 @@ with subtabs[0]:
                 st.rerun()
 
 # --- CANCELAMENTOS ---
-with subtabs[1]:
+with subtabs:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta.")
@@ -127,13 +137,16 @@ with subtabs[1]:
             if col2.button("Deletar", key=f"cn_{it['id']}"):
                 with ob_cx() as c, c.cursor() as cur:
                     rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE produto_id = %s", conn, params=[int(it['produto_id'])])
-                    for _, r in rc.iterrows(): cur.execute("UPDATE estoque SET quantidade = quantidade + %s WHERE id = %s", ((r['qtd_insumo'] * it['quantidade']), int(r['insumo_id'])))
+                    for _, r in rc.iterrows(): 
+                        # Devolve convertendo ml/g de volta para Litros/Kg no cancelamento
+                        qtd_devolver = (r['qtd_insumo'] / 1000.0) * it['quantidade']
+                        cur.execute("UPDATE estoque SET quantidade = quantidade + %s WHERE id = %s", (qtd_devolver, int(r['insumo_id'])))
                     cur.execute("DELETE FROM pedidos WHERE id = %s", (int(it['id']),))
                     c.commit()
                 st.rerun()
 
 # --- CADASTRO ---
-with subtabs[2]:
+with subtabs:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
         n_p = st.text_input("Nome:")
@@ -146,8 +159,9 @@ with subtabs[2]:
             st.rerun()
 
 # --- RECEITAS MULTIPLAS ---
-with subtabs[3]:
-    st.subheader("🔬 Montar Ficha Técnica (Até 3 Ingredientes juntos)")
+with subtabs:
+    st.subheader("🔬 Montar Ficha Técnica")
+    st.info("💡 Monte aqui a receita do produto informando o gasto em **mililitros (ml) ou gramas (g)**. O sistema converterá para Litros/Kg automaticamente nas vendas.")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -160,15 +174,15 @@ with subtabs[3]:
             
             col1, col2 = st.columns(2)
             i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1")
-            q1 = col2.number_input("Qtd gasta 1 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q1")
+            q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q1")
             
             col3, col4 = st.columns(2)
             i2 = col3.selectbox("Ingrediente 2 (Opcional):", lista_insumos, key="i2")
-            q2 = col4.number_input("Qtd gasta 2 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q2")
+            q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q2")
             
             col5, col6 = st.columns(2)
             i3 = col5.selectbox("Ingrediente 3 (Opcional):", lista_insumos, key="i3")
-            q3 = col6.number_input("Qtd gasta 3 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q3")
+            q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q3")
             
             if st.form_submit_button("🔥 Gravar Receita Completa"):
                 vinc_salvos = 0
@@ -184,24 +198,24 @@ with subtabs[3]:
                         vinc_salvos += 1
                     c.commit()
                 if vinc_salvos > 0:
-                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) vinculados."); st.rerun()
+                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) configurados em ml/g."); st.rerun()
                 else: st.error("Preencha ao menos um ingrediente válido.")
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
 # --- EXCLUIR ---
-with subtabs[4]:
+with subtabs:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
         if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].iloc[0])
+            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].iloc)
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE produto_id = %s", (id_p,)); cur.execute("DELETE FROM produtos WHERE id = %s", (id_p,)); c.commit()
             st.rerun()
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].iloc[0])
+            id_i = int(df_est[df_est['item'] == i_ex]['id'].iloc)
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE insumo_id = %s", (id_i,)); cur.execute("DELETE FROM estoque WHERE id = %s", (id_i,)); c.commit()
             st.rerun()
