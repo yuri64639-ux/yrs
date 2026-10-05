@@ -76,40 +76,55 @@ with tabs[0]:
     # 2️⃣ Lupa em segundo lugar
     busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo_absoluto").strip()
     
-    # Executa a busca baseada no que foi digitado ou na categoria padrão
+    # Executa a busca baseada no que foi digitado ou busca de forma ampla para o selectbox
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
-        cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
-        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
+        # Se a lupa estiver vazia, busca todos os produtos para não travar a lista
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos ORDER BY nome", conn)
         
-    st.markdown("---")
-    st.markdown("**Ajuste e adicione o item encontrado:**")
-    
     if not prods_filtrados.empty:
         dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
         
-        # 3️⃣ Confirmar Item selecionado colocado LOGO ABAIXO da lupa/filtros
+        # 3️⃣ Confirmar Item selecionado colocado LOGO ABAIXO da lupa
         ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()))
-        
+    else:
+        dp = {}
+        st.warning("Nenhum item encontrado com esse nome.")
+
+    st.markdown("---")
+    st.markdown("**Ajuste e adicione o item encontrado:**")
+    
+    # 4️⃣ Categorias desceu para cá (caso o usuário prefira filtrar a listagem geral por aqui)
+    cat_sel = st.selectbox("Ou filtre os itens listados escolhendo a Categoria:", cats)
+    
+    # Recalcula a lista se o usuário mudar a categoria para refinar a escolha
+    if not busca_nome:
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
+        if not prods_filtrados.empty:
+            dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+            ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
+
+    if dp:
         q = st.number_input("Quantidade:", min_value=1, value=1)
         
         if st.button("➕ Adicionar ao Pedido"):
             if not m.strip():
                 st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
             else:
-                item_escolhido = dp[ps]
-                st.session_state.carrinho.append({
-                    "id": int(item_escolhido["id"]),
-                    "nome": item_escolhido["nome"],
-                    "categoria": item_escolhido["categoria"],
-                    "qtd": int(q),
-                    "preco": float(item_escolhido["preco"])
-                })
-                st.success(f"{q}x {item_escolhido['nome']} adicionado ao rascunho!")
-                st.rerun()
-    else:
-        st.warning("Nenhum item encontrado. Continue digitando ou limpe o campo para listar por categoria.")
+                # Trata a seleção correta baseado em qual selectbox estava ativo
+                chave_sel = st.session_state.get("select_cat_refinado", ps) if not busca_nome else ps
+                if chave_sel in dp:
+                    item_escolhido = dp[chave_sel]
+                    st.session_state.carrinho.append({
+                        "id": int(item_escolhido["id"]),
+                        "nome": item_escolhido["nome"],
+                        "categoria": item_escolhido["categoria"],
+                        "qtd": int(q),
+                        "preco": float(item_escolhido["preco"])
+                    })
+                    st.success(f"{q}x {item_escolhido['nome']} adicionado ao rascunho!")
+                    st.rerun()
 
     if st.session_state.carrinho:
         st.markdown("---")
