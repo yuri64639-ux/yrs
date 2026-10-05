@@ -3,7 +3,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 
-st.set_page_config(page_title="Sistema de Lançamentos", layout="centered")
+st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
 PASS = "orla123"
 
@@ -57,6 +57,7 @@ for idx, cat in enumerate(cats):
 
 # --- CONTAS ---
 with tabs[6]:
+    st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
     else:
@@ -99,7 +100,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM produtos ORDER BY nome", conn)
 
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
-# --- TAB ESTOQUE ---
+# --- ESTOQUE ---
 with subtabs[0]:
     st.subheader("📦 Estoque Atual")
     st.dataframe(df_est, use_container_width=True, hide_index=True)
@@ -113,9 +114,9 @@ with subtabs[0]:
                     c.commit()
                 st.rerun()
 
-# --- TAB CANCELAMENTOS ---
+# --- CANCELAMENTOS ---
 with subtabs[1]:
-    st.subheader("❌ Cancelar Itens")
+    st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta.")
     else:
@@ -131,7 +132,7 @@ with subtabs[1]:
                     c.commit()
                 st.rerun()
 
-# --- TAB CADASTRO ---
+# --- CADASTRO ---
 with subtabs[2]:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
@@ -144,9 +145,9 @@ with subtabs[2]:
                 c.commit()
             st.rerun()
 
-# --- TAB RECEITAS ---
+# --- RECEITAS ---
 with subtabs[3]:
-    st.subheader("🔬 Montar Receita")
+    st.subheader("🔬 Montar Ficha Técnica")
     if not df_prods.empty and not df_est.empty:
         with st.form("f_vinc", clear_on_submit=True):
             p_sel = {r['nome']: r['id'] for _, r in df_prods.iterrows()}[st.selectbox("Produto:", [r['nome'] for _, r in df_prods.iterrows()])]
@@ -158,20 +159,20 @@ with subtabs[3]:
                     c.commit()
                 st.rerun()
 
-# --- TAB EXCLUIR ---
+# --- EXCLUIR ---
 with subtabs[4]:
-    st.subheader("🗑 Excluir do Sistema")
+    st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
         if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values)
+            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].iloc[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE produto_id = %s", (id_p,)); cur.execute("DELETE FROM produtos WHERE id = %s", (id_p,)); c.commit()
             st.rerun()
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].values)
+            id_i = int(df_est[df_est['item'] == i_ex]['id'].iloc[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE insumo_id = %s", (id_i,)); cur.execute("DELETE FROM estoque WHERE id = %s", (id_i,)); c.commit()
             st.rerun()
