@@ -37,8 +37,8 @@ if "carrinho" not in st.session_state:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: LANÇAMENTO COM CARRINHO E LUPA INTEGRADA ---
-with tabs[0]:
+# --- ABA 1: LANÇAMENTO COM LUPA EM PRIMEIRO LUGAR ---
+with tabs:
     st.subheader("📝 Montar Comanda / Pedido")
     
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
@@ -47,19 +47,21 @@ with tabs[0]:
     st.markdown("---")
     st.markdown("**1. Adicione os itens ao pedido:**")
     
-    cat_sel = st.selectbox("Escolha a Categoria:", cats)
+    # LUPA COLOCADA EM PRIMEIRO LUGAR (Ajudando o garçom a digitar com autocompleto)
+    busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo").strip()
     
-    # ADICIONADA A LUPA DE PESQUISA (OPCIONAL)
-    busca_nome = st.text_input("🔍 Lupa - Digite para pesquisar o produto (Opcional):", key="lupa_busca_carrinho").strip()
-    
+    # Carrega os produtos filtrando dinamicamente pelo que está sendo digitado
     if busca_nome:
-        prods_cat = pd.read_sql("SELECT id, nome, preco FROM public.produtos WHERE categoria = %s AND LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[cat_sel, f"%{busca_nome}%"])
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
-        prods_cat = pd.read_sql("SELECT id, nome, preco FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
+        # Se a lupa estiver vazia, ele pede para escolher a categoria para listar
+        cat_sel = st.selectbox("Ou selecione uma Categoria para listar:", cats)
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
     
-    if not prods_cat.empty:
-        dp = {f"{r['nome']} (R$ {r['preco']:.2f})": r for _, r in prods_cat.iterrows()}
-        ps = st.selectbox("Escolha o Item:", list(dp.keys()))
+    if not prods_filtrados.empty:
+        # Monta a lista com os itens encontrados
+        dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+        ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()))
         q = st.number_input("Quantidade:", min_value=1, value=1)
         
         if st.button("➕ Adicionar ao Pedido"):
@@ -70,14 +72,15 @@ with tabs[0]:
                 st.session_state.carrinho.append({
                     "id": int(item_escolhido['id']),
                     "nome": item_escolhido['nome'],
-                    "categoria": cat_sel,
+                    "categoria": item_escolhido['categoria'],
                     "qtd": int(q),
                     "preco": float(item_escolhido['preco'])
                 })
                 st.success(f"'{q}x {item_escolhido['nome']}' adicionado ao rascunho!")
+                st.reset_data_editor = True # Ajuda o Streamlit a focar no próximo item
                 st.rerun()
     else:
-        st.warning("Nenhum item encontrado com esse filtro.")
+        st.warning("Nenhum item encontrado. Continue digitando ou verifique o nome.")
     if st.session_state.carrinho:
         st.markdown("---")
         st.markdown(f"📋 **Resumo do Pedido Atual (Mesa: {m}):**")
@@ -86,7 +89,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item['qtd'] * item['preco']
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -128,7 +131,7 @@ with tabs[0]:
                 st.rerun()
 
 # --- CONTAS (INDEX 1) ---
-with tabs[1]:
+with tabs:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
