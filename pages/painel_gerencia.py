@@ -76,7 +76,6 @@ with subtabs[2]:
                 cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
                 c.commit()
             st.success("Produto gravado!")
-
 # --- RECEITAS MULTIPLAS (INDEX 3) ---
 with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
@@ -100,9 +99,9 @@ with subtabs[3]:
                     c.commit()
                 st.success("Receita configurada!")
 
-# --- 📊 RELATÓRIOS (INDEX 4) ---
+# --- 📊 RELATÓRIOS COM SEPARAÇÃO DE FATURAMENTO E TAXA (INDEX 4) ---
 with subtabs[4]:
-    st.subheader("📊 Resumo Financeiro Geral")
+    st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("""
         SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
         FROM public.pedidos p 
@@ -114,22 +113,31 @@ with subtabs[4]:
     if vendas_df.empty:
         st.info("Nenhuma comanda foi finalizada no sistema até o momento.")
     else:
-        pago_total = 0.0
+        empresa_total = 0.0
+        garcons_total = 0.0
         pendente_total = 0.0
+        
         for mesa_id, grupo in vendas_df.groupby('mesa'):
             sub_mesa = float(grupo['subtotal'].sum())
             status_mesa = grupo['status'].iloc[0]
             taxa_marcada = int(grupo['taxa_paga'].iloc[0]) == 1
+            
             if status_mesa == 'Finalizado (Pago)':
-                pago_total += (sub_mesa * 1.10) if taxa_marcada else sub_mesa
+                empresa_total += sub_mesa
+                if taxa_marcada:
+                    garcons_total += (sub_mesa * 0.10)
             else:
                 pendente_total += sub_mesa
         
-        c_pago, c_pendente = st.columns(2)
-        c_pago.metric("💰 Faturamento Confirmado (Com 10% se Pago)", f"R$ {pago_total:.2f}")
-        c_pendente.metric("⚠️ Total Perdido / Pendente (Apenas Consumo)", f"R$ {pendente_total:.2f}")
+        col_emp, col_garc, col_pen = st.columns(3)
+        col_emp.metric("💰 Faturamento Líquido (Empresa)", f"R$ {empresa_total:.2f}")
+        col_garc.metric("🍹 Caixinha Acumulada (10%)", f"R$ {garcons_total:.2f}")
+        col_pen.metric("⚠️ Total Perdido (Não Pago)", f"R$ {pendente_total:.2f}")
         
         st.markdown("---")
+        st.markdown(f"**📈 Caixa Bruto Total Movimentado (Empresa + Garçons): R$ {empresa_total + garcons_total:.2f}**")
+        st.markdown("---")
+        
         st.markdown("**📋 Histórico Detalhado de Lançamentos:**")
         visual_vendas = vendas_df.copy()
         visual_vendas['taxa_paga'] = visual_vendas['taxa_paga'].map({1: "Inclusa (10%)", 0: "Isenta"})
