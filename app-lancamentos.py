@@ -33,7 +33,7 @@ with conn.cursor() as cur:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Porções", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas"])
 
-# --- PEDIDOS ---
+# --- PEDIDOS (ÍNDICES 0 A 5) ---
 for idx, cat in enumerate(cats):
     with tabs[idx]:
         prods = pd.read_sql("SELECT id, nome, preco FROM produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat])
@@ -47,27 +47,26 @@ for idx, cat in enumerate(cats):
                     pid = int(dp[ps]['id'])
                     rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.quantidade FROM receitas r JOIN estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
                     
-                    # Converte a quantidade da receita (ml/g) para Litros/Kg (/1000) antes de validar estoque
                     if all([r['quantidade'] >= ((r['qtd_insumo'] / 1000.0) * q) for _, r in rec.iterrows()]):
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("INSERT INTO pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                             for _, r in rec.iterrows(): 
-                                qtd_convertida_unidade = (r['qtd_insumo'] / 1000.0) * q
-                                cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida_unidade, int(r['insumo_id'])))
+                                qtd_convertida = (r['qtd_insumo'] / 1000.0) * q
+                                cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
                             c.commit()
                         st.success("Enviado!"); st.rerun()
                     else: st.error("Estoque insuficiente para os ingredientes da receita!")
             else: st.warning("Nenhum item cadastrado.")
 
-# --- CONTAS ---
-with tabs:
+# --- CONTAS (ÍNDICE 6 CORRIGIDO) ---
+with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
     else:
         for m in sorted(list(set(peds['mesa'].tolist()))):
             itens = peds[peds['mesa'] == m]; sub = float(itens['sub'].sum())
-            with st.expander(f"📋 Mesa {m} ➔ R$ {sub:.2f}"):
+            with st.expander(f"📋 Mesa {m} ➔ R$ {sub:.2f}") :
                 for _, i in itens.iterrows(): st.write(f"▪️ {i['quantidade']}x {i['nome']} (R$ {i['sub']:.2f})")
                 tx = sub * 0.10 if st.checkbox("Taxa (10%)", value=True, key=f"t_{m}") else 0.0
                 st.markdown(f"### Total: R$ {sub + tx:.2f}")
@@ -104,17 +103,16 @@ df_prods = pd.read_sql("SELECT id, nome FROM produtos ORDER BY nome", conn)
 
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
-# --- ESTOQUE ---
-with subtabs:
+# --- ESTOQUE (INDEX 0) ---
+with subtabs[0]:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
-    # Renomeia a coluna visualmente para clareza operacional
     df_est_visual = df_est.copy()
     if not df_est_visual.empty:
         df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
     st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
     
     with st.expander("➕ Alimentar Estoque"):
-        st.info("💡 Digite o valor inteiro em **Litros ou Quilos** (Ex: Para adicionar 10 Litros, digite 10.0)")
+        st.info("💡 Digite o valor inteiro em Litros ou Quilos (Ex: Para adicionar 10 Litros, digite 10.0)")
         with st.form("f_ins", clear_on_submit=True):
             n_i = st.text_input("Insumo:")
             q_i = st.number_input("Qtd Inteira (Litros, Quilos ou Un):", min_value=0.0, value=1.0, step=1.0)
@@ -124,8 +122,8 @@ with subtabs:
                     c.commit()
                 st.rerun()
 
-# --- CANCELAMENTOS ---
-with subtabs:
+# --- CANCELAMENTOS (INDEX 1) ---
+with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta.")
@@ -138,15 +136,14 @@ with subtabs:
                 with ob_cx() as c, c.cursor() as cur:
                     rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE produto_id = %s", conn, params=[int(it['produto_id'])])
                     for _, r in rc.iterrows(): 
-                        # Devolve convertendo ml/g de volta para Litros/Kg no cancelamento
                         qtd_devolver = (r['qtd_insumo'] / 1000.0) * it['quantidade']
                         cur.execute("UPDATE estoque SET quantidade = quantidade + %s WHERE id = %s", (qtd_devolver, int(r['insumo_id'])))
                     cur.execute("DELETE FROM pedidos WHERE id = %s", (int(it['id']),))
                     c.commit()
                 st.rerun()
 
-# --- CADASTRO ---
-with subtabs:
+# --- CADASTRO (INDEX 2) ---
+with subtabs[2]:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
         n_p = st.text_input("Nome:")
@@ -158,10 +155,10 @@ with subtabs:
                 c.commit()
             st.rerun()
 
-# --- RECEITAS MULTIPLAS ---
-with subtabs:
+# --- RECEITAS MULTIPLAS (INDEX 3) ---
+with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
-    st.info("💡 Monte aqui a receita do produto informando o gasto em **mililitros (ml) ou gramas (g)**. O sistema converterá para Litros/Kg automaticamente nas vendas.")
+    st.info("💡 Monte aqui a receita do produto informando o gasto em mililitros (ml) ou gramas (g). O sistema converterá para Litros/Kg automaticamente nas vendas.")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -198,24 +195,24 @@ with subtabs:
                         vinc_salvos += 1
                     c.commit()
                 if vinc_salvos > 0:
-                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) configurados em ml/g."); st.rerun()
+                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) configurados."); st.rerun()
                 else: st.error("Preencha ao menos um ingrediente válido.")
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
-# --- EXCLUIR ---
-with subtabs:
+# --- EXCLUIR (INDEX 4) ---
+with subtabs[4]:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
         if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].iloc)
+            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE produto_id = %s", (id_p,)); cur.execute("DELETE FROM produtos WHERE id = %s", (id_p,)); c.commit()
             st.rerun()
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].iloc)
+            id_i = int(df_est[df_est['item'] == i_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("DELETE FROM receitas WHERE insumo_id = %s", (id_i,)); cur.execute("DELETE FROM estoque WHERE id = %s", (id_i,)); c.commit()
             st.rerun()
