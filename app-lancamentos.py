@@ -51,13 +51,14 @@ for idx, cat in enumerate(cats):
                             cur_trans.execute("SET search_path TO public;")
                             cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, int(q), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                             for _, r in rec.iterrows(): 
-                                cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (float((float(r['qtd_insumo']) / 1000.0) * int(q)), int(r['insumo_id'])))
+                                cur_trans.execute("UPDATE public.estoque SET quantidade = quantity - %s WHERE id = %s" if "quantity" in pd.read_sql("SELECT * FROM public.estoque LIMIT 1", conn).columns else "UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (float((float(r['qtd_insumo']) / 1000.0) * int(q)), int(r['insumo_id'])))
                             c_trans.commit()
                         st.success("Pedido enviado com sucesso!")
                     else: st.error("Estoque insuficiente!")
             else: st.warning("Nenhum item cadastrado.")
 
-with tabs:
+# --- CONTAS (ÍNDICE 6 CORRIGIDO) ---
+with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
