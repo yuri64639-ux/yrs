@@ -28,6 +28,7 @@ with conn.cursor() as cur:
         CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);
         CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL, UNIQUE(produto_id, insumo_id));
         CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1);
+        ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS pago TEXT DEFAULT 'Sim';
     """)
     conn.commit()
 
@@ -64,21 +65,26 @@ for idx, cat in enumerate(cats):
 # --- CONTAS ---
 with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
-    peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
+    peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
     else:
         for m in sorted(list(set(peds['mesa'].tolist()))):
             itens = peds[peds['mesa'] == m]; sub = float(itens['sub'].sum())
             with st.expander(f"📋 Mesa {m} ➔ R$ {sub:.2f}"):
                 for _, i in itens.iterrows(): st.write(f"▪️ {i['quantidade']}x {i['nome']} (R$ {i['sub']:.2f})")
-                tx = sub * 0.10 if st.checkbox("Taxa (10%)", value=True, key=f"t_{m}") else 0.0
-                st.markdown(f"### Total: R$ {sub + tx:.2f}")
+                tx = sub * 0.10 if st.checkbox("Taxa de Serviço (10%)", value=True, key=f"t_{m}") else 0.0
+                st.markdown(f"### Total Final: R$ {sub + tx:.2f}")
+                
+                # Opção de pagamento para o fechamento
+                pago_opcao = st.radio("O cliente pagou a conta?", ["Sim", "Não"], key=f"pago_{m}", horizontal=True)
+                
                 if st.button(f"💵 Fechar Conta {m}", key=f"b_{m}"):
+                    status_final = 'Finalizado (Pago)' if pago_opcao == "Sim" else 'Fechado (Não Pago)'
                     with ob_cx() as c_fechar, c_fechar.cursor() as cur_fechar:
                         cur_fechar.execute("SET search_path TO public;")
-                        cur_fechar.execute("UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE mesa = %s AND status != 'Finalizado (Pago)'", (1 if tx > 0 else 0, m))
+                        cur_fechar.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (status_final, 1 if tx > 0 else 0, pago_opcao, m))
                         c_fechar.commit()
-                    st.success("Fechada!"); st.rerun()
+                    st.success(f"Conta da mesa {m} fechada como: {status_final}!"); st.rerun()
 import streamlit as st
 import psycopg2
 import pandas as pd
@@ -107,7 +113,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", con
 
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
-# --- ESTOQUE (INDEX 0) ---
+# --- ESTOQUE ---
 with subtabs[0]:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
@@ -127,11 +133,11 @@ with subtabs[0]:
                     c.commit()
                 st.rerun()
 
-# --- CANCELAMENTOS (INDEX 1) ---
+# --- CANCELAMENTOS ---
 with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
-    p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
-    if p_ab.empty: st.info("Nenhuma comanda aberta.")
+    p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id, p.status FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
+    if p_ab.empty: st.info("Nenhuma comanda aberta para cancelamento.")
     else:
         m_sel = st.selectbox("Selecione a Mesa:", sorted(list(set(p_ab['mesa'].tolist()))))
         for _, it in p_ab[p_ab['mesa'] == m_sel].iterrows():
@@ -148,7 +154,7 @@ with subtabs[1]:
                     c.commit()
                 st.rerun()
 
-# --- CADASTRO (INDEX 2) ---
+# --- CADASTRO ---
 with subtabs[2]:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
@@ -162,10 +168,10 @@ with subtabs[2]:
                 c.commit()
             st.rerun()
 
-# --- RECEITAS MULTIPLAS (INDEX 3) ---
+# --- RECEITAS MULTIPLAS ---
 with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
-    st.info("💡 Informe o gasto em mililitros (ml) ou gramas (g). O sistema converterá para Litros/Kg automaticamente nas baixas.")
+    st.info("💡 Informe o gasto em mililitros (ml) ou gramas (g). O sistema converterá para Litros/Kg automaticamente.")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -207,7 +213,7 @@ with subtabs[3]:
                 else: st.error("Preencha ao menos um ingrediente válido.")
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
-# --- EXCLUIR (INDEX 4) ---
+# --- EXCLUIR ---
 with subtabs[4]:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
