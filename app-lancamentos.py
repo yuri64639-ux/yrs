@@ -94,27 +94,27 @@ tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     
-    # 🔢 CAMPO DE MESA DEFINIDO COMO PRIMEIRO ITEM DA INTERFACE
+    # 1. Número da Mesa no topo
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
-    # Busca de produtos vem logo na sequência
+    # 2. Lupa de busca por nome
     busca_nome = st.text_input("🔍 Digite o nome do produto:", key="lupa_busca_topo_absoluto").strip()
     
-    st.markdown("---")
-    st.markdown("**Ajuste e adicione o item encontrado:**")
-    
+    # Lógica de carregamento dos dados para o seletor
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
         cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
         
+    # 3. Confirmar Item Selecionado e Quantidade (posicionados logo abaixo da busca)
     if not prods_filtrados.empty:
         dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
         ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()))
         q = st.number_input("Quantidade:", min_value=1, value=1)
         
+        st.markdown("---")
         if st.button("➕ Adicionar ao Pedido"):
             if not m.strip():
                 st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
@@ -196,7 +196,7 @@ with tabs[0]:
                             
                     conn.commit()
                     st.session_state.carrinho = []
-                    st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
+                    st.success("🚀 Pedido lançado com sucesso e estoque updated!")
                     st.rerun()
                 except Exception as e:
                     conn.rollback()
