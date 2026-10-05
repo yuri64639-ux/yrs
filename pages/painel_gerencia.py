@@ -27,7 +27,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", con
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
-with subtabs:
+with subtabs[0]:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
     if not df_est_visual.empty: df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
@@ -41,10 +41,10 @@ with subtabs:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.success("Estoque updated!")
+                st.success("Estoque atualizado!")
 
 # --- CANCELAMENTOS (INDEX 1) ---
-with subtabs:
+with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta para cancelamento.")
@@ -64,7 +64,7 @@ with subtabs:
                 st.success("Item removido!")
 
 # --- CADASTRO (INDEX 2) ---
-with subtabs:
+with subtabs[2]:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
         n_p = st.text_input("Nome:")
@@ -78,7 +78,7 @@ with subtabs:
             st.success("Produto gravado!")
 
 # --- RECEITAS MULTIPLAS (INDEX 3) ---
-with subtabs:
+with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -100,10 +100,9 @@ with subtabs:
                     c.commit()
                 st.success("Receita configurada!")
 
-# --- 📊 RELATÓRIOS (INDEX 4 - CONDICIONADO AOS 10%) ---
-with subtabs:
+# --- 📊 RELATÓRIOS (INDEX 4) ---
+with subtabs[4]:
     st.subheader("📊 Resumo Financeiro Geral")
-    
     vendas_df = pd.read_sql("""
         SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
         FROM public.pedidos p 
@@ -113,22 +112,17 @@ with subtabs:
     """, conn)
     
     if vendas_df.empty:
-        st.info("Nenhuma comanda finalizada no sistema até o momento.")
+        st.info("Nenhuma comanda foi finalizada no sistema até o momento.")
     else:
         pago_total = 0.0
         pendente_total = 0.0
-        
-        # Agrupa por comanda para calcular taxas unificadas de forma correta
         for mesa_id, grupo in vendas_df.groupby('mesa'):
             sub_mesa = float(grupo['subtotal'].sum())
             status_mesa = grupo['status'].iloc[0]
             taxa_marcada = int(grupo['taxa_paga'].iloc[0]) == 1
-            
             if status_mesa == 'Finalizado (Pago)':
-                # Se pagou, adiciona 10% de taxa ao faturamento se ela foi inclusa no fechamento
                 pago_total += (sub_mesa * 1.10) if taxa_marcada else sub_mesa
             else:
-                # Se não pagou, acumula apenas o valor seco consumido, sem a taxa de 10%
                 pendente_total += sub_mesa
         
         c_pago, c_pendente = st.columns(2)
@@ -137,19 +131,18 @@ with subtabs:
         
         st.markdown("---")
         st.markdown("**📋 Histórico Detalhado de Lançamentos:**")
-        
         visual_vendas = vendas_df.copy()
         visual_vendas['taxa_paga'] = visual_vendas['taxa_paga'].map({1: "Inclusa (10%)", 0: "Isenta"})
         visual_vendas.columns = ["Mesa/Comanda", "Item Vendido", "Quantidade", "Preço Un. (R$)", "Subtotal (R$)", "Situação", "Taxa de Serviço", "Data/Horário"]
         st.dataframe(visual_vendas, use_container_width=True, hide_index=True)
 
 # --- EXCLUIR (INDEX 5) ---
-with subtabs:
+with subtabs[5]:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
         if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values)
+            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
                 cur.execute("DELETE FROM public.receitas WHERE produto_id = %s", (id_p,))
@@ -160,7 +153,7 @@ with subtabs:
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].values)
+            id_i = int(df_est[df_est['item'] == i_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
                 cur.execute("DELETE FROM public.receitas WHERE insumo_id = %s", (id_i,))
