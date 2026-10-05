@@ -77,7 +77,7 @@ with subtabs[2]:
                 c.commit()
             st.success("Produto gravado!")
 # --- RECEITAS MULTIPLAS (INDEX 3) ---
-with subtabs[3]:
+with subtabs:
     st.subheader("🔬 Montar Ficha Técnica")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -100,7 +100,7 @@ with subtabs[3]:
                 st.success("Receita configurada!")
 
 # --- 📊 RELATÓRIOS COM SEPARAÇÃO DE FATURAMENTO E TAXA (INDEX 4) ---
-with subtabs[4]:
+with subtabs:
     st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("""
         SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
@@ -135,36 +135,66 @@ with subtabs[4]:
         col_pen.metric("⚠️ Total Perdido (Não Pago)", f"R$ {pendente_total:.2f}")
         
         st.markdown("---")
-        st.markdown(f"**📈 Caixa Bruto Total Movimentado (Empresa + Garçons): R$ {empresa_total + garcons_total:.2f}**")
-        st.markdown("---")
+        st.subheader("📋 Histórico Detalhado de Vendas")
         
-        st.markdown("**📋 Histórico Detalhado de Lançamentos:**")
-        visual_vendas = vendas_df.copy()
-        visual_vendas['taxa_paga'] = visual_vendas['taxa_paga'].map({1: "Inclusa (10%)", 0: "Isenta"})
-        visual_vendas.columns = ["Mesa/Comanda", "Item Vendido", "Quantidade", "Preço Un. (R$)", "Subtotal (R$)", "Situação", "Taxa de Serviço", "Data/Horário"]
-        st.dataframe(visual_vendas, use_container_width=True, hide_index=True)
+        df_vendas_visual = vendas_df.copy()
+        df_vendas_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa (10%)", "Horário"]
+        df_vendas_visual["Taxa (10%)"] = df_vendas_visual["Taxa (10%)"].map({1: "Sim", 0: "Não"})
+        st.dataframe(df_vendas_visual, use_container_width=True, hide_index=True)
 
-# --- EXCLUIR (INDEX 5) ---
-with subtabs[5]:
-    st.subheader("🗑 Excluir do Menu/Estoque")
-    if not df_prods.empty:
-        p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
-        if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values[0])
-            with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("DELETE FROM public.receitas WHERE produto_id = %s", (id_p,))
-                cur.execute("DELETE FROM public.produtos WHERE id = %s", (id_p,))
-                c.commit()
-            st.rerun()
-    st.markdown("---")
-    if not df_est.empty:
-        i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
-        if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].values[0])
-            with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("DELETE FROM public.receitas WHERE insumo_id = %s", (id_i,))
-                cur.execute("DELETE FROM public.estoque WHERE id = %s", (id_i,))
-                c.commit()
-            st.rerun()
+# --- 🗑️ EXCLUIR ITENS DO CARDÁPIO OU ESTOQUE (INDEX 5) ---
+with subtabs:
+    st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
+    col_del1, col_del2 = st.columns(2)
+    
+    with col_del1:
+        st.markdown("#### 🍔 Remover Produto do Cardápio")
+        if not df_prods.empty:
+            prod_para_excluir = st.selectbox("Selecione o Produto para deletar permanentemente:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
+            if st.button("❌ Excluir Produto", use_container_width=True):
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("DELETE FROM public.receitas WHERE produto_id = (SELECT id FROM public.produtos WHERE nome = %s)", (prod_para_excluir,))
+                    cur.execute("DELETE FROM public.produtos WHERE nome = %s", (prod_para_excluir,))
+                    c.commit()
+                st.success(f"'{prod_para_excluir}' removido com sucesso do cardápio!")
+                st.rerun()
+        else:
+            st.info("Nenhum produto cadastrado.")
+
+    with col_del2:
+        st.markdown("#### 📦 Remover Insumo do Estoque")
+        if not df_est.empty:
+            insumo_para_excluir = st.selectbox("Selecione o Insumo para deletar permanentemente:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
+            if st.button("❌ Excluir Insumo", use_container_width=True):
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("DELETE FROM public.receitas WHERE insumo_id = (SELECT id FROM public.estoque WHERE item = %s)", (insumo_para_excluir,))
+                    cur.execute("DELETE FROM public.estoque WHERE item = %s", (insumo_para_excluir,))
+                    c.commit()
+                st.success(f"'{insumo_para_excluir}' removido com sucesso do estoque!")
+                st.rerun()
+        else:
+            st.info("Nenhum insumo cadastrado.")
+
+# 🎨 DESIGN PROFISSIONAL E REMOÇÃO DOS MENUS SUPERIORES (CSS)
+st.markdown("""
+<style>
+    /* Oculta o botão 'Share', o menu de 3 pontinhos, o deploy e a barra do topo */
+    stAppToolbar, [data-testid="stHeader"] {
+        visibility: hidden !important;
+        height: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Remove o espaço em branco que sobrava no topo após esconder a barra */
+    .block-container {
+        padding-top: 2rem !important;
+    }
+    
+    /* Oculta o rodapé 'Made with Streamlit' */
+    footer {
+        visibility: hidden !important;
+    }
+</style>
+""", unsafe_allow_html=True)
