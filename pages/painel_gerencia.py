@@ -22,9 +22,9 @@ def ob_cx():
 conn = ob_cx()
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque ORDER BY item", conn)
-df_prods = pd.read_sql("SELECT id, nome, categoria, preco FROM public.produtos ORDER BY nome", conn)
+df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", conn)
 
-subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro em Massa", "🔬 Receitas em Massa", "📊 Relatórios", "🗑️ Excluir"])
+subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas (Até 4 Itens)", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
 with subtabs[0]:
@@ -63,65 +63,73 @@ with subtabs[1]:
                     c.commit()
                 st.success("Item removido!"); st.rerun()
 
-# --- CADASTRO EM MASSA (INDEX 2) ---
+# --- CADASTRO (INDEX 2) ---
 with subtabs[2]:
-    st.subheader("🍔 Cadastrar Vários Produtos de Uma Vez")
-    st.info("💡 Preencha a tabela abaixo como uma planilha. Clique nas linhas de baixo para adicionar mais itens.")
-    
-    # Cria uma estrutura vazia para inserção de dados em massa
-    df_novo_prod = pd.DataFrame([{"Nome do Produto": "", "Categoria": "Drinks", "Preço de Venda (R$)": 15.0}])
-    grid_prods = st.data_editor(df_novo_prod, num_rows="dynamic", use_container_width=True, key="grid_p", column_config={
-        "Categoria": st.column_config.SelectboxColumn(options=cats)
-    })
-    
-    if st.button("🔥 Salvar Todos os Produtos Cadastrados", type="primary"):
-        salvos = 0
-        with ob_cx() as c, c.cursor() as cur:
-            cur.execute("SET search_path TO public;")
-            for _, row in grid_prods.iterrows():
-                nome = str(row["Nome do Produto"]).strip()
-                cat = str(row["Categoria"])
-                preco = float(row["Preço de Venda (R$)"])
-                if nome:
-                    cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (nome, cat, preco))
-                    salvos += 1
-            c.commit()
-        if salvos > 0:
-            st.success(f"Sucesso! {salvos} produtos foram gravados no cardápio de uma só vez.")
-            st.rerun()
-# --- RECEITAS EM MASSA (INDEX 3) ---
-with subtabs[3]:
-    st.subheader("🔬 Vincular Receitas / Fichas Técnicas em Massa")
-    if not df_prods.empty and not df_est.empty:
-        st.info("💡 Insira o Produto, o Insumo do estoque e a quantidade gasta em ml ou gramas.")
-        
-        lista_prods = sorted(list(df_prods['nome']))
-        lista_insumos = sorted(list(df_est['item']))
-        
-        df_nova_rec = pd.DataFrame([{"Produto do Cardápio": lista_prods[0], "Ingrediente/Insumo": lista_insumos[0], "Qtd Gasta (ml ou g)": 50.0}])
-        grid_refeitas = st.data_editor(df_nova_rec, num_rows="dynamic", use_container_width=True, key="grid_r", column_config={
-            "Produto do Cardápio": st.column_config.SelectboxColumn(options=lista_prods),
-            "Ingrediente/Insumo": st.column_config.SelectboxColumn(options=lista_insumos)
-        })
-        
-        if st.button("🔥 Gravar Todas as Receitas Juntas", type="primary"):
-            recs_salvas = 0
-            d_p = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
-            d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
-            
+    st.subheader("🍔 Criar Produto")
+    with st.form("f_prod", clear_on_submit=True):
+        n_p = st.text_input("Nome:")
+        c_p = st.selectbox("Categoria:", cats)
+        p_p = st.number_input("Preço de Venda:", min_value=0.0, value=15.0)
+        if st.form_submit_button("Gravar") and n_p.strip():
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
-                for _, row in grid_refeitas.iterrows():
-                    p_nome = row["Produto do Cardápio"]
-                    i_nome = row["Ingrediente/Insumo"]
-                    qtd = float(row["Qtd Gasta (ml ou g)"])
-                    if p_nome in d_p and i_nome in d_i and qtd > 0:
-                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (d_p[p_nome], d_i[i_nome], qtd))
-                        recs_salvas += 1
+                cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
                 c.commit()
-            if recs_salvas > 0:
-                st.success(f"Sucesso! {recs_salvas} vínculos de receita foram atualizados.")
-                st.rerun()
+            st.success("Produto gravado!"); st.rerun()
+# --- RECEITAS ATUALIZADAS PARA ATÉ 4 INSUMOS (INDEX 3 COIGIDO) ---
+with subtabs[3]:
+    st.subheader("🔬 Montar Ficha Técnica (De 1 até 4 Insumos Simultâneos)")
+    st.info("💡 Escolha o produto e defina de 1 a 4 ingredientes informando o gasto em ml ou gramas.")
+    if not df_prods.empty and not df_est.empty:
+        lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
+        lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
+        d_p = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
+        d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
+        
+        with st.form("f_vinc_multi_4", clear_on_submit=True):
+            p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
+            st.markdown("---")
+            
+            # Linha do Insumo 1
+            col1, col2 = st.columns(2)
+            i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1")
+            q1 = col2.number_input("Qtd gasta 1 (ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q1")
+            
+            # Linha do Insumo 2
+            col3, col4 = st.columns(2)
+            i2 = col3.selectbox("Ingrediente 2 (Opcional):", lista_insumos, key="i2")
+            q2 = col4.number_input("Qtd gasta 2 (ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q2")
+            
+            # Linha do Insumo 3
+            col5, col6 = st.columns(2)
+            i3 = col5.selectbox("Ingrediente 3 (Opcional):", lista_insumos, key="i3")
+            q3 = col6.number_input("Qtd gasta 3 (ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q3")
+            
+            # NOVA LINHA: Insumo 4 adicionado conforme pedido
+            col7, col8 = st.columns(2)
+            i4 = col7.selectbox("Ingrediente 4 (Opcional):", lista_insumos, key="i4")
+            q4 = col8.number_input("Qtd gasta 4 (ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q4")
+            
+            if st.form_submit_button("🔥 Gravar Receita Completa"):
+                vinc_salvos = 0
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    if i1 != "---" and q1 > 0:
+                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i1], q1))
+                        vinc_salvos += 1
+                    if i2 != "---" and q2 > 0:
+                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i2], q2))
+                        vinc_salvos += 1
+                    if i3 != "---" and q3 > 0:
+                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i3], q3))
+                        vinc_salvos += 1
+                    if i4 != "---" and q4 > 0:
+                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i4], q4))
+                        vinc_salvos += 1
+                    c.commit()
+                if vinc_salvos > 0:
+                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) configurados."); st.rerun()
+                else: st.error("Preencha ao menos um ingrediente válido.")
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
 # --- 📊 RELATÓRIOS (INDEX 4) ---
@@ -171,6 +179,7 @@ with subtabs[5]:
                 cur.execute("DELETE FROM public.produtos WHERE id = %s", (id_p,))
                 c.commit()
             st.success("Removido!"); st.rerun()
+    st.markdown("---")
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
