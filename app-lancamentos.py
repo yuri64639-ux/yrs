@@ -37,8 +37,8 @@ if "carrinho" not in st.session_state:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: LANÇAMENTO COM LUPA EM PRIMEIRO LUGAR ---
-with tabs:
+# --- ABA 0: LANÇAMENTO COM LUPA EM PRIMEIRO LUGAR (ÍNDICE 0 CORRIGIDO) ---
+with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
@@ -47,19 +47,16 @@ with tabs:
     st.markdown("---")
     st.markdown("**1. Adicione os itens ao pedido:**")
     
-    # LUPA COLOCADA EM PRIMEIRO LUGAR (Ajudando o garçom a digitar com autocompleto)
+    # LUPA DE PESQUISA EM PRIMEIRO LUGAR (Filtra conforme o garçom digita)
     busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo").strip()
     
-    # Carrega os produtos filtrando dinamicamente pelo que está sendo digitado
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
-        # Se a lupa estiver vazia, ele pede para escolher a categoria para listar
         cat_sel = st.selectbox("Ou selecione uma Categoria para listar:", cats)
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
     
     if not prods_filtrados.empty:
-        # Monta a lista com os itens encontrados
         dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
         ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()))
         q = st.number_input("Quantidade:", min_value=1, value=1)
@@ -77,7 +74,6 @@ with tabs:
                     "preco": float(item_escolhido['preco'])
                 })
                 st.success(f"'{q}x {item_escolhido['nome']}' adicionado ao rascunho!")
-                st.reset_data_editor = True # Ajuda o Streamlit a focar no próximo item
                 st.rerun()
     else:
         st.warning("Nenhum item encontrado. Continue digitando ou verifique o nome.")
@@ -89,7 +85,7 @@ with tabs:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item['qtd'] * item['preco']
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns()
+            col_txt, col_btn = st.columns([4, 1])
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -126,12 +122,12 @@ with tabs:
                             qtd_convertida = float((float(r_ins['qtd_insumo']) / 1000.0) * qtd)
                             cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r_ins['insumo_id'])))
                     c_massa.commit()
-                st.success(f"✅ Sucesso! Comanda enviada!")
+                st.success(f"✅ Sucesso! Comanda da mesa {m.strip()} enviada!")
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- CONTAS (INDEX 1) ---
-with tabs:
+# --- CONTAS (ÍNDICE 1 CORRIGIDO) ---
+with tabs[1]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -149,4 +145,4 @@ with tabs:
                         cur_fechar.execute("SET search_path TO public;")
                         cur_fechar.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (status_final, 1 if tx > 0 else 0, pago_opcao, m_aberta))
                         c_fechar.commit()
-                    st.success(f"Conta fechada!"); st.rerun()
+                    st.success(f"Conta da mesa {m_aberta} fechada!"); st.rerun()
