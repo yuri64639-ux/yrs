@@ -34,38 +34,33 @@ with conn.cursor() as cur:
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = []
 
-# --- 📌 NOVO: BUSCA E EXIBIÇÃO DO LEMBRETE DA ÚLTIMA MESA ABERTA ---
-df_ultima_mesa = pd.read_sql("""
-    SELECT mesa FROM public.pedidos 
-    WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') 
-    ORDER BY id DESC LIMIT 1
-""", conn)
-
+# Lembrete da última mesa aberta (Continua ativo por segurança)
+df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    ultima_mesa = df_ultima_mesa['mesa'].iloc[0]
-    st.info(f"📌 **Lembrete:** A última mesa aberta no sistema foi a comanda **{ultima_mesa}**")
-else:
-    st.light("💡 **Aviso:** Não há nenhuma comanda ativa aberta no momento.")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 0: LANÇAMENTO COM CARRINHO E LUPA INTEGRADA ---
+# --- ABA 0: LANÇAMENTO COM LUPA NO PRIMEIRO LUGAR ABSOLUTO ---
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     
+    # 🔍 1. LUPA EM PRIMEIRO LUGAR ABSOLUTO
+    busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo_absoluto").strip()
+    
+    # 📱 2. CAMPO DA MESA / COMANDA LOGO ABAIXO
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
     st.markdown("---")
-    st.markdown("**1. Adicione os itens ao pedido:**")
+    st.markdown("**Ajuste e adicione o item encontrado:**")
     
-    cat_sel = st.selectbox("Escolha a Categoria:", cats)
-    busca_nome = st.text_input("🔍 Lupa - Digite o nome do produto para filtrar (Opcional):", key="lupa_busca_topo").strip()
-    
+    # Busca dinâmica com base na digitação da lupa no começo
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
+        cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
     
     if not prods_filtrados.empty:
@@ -88,7 +83,7 @@ with tabs[0]:
                 st.success(f"'{q}x {item_escolhido['nome']}' adicionado ao rascunho!")
                 st.rerun()
     else:
-        st.warning("Nenhum item encontrado. Continue digitando ou verifique o nome.")
+        st.warning("Nenhum item encontrado. Continue digitando ou limpe o campo para listar por categoria.")
     if st.session_state.carrinho:
         st.markdown("---")
         st.markdown(f"📋 **Resumo do Pedido Atual (Mesa: {m}):**")
