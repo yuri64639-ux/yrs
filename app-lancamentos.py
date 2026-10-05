@@ -55,8 +55,8 @@ for idx, cat in enumerate(cats):
                     else: st.error("Estoque insuficiente!")
             else: st.warning("Nenhum item cadastrado.")
 
-# --- CONTAS ---
-with tabs:
+# --- CONTAS (LINHA 59 CORRIGIDA COM O ÍNDICE CORRETO) ---
+with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -101,7 +101,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM produtos ORDER BY nome", conn)
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
 # --- ESTOQUE ---
-with subtabs:
+with subtabs[0]:
     st.subheader("📦 Estoque Atual")
     st.dataframe(df_est, use_container_width=True, hide_index=True)
     with st.expander("➕ Alimentar Estoque"):
@@ -115,7 +115,7 @@ with subtabs:
                 st.rerun()
 
 # --- CANCELAMENTOS ---
-with subtabs:
+with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta.")
@@ -133,7 +133,7 @@ with subtabs:
                 st.rerun()
 
 # --- CADASTRO ---
-with subtabs:
+with subtabs[2]:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
         n_p = st.text_input("Nome:")
@@ -146,7 +146,7 @@ with subtabs:
             st.rerun()
 
 # --- RECEITAS MULTIPLAS ---
-with subtabs:
+with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica (Até 3 Ingredientes juntos)")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -189,7 +189,7 @@ with subtabs:
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
 # --- EXCLUIR ---
-with subtabs:
+with subtabs[4]:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
