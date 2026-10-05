@@ -1,5 +1,5 @@
 from datetime import datetime
-import streamlit as st
+import streamlit st
 import psycopg2
 import pandas as pd
 
@@ -22,6 +22,7 @@ def ob_cx():
 
 conn = ob_cx()
 with conn.cursor() as cur:
+    cur.execute("SET search_path TO public;")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT UNIQUE, quantidade REAL);
         CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);
@@ -33,7 +34,7 @@ with conn.cursor() as cur:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Porções", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas"])
 
-# --- PEDIDOS (ÍNDICES 0 A 5) ---
+# --- PEDIDOS ---
 for idx, cat in enumerate(cats):
     with tabs[idx]:
         prods = pd.read_sql("SELECT id, nome, preco FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat])
@@ -46,19 +47,22 @@ for idx, cat in enumerate(cats):
                 if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
                     pid = int(dp[ps]['id'])
                     rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.quantidade FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
+                    
                     if all([r['quantidade'] >= ((r['qtd_insumo'] / 1000.0) * q) for _, r in rec.iterrows()]):
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                            for _, r in rec.iterrows(): 
-                                qtd_convertida = (r['qtd_insumo'] / 1000.0) * q
-                                cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
-                            c.commit()
+                        # Força uma transação isolada e limpa para gravação
+                        with ob_cx() as c_transacao:
+                            with c_transacao.cursor() as cur_trans:
+                                cur_trans.execute("SET search_path TO public;")
+                                cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                                for _, r in rec.iterrows(): 
+                                    qtd_convertida = (r['qtd_insumo'] / 1000.0) * q
+                                    cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
+                                c_transacao.commit()
                         st.success("Enviado!"); st.rerun()
                     else: st.error("Estoque insuficiente!")
             else: st.warning("Nenhum item cadastrado.")
 
-# --- CONTAS (ÍNDICE 6 CORRIGIDO) ---
+# --- CONTAS ---
 with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
@@ -71,10 +75,10 @@ with tabs[6]:
                 tx = sub * 0.10 if st.checkbox("Taxa (10%)", value=True, key=f"t_{m}") else 0.0
                 st.markdown(f"### Total: R$ {sub + tx:.2f}")
                 if st.button(f"💵 Fechar Conta {m}", key=f"b_{m}"):
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE mesa = %s AND status != 'Finalizado (Pago)'", (1 if tx > 0 else 0, m))
-                        c.commit()
+                    with ob_cx() as c_fechar, c_fechar.cursor() as cur_fechar:
+                        cur_fechar.execute("SET search_path TO public;")
+                        cur_fechar.execute("UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE mesa = %s AND status != 'Finalizado (Pago)'", (1 if tx > 0 else 0, m))
+                        c_fechar.commit()
                     st.success("Fechada!"); st.rerun()
 import streamlit as st
 import psycopg2
@@ -210,7 +214,7 @@ with subtabs[4]:
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
         if p_ex != "---" and st.button("❌ Deletar Produto"):
-            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values)
+            id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
                 cur.execute("DELETE FROM public.receitas WHERE produto_id = %s", (id_p,))
@@ -220,7 +224,7 @@ with subtabs[4]:
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
-            id_i = int(df_est[df_est['item'] == i_ex]['id'].values)
+            id_i = int(df_est[df_est['item'] == i_ex]['id'].values[0])
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
                 cur.execute("DELETE FROM public.receitas WHERE insumo_id = %s", (id_i,))
