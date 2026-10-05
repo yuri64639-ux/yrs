@@ -31,67 +31,34 @@ with conn.cursor() as cur:
     """)
     conn.commit()
 
-df_prods = pd.read_sql("SELECT id, nome, preco FROM public.produtos ORDER BY nome", conn)
-tabs = st.tabs(["🚀 Lançamento em Massa", "💵 Contas"])
+cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
+tabs = st.tabs(["🍸 Drinks", "🍺 Cervejas", "🥤 Sem Álcool", "🍟 Porções", "🍽️ Principais", "🍰 Sobremesas", "💵 Contas", "🚀 Lançar Vários"])
 
-# --- LANÇAMENTO EM MASSA (INDEX 0) ---
-with tabs[0]:
-    st.subheader("📝 Lançar Múltiplos Pedidos")
-    st.info("💡 Insira a comanda, o produto e a quantidade. Clique na linha de baixo para lançar mais itens juntos.")
-    
-    if not df_prods.empty:
-        lista_itens_cardapio = sorted(list(df_prods['nome']))
-        
-        # Cria a estrutura padrão da planilha de lançamentos
-        df_novo_pedido = pd.DataFrame([{"Mesa / Comanda": "", "Produto": lista_itens_cardapio, "Quantidade": 1}])
-        grid_pedidos = st.data_editor(df_novo_pedido, num_rows="dynamic", use_container_width=True, key="grid_ped", column_config={
-            "Produto": st.column_config.SelectboxColumn(options=lista_itens_cardapio),
-            "Quantidade": st.column_config.NumberColumn(min_value=1, step=1)
-        })
-        
-        if st.button("🔥 Enviar Todos os Pedidos", type="primary"):
-            pedidos_validos = []
-            estoque_ok = True
-            mapa_produtos = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
-            
-            # 1. Validação prévia de estoque para TODAS as linhas da planilha
-            for _, row in grid_pedidos.iterrows():
-                mesa = str(row["Mesa / Comanda"]).strip()
-                prod_nome = row["Produto"]
-                qtd = int(row["Quantidade"])
-                
-                if mesa and prod_nome in mapa_produtos and qtd > 0:
-                    pid = mapa_produtos[prod_nome]
-                    rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.item, e.quantidade FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
-                    
-                    for _, r in rec.iterrows():
-                        qtd_necessaria = (float(r['qtd_insumo']) / 1000.0) * qtd
-                        if r['quantidade'] < qtd_necessaria:
-                            st.error(f"🚨 Estoque insuficiente de '{r['item']}' para fazer o item '{prod_nome}' na comanda {mesa}!")
-                            estoque_ok = False
-                    
-                    if estoque_ok:
-                        pedidos_validos.append((mesa, pid, qtd, prod_nome))
-            
-            # 2. Se todo o estoque estiver validado, processa a gravação de uma só vez
-            if estoque_ok and pedidos_validos:
-                with ob_cx() as c_trans, c_trans.cursor() as cur_trans:
-                    cur_trans.execute("SET search_path TO public;")
-                    for mesa, pid, qtd, prod_nome in pedidos_validos:
-                        cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (mesa, pid, qtd, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                        
-                        # Carrega os insumos novamente para dar a baixa na transação ativa
-                        rec = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE produto_id = %s", conn, params=[pid])
-                        for _, r in rec.iterrows():
-                            qtd_convertida = float((float(r['qtd_insumo']) / 1000.0) * qtd)
-                            cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
-                    c_trans.commit()
-                st.success(f"✅ Sucesso! {len(pedidos_validos)} pedidos lançados e estoque atualizado.")
-                st.rerun()
-    else:
-        st.warning("Nenhum produto cadastrado no cardápio. Cadastre os itens na gerência primeiro.")
-# --- CONTAS (INDEX 1) ---
-with tabs[1]:
+# --- INTERFACE POR CATEGORIAS (ÍNDICES 0 A 5) ---
+for idx, cat in enumerate(cats):
+    with tabs[idx]:
+        prods = pd.read_sql("SELECT id, nome, preco FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat])
+        with st.form(f"f_{idx}", clear_on_submit=True):
+            m = st.text_input("Mesa / Comanda:", key=f"m_{idx}")
+            if not prods.empty:
+                dp = {f"{r['nome']} (R$ {r['preco']:.2f})": r for _, r in prods.iterrows()}
+                ps = st.selectbox("Escolha o Item:", list(dp.keys()), key=f"ps_{idx}")
+                q = st.number_input("Quantidade:", min_value=1, value=1, key=f"q_{idx}")
+                if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
+                    pid = int(dp[ps]['id'])
+                    rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.quantidade FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
+                    if all([r['quantidade'] >= ((r['qtd_insumo'] / 1000.0) * q) for _, r in rec.iterrows()]):
+                        with ob_cx() as c_trans, c_trans.cursor() as cur_trans:
+                            cur_trans.execute("SET search_path TO public;")
+                            cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, int(q), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                            for _, r in rec.iterrows(): 
+                                cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (float((float(r['qtd_insumo']) / 1000.0) * int(q)), int(r['insumo_id'])))
+                            c_trans.commit()
+                        st.success("Pedido enviado com sucesso!")
+                    else: st.error("Estoque insuficiente!")
+            else: st.warning("Nenhum item cadastrado.")
+# --- CONTAS (ÍNDICE 6) ---
+with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -110,3 +77,54 @@ with tabs[1]:
                         cur_fechar.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (status_final, 1 if tx > 0 else 0, pago_opcao, m))
                         c_fechar.commit()
                     st.success(f"Conta da mesa {m} fechada!"); st.rerun()
+
+# --- NOVA ABA: SELECIONAR PRIMEIRO E LANÇAR DEPOIS (ÍNDICE 7 CORRIGIDO) ---
+with tabs[7]:
+    st.subheader("🚀 Lançamento Rápido por Seleção Múltipla")
+    m_massa = st.text_input("Mesa / Comanda para o Lançamento:", key="m_massa_input")
+    df_prods_all = pd.read_sql("SELECT id, nome, categoria, preco FROM public.produtos ORDER BY categoria, nome", conn)
+    
+    if not df_prods_all.empty and m_massa.strip():
+        produtos_selecionados = st.multiselect("1. Selecione TODOS os produtos que saíram para esta mesa:", list(df_prods_all['nome']))
+        
+        if produtos_selecionados:
+            st.markdown("---")
+            st.markdown("**2. Ajuste as quantidades dos itens selecionados:**")
+            
+            itens_a_enviar = {}
+            for p_nome in produtos_selecionados:
+                linha_prod = df_prods_all[df_prods_all['nome'] == p_nome].iloc[0]
+                qtd_item = st.number_input(f"Quantidade de {p_nome} (R$ {linha_prod['preco']:.2f}):", min_value=1, value=1, key=f"mass_q_{linha_prod['id']}")
+                itens_a_enviar[p_nome] = {"id": int(linha_prod['id']), "qtd": int(qtd_item)}
+            
+            st.markdown("---")
+            if st.button("🔥 Confirmar e Enviar Todos os Itens Selecionados", type="primary"):
+                pedidos_ok = []
+                estoque_ok = True
+                
+                for p_nome, dados in itens_a_enviar.items():
+                    rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.item, e.quantidade FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[dados["id"]])
+                    for _, r in rec.iterrows():
+                        qtd_necessaria = (float(r['qtd_insumo']) / 1000.0) * dados["qtd"]
+                        if r['quantidade'] < qtd_necessaria:
+                            st.error(f"🚨 Estoque insuficiente do ingrediente '{r['item']}' para fazer o item '{p_nome}'!")
+                            estoque_ok = False
+                    if estoque_ok:
+                        pedidos_ok.append((dados["id"], dados["qtd"]))
+                
+                if estoque_ok and pedidos_ok:
+                    with ob_cx() as c_massa, c_massa.cursor() as cur_trans:
+                        cur_trans.execute("SET search_path TO public;")
+                        for pid, qtd in pedidos_ok:
+                            cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantity, horario)" if "quantity" in pd.read_sql("SELECT * FROM public.pedidos LIMIT 1", conn).columns else "INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m_massa.strip(), pid, qtd, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                            rec = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE produto_id = %s", conn, params=[pid])
+                            for _, r in rec.iterrows():
+                                qtd_convertida = float((float(r['qtd_insumo']) / 1000.0) * qtd)
+                                cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
+                        c_massa.commit()
+                    st.success(f"✅ Sucesso! Todos os itens foram lançados na comanda {m_massa.strip()}!")
+                    st.rerun()
+    elif not m_massa.strip():
+        st.info("💡 Digite o número da mesa ou comanda acima para liberar a seleção de produtos.")
+    else:
+        st.warning("Cadastre produtos no cardápio primeiro.")
