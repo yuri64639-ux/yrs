@@ -56,7 +56,7 @@ for idx, cat in enumerate(cats):
             else: st.warning("Nenhum item cadastrado.")
 
 # --- CONTAS ---
-with tabs[6]:
+with tabs:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)'", conn)
     if peds.empty: st.info("Nenhuma comanda aberta.")
@@ -101,7 +101,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM produtos ORDER BY nome", conn)
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "🗑️ Excluir"])
 
 # --- ESTOQUE ---
-with subtabs[0]:
+with subtabs:
     st.subheader("📦 Estoque Atual")
     st.dataframe(df_est, use_container_width=True, hide_index=True)
     with st.expander("➕ Alimentar Estoque"):
@@ -115,14 +115,14 @@ with subtabs[0]:
                 st.rerun()
 
 # --- CANCELAMENTOS ---
-with subtabs[1]:
+with subtabs:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.status != 'Finalizado (Pago)' ORDER BY p.mesa", conn)
     if p_ab.empty: st.info("Nenhuma comanda aberta.")
     else:
         m_sel = st.selectbox("Selecione a Mesa:", sorted(list(set(p_ab['mesa'].tolist()))))
         for _, it in p_ab[p_ab['mesa'] == m_sel].iterrows():
-            col1, col2 = st.columns([3, 1])
+            col1, col2 = st.columns()
             col1.write(f"▪ *{it['quantidade']}x* {it['nome']}")
             if col2.button("Deletar", key=f"cn_{it['id']}"):
                 with ob_cx() as c, c.cursor() as cur:
@@ -133,7 +133,7 @@ with subtabs[1]:
                 st.rerun()
 
 # --- CADASTRO ---
-with subtabs[2]:
+with subtabs:
     st.subheader("🍔 Criar Produto")
     with st.form("f_prod", clear_on_submit=True):
         n_p = st.text_input("Nome:")
@@ -145,22 +145,51 @@ with subtabs[2]:
                 c.commit()
             st.rerun()
 
-# --- RECEITAS ---
-with subtabs[3]:
-    st.subheader("🔬 Montar Ficha Técnica")
+# --- RECEITAS MULTIPLAS ---
+with subtabs:
+    st.subheader("🔬 Montar Ficha Técnica (Até 3 Ingredientes juntos)")
     if not df_prods.empty and not df_est.empty:
-        with st.form("f_vinc", clear_on_submit=True):
-            p_sel = {r['nome']: r['id'] for _, r in df_prods.iterrows()}[st.selectbox("Produto:", [r['nome'] for _, r in df_prods.iterrows()])]
-            i_sel = {r['item']: r['id'] for _, r in df_est.iterrows()}[st.selectbox("Insumo que gasta:", [r['item'] for _, r in df_est.iterrows()])]
-            qtd = st.number_input("Qtd gasta:", min_value=0.01, value=80.0)
-            if st.form_submit_button("Vincular"):
+        lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
+        lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
+        d_p = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
+        d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
+        
+        with st.form("f_vinc_multi", clear_on_submit=True):
+            p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
+            st.markdown("---")
+            
+            col1, col2 = st.columns(2)
+            i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1")
+            q1 = col2.number_input("Qtd gasta 1 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q1")
+            
+            col3, col4 = st.columns(2)
+            i2 = col3.selectbox("Ingrediente 2 (Opcional):", lista_insumos, key="i2")
+            q2 = col4.number_input("Qtd gasta 2 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q2")
+            
+            col5, col6 = st.columns(2)
+            i3 = col5.selectbox("Ingrediente 3 (Opcional):", lista_insumos, key="i3")
+            q3 = col6.number_input("Qtd gasta 3 (g/ml):", min_value=0.0, value=0.0, step=5.0, key="q3")
+            
+            if st.form_submit_button("🔥 Gravar Receita Completa"):
+                vinc_salvos = 0
                 with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("INSERT INTO receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, i_sel, qtd))
+                    if i1 != "---" and q1 > 0:
+                        cur.execute("INSERT INTO receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i1], q1))
+                        vinc_salvos += 1
+                    if i2 != "---" and q2 > 0:
+                        cur.execute("INSERT INTO receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i2], q2))
+                        vinc_salvos += 1
+                    if i3 != "---" and q3 > 0:
+                        cur.execute("INSERT INTO receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i3], q3))
+                        vinc_salvos += 1
                     c.commit()
-                st.rerun()
+                if vinc_salvos > 0:
+                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) vinculados."); st.rerun()
+                else: st.error("Preencha ao menos um ingrediente válido.")
+    else: st.warning("Cadastre produtos e insumos primeiro.")
 
 # --- EXCLUIR ---
-with subtabs[4]:
+with subtabs:
     st.subheader("🗑 Excluir do Menu/Estoque")
     if not df_prods.empty:
         p_ex = st.selectbox("Remover do Cardápio:", ["---"] + list(df_prods['nome']))
