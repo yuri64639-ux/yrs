@@ -3,7 +3,36 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 
+# CONFIGURAÇÃO ÚNICA DA PÁGINA
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
+
+# 🎨 DESIGN PROFISSIONAL DO MENU LATERAL (CSS)
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            background-color: #1E1E24;
+        }
+        [data-testid="stSidebar"] .st-emotion-cache-1768qis, [data-testid="stSidebar"] p {
+            color: #FFFFFF !important;
+            font-size: 16px !important;
+            font-weight: 500;
+        }
+        [data-testid="stSidebarNavActiveItem"] {
+            background-color: #007BFF !important;
+            border-radius: 8px !important;
+            padding: 6px 12px !important;
+        }
+        [data-testid="stSidebarNavActiveItem"] p {
+            color: #FFFFFF !important;
+            font-weight: bold !important;
+        }
+        [data-testid="stSidebarNavItems"] li:hover {
+            background-color: #2D2D35;
+            border-radius: 8px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.markdown("<style>.stButton>button { width: 100%; height: 3rem; }</style>", unsafe_allow_html=True)
 PASS = "orla123"
 
@@ -34,7 +63,6 @@ with conn.cursor() as cur:
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = []
 
-# Lembrete da última mesa aberta (Continua ativo por segurança)
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
     st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
@@ -42,21 +70,15 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 0: LANÇAMENTO COM LUPA NO PRIMEIRO LUGAR ABSOLUTO ---
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
-    
-    # 🔍 1. LUPA EM PRIMEIRO LUGAR ABSOLUTO
     busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo_absoluto").strip()
-    
-    # 📱 2. CAMPO DA MESA / COMANDA LOGO ABAIXO
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
     st.markdown("---")
     st.markdown("**Ajuste e adicione o item encontrado:**")
     
-    # Busca dinâmica com base na digitação da lupa no começo
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
@@ -87,7 +109,6 @@ with tabs[0]:
     if st.session_state.carrinho:
         st.markdown("---")
         st.markdown(f"📋 **Resumo do Pedido Atual (Mesa: {m}):**")
-        
         total_carrinho = 0.0
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item['qtd'] * item['preco']
@@ -99,7 +120,6 @@ with tabs[0]:
                 st.rerun()
                 
         st.markdown(f"### 🧾 Total Parcial: R$ {total_carrinho:.2f}")
-        
         col_cancelar, col_enviar = st.columns(2)
         if col_cancelar.button("❌ Limpar Todo o Rascunho"):
             st.session_state.carrinho = []
@@ -133,7 +153,6 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- CONTAS (ÍNDICE 1 CORRIGIDO) ---
 with tabs[1]:
     st.subheader("🎟️ Contas Abertas")
     peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
