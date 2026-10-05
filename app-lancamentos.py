@@ -49,16 +49,18 @@ for idx, cat in enumerate(cats):
                 if st.form_submit_button("🚀 Enviar", type="primary") and m.strip():
                     pid = int(dp[ps]['id'])
                     rec = pd.read_sql("SELECT r.insumo_id, r.qtd_insumo, e.quantidade FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s", conn, params=[pid])
+                    
                     if all([r['quantidade'] >= ((r['qtd_insumo'] / 1000.0) * q) for _, r in rec.iterrows()]):
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("SET search_path TO public;")
                             cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), pid, int(q), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                            for _, r in rec.iterrows(): cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (float((float(r['qtd_insumo']) / 1000.0) * int(q)), int(r['insumo_id'])))
+                            for _, r in rec.iterrows(): 
+                                qtd_convertida = float((float(r['qtd_insumo']) / 1000.0) * int(q))
+                                cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
                             c.commit()
-                        st.success("Enviado!")
+                        st.success("Enviado!"); st.rerun()
                     else: st.error("Estoque insuficiente!")
             else: st.warning("Nenhum item cadastrado.")
-
 # --- CONTAS (ABA INDEX 6) ---
 with tabs[6]:
     st.subheader("🎟️ Contas Abertas")
@@ -79,9 +81,10 @@ with tabs[6]:
                         cur.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (st_fn, 1 if tx > 0 else 0, pago_opcao, m))
                         c.commit()
                     st.success("Fechada!"); st.rerun()
+
 # --- CANCELAMENTOS (ABA INDEX 7) ---
 with tabs[7]:
-    st.subheader("❌ Cancelamento de Itens")
+    st.subheader("❌ Cancelamento de Itens por Comanda")
     if "ok_c" not in st.session_state: st.session_state["ok_c"] = False
     if not st.session_state["ok_c"]:
         with st.form("f_c_auth"):
@@ -103,7 +106,6 @@ with tabs[7]:
                         cur.execute("DELETE FROM public.pedidos WHERE id = %s", (int(it['id']),))
                         c.commit()
                     st.success("Estornado!"); st.rerun()
-
 # --- GERÊNCIA (ABA INDEX 8) ---
 with tabs[8]:
     if "ok_g" not in st.session_state: st.session_state["ok_g"] = False
