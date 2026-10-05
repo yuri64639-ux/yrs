@@ -58,7 +58,7 @@ for idx, cat in enumerate(cats):
                                     qtd_convertida = float((float(r['qtd_insumo']) / 1000.0) * int(q))
                                     cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r['insumo_id'])))
                                 c_trans.commit()
-                        st.success("Enviado!"); st.rerun()
+                        st.success("Pedido enviado com sucesso!")
                     else: st.error("Estoque insuficiente!")
             else: st.warning("Nenhum item cadastrado.")
 
@@ -75,7 +75,6 @@ with tabs[6]:
                 tx = sub * 0.10 if st.checkbox("Taxa de Serviço (10%)", value=True, key=f"t_{m}") else 0.0
                 st.markdown(f"### Total Final: R$ {sub + tx:.2f}")
                 
-                # Opção de pagamento para o fechamento
                 pago_opcao = st.radio("O cliente pagou a conta?", ["Sim", "Não"], key=f"pago_{m}", horizontal=True)
                 
                 if st.button(f"💵 Fechar Conta {m}", key=f"b_{m}"):
@@ -84,7 +83,7 @@ with tabs[6]:
                         cur_fechar.execute("SET search_path TO public;")
                         cur_fechar.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (status_final, 1 if tx > 0 else 0, pago_opcao, m))
                         c_fechar.commit()
-                    st.success(f"Conta da mesa {m} fechada como: {status_final}!"); st.rerun()
+                    st.success(f"Conta da mesa {m} fechada!")
 import streamlit as st
 import psycopg2
 import pandas as pd
@@ -122,7 +121,6 @@ with subtabs[0]:
     st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
     
     with st.expander("➕ Alimentar Estoque"):
-        st.info("💡 Digite o valor inteiro em Litros ou Quilos (Ex: Para adicionar 10 Litros, digite 10.0)")
         with st.form("f_ins", clear_on_submit=True):
             n_i = st.text_input("Insumo:")
             q_i = st.number_input("Qtd Inteira (Litros, Quilos ou Un):", min_value=0.0, value=1.0, step=1.0)
@@ -131,7 +129,7 @@ with subtabs[0]:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.rerun()
+                st.success("Estoque atualizado!")
 
 # --- CANCELAMENTOS ---
 with subtabs[1]:
@@ -152,7 +150,7 @@ with subtabs[1]:
                         cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE id = %s", (qtd_devolver, int(r['insumo_id'])))
                     cur.execute("DELETE FROM public.pedidos WHERE id = %s", (int(it['id']),))
                     c.commit()
-                st.rerun()
+                st.success("Item removido!")
 
 # --- CADASTRO ---
 with subtabs[2]:
@@ -164,14 +162,13 @@ with subtabs[2]:
         if st.form_submit_button("Gravar") and n_p.strip():
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
-                cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
+                cur.execute("INSERT INTO public.produtos (nome, category, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING" if "category" in pd.read_sql("SELECT * FROM public.produtos LIMIT 1", conn).columns else "INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
                 c.commit()
-            st.rerun()
+            st.success("Produto gravado!")
 
 # --- RECEITAS MULTIPLAS ---
 with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica")
-    st.info("💡 Informe o gasto em mililitros (ml) ou gramas (g). O sistema converterá para Litros/Kg automaticamente.")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -181,36 +178,18 @@ with subtabs[3]:
         with st.form("f_vinc_multi", clear_on_submit=True):
             p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
             st.markdown("---")
-            
-            col1, col2 = st.columns(2)
-            i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1")
-            q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q1")
-            
-            col3, col4 = st.columns(2)
-            i2 = col3.selectbox("Ingrediente 2 (Opcional):", lista_insumos, key="i2")
-            q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q2")
-            
-            col5, col6 = st.columns(2)
-            i3 = col5.selectbox("Ingrediente 3 (Opcional):", lista_insumos, key="i3")
-            q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q3")
+            col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1"); q1 = col2.number_input("Qtd gasta 1 (ml/g):", min_value=0.0, value=0.0, step=5.0, key="q1")
+            col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="i2"); q2 = col4.number_input("Qtd gasta 2 (ml/g):", min_value=0.0, value=0.0, step=5.0, key="q2")
+            col5, col6 = st.columns(2); i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="i3"); q3 = col6.number_input("Qtd gasta 3 (ml/g):", min_value=0.0, value=0.0, step=5.0, key="q3")
             
             if st.form_submit_button("🔥 Gravar Receita Completa"):
-                vinc_salvos = 0
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
-                    if i1 != "---" and q1 > 0:
-                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i1], q1))
-                        vinc_salvos += 1
-                    if i2 != "---" and q2 > 0:
-                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i2], q2))
-                        vinc_salvos += 1
-                    if i3 != "---" and q3 > 0:
-                        cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i3], q3))
-                        vinc_salvos += 1
+                    if i1 != "---" and q1 > 0: cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i1], q1))
+                    if i2 != "---" and q2 > 0: cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i2], q2))
+                    if i3 != "---" and q3 > 0: cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[i3], q3))
                     c.commit()
-                if vinc_salvos > 0:
-                    st.success(f"Sucesso! {vinc_salvos} ingrediente(s) configurados."); st.rerun()
-                else: st.error("Preencha ao menos um ingrediente válido.")
+                st.success("Receita configurada!")
     else: st.warning("Cadastre produtos e insumos primeiro.")
 
 # --- EXCLUIR ---
@@ -221,21 +200,12 @@ with subtabs[4]:
         if p_ex != "---" and st.button("❌ Deletar Produto"):
             id_p = int(df_prods[df_prods['nome'] == p_ex]['id'].values)
             with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("DELETE FROM public.receitas WHERE produto_id = %s", (id_p,))
-                cur.execute("DELETE FROM public.produtos WHERE id = %s", (id_p,))
-                c.commit()
-            st.rerun()
-            
-    st.markdown("---")
-    
+                cur.execute("SET search_path TO public;"); cur.execute("DELETE FROM public.receitas WHERE produto_id = %s", (id_p,)); cur.execute("DELETE FROM public.produtos WHERE id = %s", (id_p,)); c.commit()
+            st.success("Deletado!")
     if not df_est.empty:
         i_ex = st.selectbox("Remover do Estoque:", ["---"] + list(df_est['item']))
         if i_ex != "---" and st.button("❌ Deletar Insumo"):
             id_i = int(df_est[df_est['item'] == i_ex]['id'].values)
             with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("DELETE FROM public.receitas WHERE insumo_id = %s", (id_i,))
-                cur.execute("DELETE FROM public.estoque WHERE id = %s", (id_i,))
-                c.commit()
-            st.rerun()
+                cur.execute("SET search_path TO public;"); cur.execute("DELETE FROM public.receitas WHERE insumo_id = %s", (id_i,)); cur.execute("DELETE FROM public.estoque WHERE id = %s", (id_i,)); c.commit()
+            st.success("Insumo removido!")
