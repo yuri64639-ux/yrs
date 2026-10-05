@@ -74,7 +74,7 @@ if "carrinho" not in st.session_state:
 # Busca da última mesa modificada
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
 
 # ==========================================
@@ -83,26 +83,26 @@ if not df_ultima_mesa.empty:
 def renderizar_lancamento_pedidos():
     st.subheader("📝 Montar Comanda / Pedido")
     
-    # 1️⃣ MESA
+    # 1️⃣ MESA (Fica sempre no topo)
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
-    # 2️⃣ LUPA
+    # 2️⃣ LUPA (Sempre visível abaixo da mesa)
     busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo_absoluto").strip()
     
+    # 4️⃣ CATEGORIAS (Aparece de forma fixa logo abaixo da lupa)
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
+    cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
     
-    # Busca prévia no banco dependendo da entrada da lupa
+    # Lógica de busca inteligente: prioriza a lupa; se vazia, usa a categoria fixa
     if busca_nome:
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
     else:
-        # Se a lupa estiver vazia, o filtro por Categorias é renderizado DEPOIS da Lupa
-        cat_sel = st.selectbox("Ou liste os itens escolhendo a Categoria:", cats)
         prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
         
     st.markdown("---")
     
-    # 3️⃣ CONFIRMAR ITEM SELECIONADO
+    # 3️⃣ CONFIRMAR ITEM SELECIONADO (Sempre posicionado após a lupa e categorias)
     if not prods_filtrados.empty:
         dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
         ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()))
@@ -123,7 +123,7 @@ def renderizar_lancamento_pedidos():
                 st.success(f"{q}x {item_escolhido['nome']} adicionado ao rascunho!")
                 st.rerun()
     else:
-        st.warning("Nenhum item encontrado. Verifique a busca ou escolha outra categoria.")
+        st.warning("Nenhum item encontrado para esta busca ou categoria.")
 
     if st.session_state.carrinho:
         st.markdown("---")
@@ -133,7 +133,7 @@ def renderizar_lancamento_pedidos():
         for idx_c, item in reversed(list(enumerate(st.session_state.carrinho))):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
