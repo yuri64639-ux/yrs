@@ -31,7 +31,7 @@ def ob_cx():
     if "url" in c: return psycopg2.connect(c["url"])
     return psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
 
-# --- INICIALIZAÇÃO DO BANCO DE DADOS (MULTI-TENANT) ---
+# --- INICIALIZAÇÃO DO BANCO DE DADOS (MULTI-TENANT COM ALTERAÇÃO PREVENTIVA) ---
 conn = ob_cx()
 with conn.cursor() as cur:
     cur.execute("SET search_path TO public;")
@@ -45,51 +45,36 @@ with conn.cursor() as cur:
         );
     """)
     
-    # 2. Tabelas operacionais atreladas ao empresa_id
+    # 2. Tabelas operacionais base
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.usuarios (
-            id SERIAL PRIMARY KEY, 
-            empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE,
-            usuario TEXT NOT NULL, 
-            senha TEXT NOT NULL,
-            UNIQUE(empresa_id, usuario)
-        );
-        CREATE TABLE IF NOT EXISTS public.estoque (
-            id SERIAL PRIMARY KEY, 
-            empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE,
-            item TEXT NOT NULL, 
-            quantidade REAL,
-            UNIQUE(empresa_id, item)
-        );
-        CREATE TABLE IF NOT EXISTS public.produtos (
-            id SERIAL PRIMARY KEY, 
-            empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE,
-            nome TEXT NOT NULL, 
-            categoria TEXT, 
-            preco REAL,
-            UNIQUE(empresa_id, nome)
-        );
-        CREATE TABLE IF NOT EXISTS public.receitas (
-            id SERIAL PRIMARY KEY, 
-            empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE,
-            produto_id INTEGER REFERENCES public.produtos(id) ON DELETE CASCADE, 
-            insumo_id INTEGER REFERENCES public.estoque(id) ON DELETE CASCADE, 
-            qtd_insumo REAL, 
-            UNIQUE(empresa_id, produto_id, insumo_id)
-        );
-        CREATE TABLE IF NOT EXISTS public.pedidos (
-            id SERIAL PRIMARY KEY, 
-            empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE,
-            mesa TEXT, 
-            produto_id INTEGER REFERENCES public.produtos(id) ON DELETE CASCADE, 
-            quantidade INTEGER, 
-            status TEXT DEFAULT 'Pendente', 
-            horario TEXT, 
-            taxa_paga INTEGER DEFAULT 1, 
-            pago TEXT DEFAULT 'Sim', 
-            garcom TEXT
-        );
+        CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
+        CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
+        CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
+        CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
+        CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
     """)
+    
+    # --- AJUSTE AUTOMÁTICO DE COLUNAS FALTANTES ---
+    cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    
+    # Adiciona chaves de unicidade compostas (ignora se já existirem)
+    try:
+        cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
+    except Exception: conn.rollback()
+    try:
+        cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
+    except Exception: conn.rollback()
+    try:
+        cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
+    except Exception: conn.rollback()
+    try:
+        cur.execute("ALTER TABLE public.receitas ADD CONSTRAINT unique_empresa_receita UNIQUE(empresa_id, produto_id, insumo_id);")
+    except Exception: conn.rollback()
+
 conn.commit()
 
 # --- TELA DE ACESSO (LOGIN / CADASTRO DE EMPRESA) ---
@@ -156,7 +141,6 @@ if not st.session_state.logado:
                     
                     if resultado:
                         st.session_state.logado = True
-                        # EXTRAÇÃO CORRETA DA TUPLA DO POSTGRES
                         st.session_state.usuario_atual = str(resultado[0])
                         st.session_state.empresa_id_atual = int(resultado[1])
                         st.session_state.ocultar_css = True
@@ -201,7 +185,6 @@ if st.session_state.logado:
         ORDER BY id DESC LIMIT 1
     """, conn, params=[emp_id])
     
-    # CORREÇÃO DA SINTAXE DO .ILOC DO ALERTA
     if not df_ultima_mesa.empty:
         col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
@@ -332,12 +315,12 @@ if st.session_state.logado:
                                     WHERE empresa_id = %s AND id = %s
                                 """, (qtd_total_gasta, emp_id, int(r_ins["insumo_id"])))
                         c.commit()
-                    st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
+                    st.success("🚀 Pedido lançado com sucesso e estoque updated!")
                     st.session_state.carrinho = []
                     st.rerun()
 
     # --- ABA 2: Contas ---
-    with tabs[1]:
+    with tabs:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
