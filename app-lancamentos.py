@@ -1,5 +1,5 @@
 # ==============================================================================
-# PARTE 1: CONFIGURAÇÕES, LOGIN E CONEXÃO COM O BANCO DE DADOS
+# PARTE 1: CONFIGURAÇÃO, SEGURANÇA, ESTILIZAÇÃO E BANCO DE DADOS
 # ==============================================================================
 from datetime import datetime
 import streamlit as st
@@ -10,13 +10,6 @@ st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
 st.markdown("""
 <style>
-    [data-testid="stHeader"], 
-    [data-testid="stAppToolbar"], 
-    header, 
-    .stAppDeployDropdown {
-        visibility: hidden !important;
-        display: none !important;
-    }
     .block-container {
         padding-top: 1rem !important;
     }
@@ -74,8 +67,7 @@ if not st.session_state.logado:
 
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
-    if "url" in c:
-        return psycopg2.connect(c["url"])
+    if "url" in c: return psycopg2.connect(c["url"])
     return psycopg2.connect(
         host=c.get("host"), port=c.get("port", 5432), database=c.get("database"),
         user=c.get("username"), password=c.get("password"), sslmode="require"
@@ -102,11 +94,10 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 # ==============================================================================
-# PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
+# PARTE 2: INTERFACE DE ABAS, REGISTROS DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
-    
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
@@ -193,13 +184,13 @@ with tabs[0]:
                     cur.execute("SET search_path TO public;")
                     hr = datetime.now().strftime("%d/%m/%Y %H:%M")
                     for item in st.session_state.carrinho:
-                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantity, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
+                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
                         recs_prod = df_receitas[df_receitas["produto_id"] == item["id"]]
                         for _, r_ins in recs_prod.iterrows():
                             qtd_total_gasta = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
-                            cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
+                            cur.execute("UPDATE public.estoque SET quantidade = Relatorios - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
                     c.commit()
-                st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
+                st.success("🚀 Pedido lançado com sucesso!")
                 st.session_state.carrinho = []
                 st.rerun()
 
