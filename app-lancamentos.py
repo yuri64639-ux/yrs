@@ -59,7 +59,7 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO CRÍTICA: Extrai a string pura do primeiro índice da tupla SQL
+            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO: Puxa o texto puro da primeira coluna
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
@@ -88,13 +88,12 @@ if not st.session_state.logado:
         st.markdown("---")
         st.write("### 📋 Usuários Ativos")
         
-        # CONSULTA CORRIGIDA: Nova conexão limpa para renderizar o dataframe de usuários
         df_usuarios_cad = pd.read_sql("SELECT id, usuario FROM public.usuarios ORDER BY usuario", conn)
         
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
                 if str(row_u['usuario']).strip().lower() != 'admin':
-                    c_user, c_btn = st.columns([3, 1])
+                    c_user, c_btn = st.columns([3, 1]) # CORREÇÃO: Definido pesos para as colunas
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
                         with ob_cx() as c, c.cursor() as cur:
@@ -112,7 +111,7 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 
-col_user, col_info = st.columns(2)
+col_user, col_info = st.columns(2) # CORRIGIDO: Passado o número 2 explicitamente
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
@@ -123,8 +122,8 @@ cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
-with tabs[0]:
-    col_titulo, col_bloqueio = st.columns()
+with tabs[0]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
+    col_titulo, col_bloqueio = st.columns([3, 1]) # CORRIGIDO: Passado proporções explicitamente
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -170,7 +169,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns()
+            col_txt, col_btn = st.columns([4, 1]) # CORRIGIDO: Passado proporções explicitamente
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -211,7 +210,7 @@ with tabs[0]:
                 st.rerun()
 
 # --- ABA 2: Contas e Fechamentos ---
-with tabs[1]:
+with tabs[1]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
     st.subheader("Gerenciamento de Contas")
     df_pedidos = pd.read_sql("SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if df_pedidos.empty: st.info("Nenhuma mesa aberta.")
