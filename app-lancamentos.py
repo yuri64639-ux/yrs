@@ -61,14 +61,14 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado)
-            st.session_state.ocultar_css = True # Força ocultar ao logar
+            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO: Puxa o texto puríssimo do operador
+            st.session_state.ocultar_css = True 
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
             
-    # Botão de Sair/Liberar funções nativas na tela de login
-    col_vazia, col_btn_nativ = st.columns()
+    # CORREÇÃO DEFINITIVA: Passado o número 2 explicitamente na criação das colunas
+    col_vazia, col_btn_nativ = st.columns(2)
     if st.session_state.ocultar_css:
         if col_btn_nativ.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
             st.session_state.ocultar_css = False
@@ -106,7 +106,7 @@ if not st.session_state.logado:
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
                 if str(row_u['usuario']).strip().lower() != 'admin':
-                    c_user, c_btn = st.columns()
+                    c_user, c_btn = st.columns(2) # CORREÇÃO: Definido 2 colunas para evitar o mesmo erro aqui
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
                         with ob_cx() as c, c.cursor() as cur:
