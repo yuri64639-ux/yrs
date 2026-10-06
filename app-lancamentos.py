@@ -75,7 +75,7 @@ with conn.cursor() as cur:
             produto_id INTEGER REFERENCES public.produtos(id) ON DELETE CASCADE, 
             insumo_id INTEGER REFERENCES public.estoque(id) ON DELETE CASCADE, 
             qtd_insumo REAL, 
-            UNIQUE(produto_id, insumo_id)
+            UNIQUE(empresa_id, produto_id, insumo_id)
         );
         CREATE TABLE IF NOT EXISTS public.pedidos (
             id SERIAL PRIMARY KEY, 
@@ -156,6 +156,7 @@ if not st.session_state.logado:
                     
                     if resultado:
                         st.session_state.logado = True
+                        # EXTRAÇÃO CORRETA DA TUPLA DO POSTGRES
                         st.session_state.usuario_atual = str(resultado[0])
                         st.session_state.empresa_id_atual = int(resultado[1])
                         st.session_state.ocultar_css = True
@@ -165,7 +166,7 @@ if not st.session_state.logado:
             else:
                 st.info("Nenhuma empresa cadastrada ainda.")
 
-    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS COM SENHA MASTER ---
+    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS COM SENHA MASTER FIXED ---
     st.markdown("---")
     st.write("### 🛠️ Modo Desenvolvedor")
     col_senha, col_botao = st.columns(2)
@@ -173,19 +174,18 @@ if not st.session_state.logado:
          
     if st.session_state.ocultar_css:
         if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == st.secrets["senhas_master"]["exibir_nativas"]:
+            if senha_painel == "orla123":
                 st.session_state.ocultar_css = False
                 st.rerun()
             else:
                 st.error("Senha Master incorreta!")
     else:
         if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == st.secrets["senhas_master"]["ocultar_nativas"]:
+            if senha_painel == "adm123":
                 st.session_state.ocultar_css = True
                 st.rerun()
             else:
                 st.error("Senha Master incorreta!")
-2
 # ==============================================================================
 # PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO)
 # ==============================================================================
@@ -200,6 +200,8 @@ if st.session_state.logado:
         WHERE empresa_id = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') 
         ORDER BY id DESC LIMIT 1
     """, conn, params=[emp_id])
+    
+    # CORREÇÃO DA SINTAXE DO .ILOC DO ALERTA
     if not df_ultima_mesa.empty:
         col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
