@@ -1,205 +1,247 @@
-# Parte1.py
+from datetime import datetime
 import streamlit as st
 import psycopg2
 import pandas as pd
 
-# 1. CONFIGURAÇÃO GLOBAL E SEGURANÇA
-st.set_page_config(page_title="Painel Gerencial", layout="wide")
-ADMIN = st.secrets.get("credentials", {}).get("admin_password", "admin123")
+# CONFIGURAÇÃO ÚNICA DA PÁGINA
+st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-if "ok_g" not in st.session_state:
-    st.session_state["ok_g"] = False
+# 🎨 DESIGN PROFISSIONAL E REMOÇÃO DOS MENUS SUPERIORES (CSS)
+st.markdown("""
+<style>
+    /* Oculta o botão 'Share', o menu de 3 pontinhos, o deploy e a barra do topo */
+    stAppToolbar, [data-testid="stHeader"] {
+        visibility: hidden !important;
+        height: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Remove o espaço em branco que sobrava no topo após esconder a barra */
+    .block-container {
+        padding-top: 2rem !important;
+    }
+    
+    /* Oculta o rodapé 'Made with Streamlit' */
+    footer {
+        visibility: hidden !important;
+    }
 
-if not st.session_state["ok_g"]:
-    with st.form("f_adm"):
-        st.subheader("🔒 Acesso Restrito da Gerência")
-        senha_input = st.text_input("Senha Master:", type="password")
-        if st.form_submit_button("🔓 Liberar"):
-            if senha_input == ADMIN:
-                st.session_state["ok_g"] = True
-                st.rerun()
-            else:
-                st.error("Senha incorreta!")
+    /* Design do Menu Lateral */
+    [data-testid="stSidebar"] { 
+        background-color: #1E1E24; 
+    }
+    [data-testid="stSidebar"] .st-emotion-cache-1768qis, [data-testid="stSidebar"] p { 
+        color: #FFFFFF !important; 
+        font-size: 16px !important; 
+        font-weight: 500; 
+    }
+    [data-testid="stSidebarNavActiveItem"] { 
+        background-color: #007BFF !important; 
+        border-radius: 8px !important; 
+        padding: 6px 12px !important; 
+    }
+    [data-testid="stSidebarNavActiveItem"] p { 
+        color: #FFFFFF !important; 
+        font-weight: bold !important; 
+    }
+    [data-testid="stSidebarNavItems"] li:hover { 
+        background-color: #2D2D35; 
+        border-radius: 8px; 
+    }
+    .stButton>button { 
+        width: 100%; 
+        height: 3rem; 
+    }
+</style>
+""", unsafe_allow_html=True)
+
+PASS = "orla123"
+
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
+if not st.session_state.logado:
+    with st.form("login_form"):
+        st.subheader("📱 Acesso ao Sistema")
+        senha_digitada = st.text_input("Senha:", type="password")
+        if st.form_submit_button("Entrar", type="primary") and senha_digitada == PASS:
+            st.session_state.logado = True
+            st.rerun()
     st.stop()
 
-if st.button("🔒 Bloquear Painel"):
-    st.session_state["ok_g"] = False
-    st.rerun()
-
-# 2. FUNÇÃO DE CONEXÃO COM O BANCO DE DADOS
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
     if "url" in c:
         return psycopg2.connect(c["url"])
     return psycopg2.connect(
-        host=c.get("host"), port=c.get("port", 5432),
-        database=c.get("database"), user=c.get("username"),
-        password=c.get("password"), sslmode="require"
+        host=c.get("host"),
+        port=c.get("port", 5432),
+        database=c.get("database"),
+        user=c.get("username"),
+        password=c.get("password"),
+        sslmode="require"
     )
 
-# 3. CONSULTAS GLOBAIS DE DADOS
+# Inicializa Tabelas
+conn = ob_cx()
+with conn.cursor() as cur:
+    cur.execute("SET search_path TO public;")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT UNIQUE, quantidade REAL);
+        CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);
+        CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL, UNIQUE(produto_id, insumo_id));
+        CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim');
+    """)
+conn.commit()
+
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
+
+df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
+if not df_ultima_mesa.empty:
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
-with ob_cx() as conn:
-    df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque ORDER BY item", conn)
-    df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", conn)
-
-# 4. CRIAÇÃO DAS ABAS COMPARTILHADAS
-subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
-
-# --- ABA 0: ESTOQUE ---
-with subtabs[0]:
-    st.subheader("📦 Estoque Atual")
-    df_est_v = df_est.copy()
-    if not df_est_v.empty:
-        df_est_v.columns = ["ID", "Insumo", "Quantidade Atual"]
-    st.dataframe(df_est_v, use_container_width=True, hide_index=True)
+tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
+with tabs[0]:
+    st.subheader("📝 Montar Comanda / Pedido")
     
-    with st.expander("➕ Alimentar Estoque"):
-        with st.form("f_ins", clear_on_submit=True):
-            n_i = st.text_input("Insumo:")
-            q_i = st.number_input("Qtd:", min_value=0.0, value=1.0, step=1.0)
-            if st.form_submit_button("Salvar") and n_i.strip():
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
-                    c.commit()
-                st.success("Estoque atualizado!")
+    # 1️⃣ Mesa em primeiro lugar
+    m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
+    st.session_state["mesa_atual"] = m
+    
+    # 2️⃣ Lupa em segundo lugar
+    busca_nome = st.text_input("🔍 Digite o nome do produto (Ex: caipirinha, picanha, batata):", key="lupa_busca_topo_absoluto").strip()
+    
+    dp = {}
+    
+    # Executa a busca baseada no que foi digitado ou busca de forma ampla para o selectbox
+    if busca_nome:
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE LOWER(nome) LIKE LOWER(%s) ORDER BY nome", conn, params=[f"%{busca_nome}%"])
+        if not prods_filtrados.empty:
+            dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+            ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()), key="select_busca_lupa")
+        else:
+            st.warning("Nenhum item encontrado com esse nome.")
+            
+    st.markdown("---")
+    st.markdown("**Ou navegue pelas Categorias:**")
+    
+    # 4️⃣ Filtro por categorias (só processa se a lupa estiver vazia)
+    cat_sel = st.selectbox("Selecione a Categoria para listar:", cats, key="categoria_filtro")
+    
+    if not busca_nome:
+        prods_filtrados = pd.read_sql("SELECT id, nome, preco, categoria FROM public.produtos WHERE categoria = %s ORDER BY nome", conn, params=[cat_sel])
+        if not prods_filtrados.empty:
+            dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+            ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
+        else:
+            st.warning("Nenhum item encontrado nesta categoria.")
+            
+    if dp:
+        q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
+        if st.button("➕ Adicionar ao Pedido", type="secondary"):
+            if not m.strip():
+                st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
+            else:
+                chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
+                
+                if chave_sel in dp:
+                    item_escolhido = dp[chave_sel]
+                    st.session_state.carrinho.append({
+                        "id": int(item_escolhido["id"]),
+                        "nome": item_escolhido["nome"],
+                        "categoria": item_escolhido["categoria"],
+                        "qtd": int(q),
+                        "preco": float(item_escolhido["preco"])
+                    })
+                    st.success(f"{q}x {item_escolhido['nome']} adicionado ao rascunho!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao identificar o item selecionado. Tente novamente.")
+
+    if st.session_state.carrinho:
+        st.markdown("---")
+        st.markdown(f"📋 **Resumo do Pedido Atual (Mesa: {m}):**")
+        total_carrinho = 0.0
+        for idx_c, item in enumerate(st.session_state.carrinho):
+            sub_item = item["qtd"] * item["preco"]
+            total_carrinho += sub_item
+            col_txt, col_btn = st.columns([4, 1])
+            col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
+            if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
+                st.session_state.carrinho.pop(idx_c)
+                st.rerun()
+                
+        st.markdown(f"### 🧾 Total Parcial: R$ {total_carrinho:.2f}")
+        col_cancelar, col_enviar = st.columns(2)
+        if col_cancelar.button("❌ Limpar Todo o Rascunho"):
+            st.session_state.carrinho = []
+            st.rerun()
+            
+        if col_enviar.button("🔥 LANÇAR COMANDA COMPLETA", type="primary"):
+            estoque_geral_ok = True
+            lista_ids_carrinho = [item["id"] for item in st.session_state.carrinho]
+            
+            df_receitas = pd.read_sql("SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id IN %s", conn, params=[tuple(lista_ids_carrinho)])
+            
+            estoque_simulado = {}
+            for _, r_ins in df_receitas.iterrows():
+                if r_ins["insumo_id"] not in estoque_simulado:
+                    estoque_simulado[r_ins["insumo_id"]] = {
+                        "nome": r_ins["item"],
+                        "quantidade": float(r_ins["qtd_atual"])
+                    }
+                    
+            for item in st.session_state.carrinho:
+                recs_do_produto = df_receitas[df_receitas["produto_id"] == item["id"]]
+                for _, r_ins in recs_do_produto.iterrows():
+                    qtd_necessaria = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
+                    insumo_id = r_ins["insumo_id"]
+                    if estoque_simulado[insumo_id]["quantidade"] < qtd_necessaria:
+                        st.error(f"🚨 Estoque insuficiente de {estoque_simulado[insumo_id]['nome']} para fazer {item['nome']}!")
+                        estoque_geral_ok = False
+                    else:
+                        estoque_simulado[insumo_id]["quantidade"] -= qtd_necessaria
+                        
+            if estoque_geral_ok:
+                horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                with ob_cx() as c_massa:
+                    with c_massa.cursor() as cur_trans:
+                        cur_trans.execute("SET search_path TO public;")
+                        for item in st.session_state.carrinho:
+                            cur_trans.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, horario) VALUES (%s, %s, %s, %s)", (m.strip(), item["id"], item["qtd"], horario_atual))
+                            recs_do_produto = df_receitas[df_receitas["produto_id"] == item["id"]]
+                            for _, r_ins in recs_do_produto.iterrows():
+                                qtd_convertida = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
+                                cur_trans.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_convertida, int(r_ins["insumo_id"])))
+                    c_massa.commit()
+                st.success(f"✅ Sucesso! Comanda da mesa {m.strip()} enviada!")
+                st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 1: CANCELAMENTOS ---
-with subtabs[1]:
-    st.subheader("❌ Cancelar Itens")
-    with ob_cx() as conn:
-        p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
+with tabs[1]:
+    st.subheader("🎟️ Contas Abertas")
+    peds = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as sub FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     
-    if p_ab.empty:
+    if peds.empty:
         st.info("Nenhuma comanda aberta.")
     else:
-        m_sel = st.selectbox("Selecione a Mesa:", sorted(list(set(p_ab['mesa'].tolist()))))
-        for _, it in p_ab[p_ab['mesa'] == m_sel].iterrows():
-            col1, col2 = st.columns(2)
-            col1.write(f"▪ *{it['quantidade']}x* {it['nome']}")
-            if col2.button("Deletar", key=f"cn_{it['id']}"):
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE produto_id = %s", c, params=[int(it['produto_id'])])
-                    for _, r in rc.iterrows():
-                        cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE id = %s", ((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade']), int(r['insumo_id'])))
-                    cur.execute("DELETE FROM public.pedidos WHERE id = %s", (int(it['id']),))
-                    c.commit()
-                st.success("Item removido!")
-                st.rerun()
-
-# --- ABA 2: CADASTRO ---
-with subtabs[2]:
-    st.subheader("🍔 Criar Produto")
-    with st.form("f_prod", clear_on_submit=True):
-        n_p = st.text_input("Nome:")
-        c_p = st.selectbox("Categoria:", cats)
-        p_p = st.number_input("Preço de Venda:", min_value=0.0, value=15.0)
-        if st.form_submit_button("Gravar") and n_p.strip():
-            with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
-                c.commit()
-            st.success("Produto gravado!")
-            st.rerun()
-# Parte2.py
-import streamlit as st
-import pandas as pd
-
-# Importa a estrutura base, conexões e abas criadas na Parte 1
-from Parte1 import ob_cx, df_est, df_prods, subtabs
-
-# --- ABA 3: RECEITAS MÚLTIPLAS ---
-with subtabs[3]:
-    st.subheader("🔬 Montar Ficha Técnica")
-    if not df_prods.empty and not df_est.empty:
-        lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
-        lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
-        d_p = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
-        d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
-        
-        with st.form("f_vinc_multi", clear_on_submit=True):
-            p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
-            st.markdown("---")
-            
-            inputs = []
-            for idx in range(1, 4):
-                col_i, col_q = st.columns(2)
-                ins = col_i.selectbox(f"Ingrediente {idx}:", lista_insumos, key=f"i{idx}")
-                qtd = col_q.number_input(f"Qtd gasta {idx} (em ml/g/un):", min_value=0.0, value=0.0, step=5.0, key=f"q{idx}")
-                inputs.append((ins, qtd))
-                
-            if st.form_submit_button("🔥 Gravar Receita"):
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    for ins, qtd in inputs:
-                        if ins != "---" and qtd > 0:
-                            cur.execute("INSERT INTO public.receitas (produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s) ON CONFLICT (produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (p_sel, d_i[ins], qtd))
-                    c.commit()
-                st.success("Receita configurada!")
-                st.rerun()
-    else:
-        st.info("Cadastre insumos e produtos primeiro.")
-
-# --- ABA 4: RELATÓRIOS ---
-with subtabs[4]:
-    st.subheader("📊 Resumo Financeiro Detalhado")
-    with ob_cx() as conn:
-        vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn)
-            
-    if vendas_df.empty:
-        st.info("Nenhuma comanda finalizada.")
-    else:
-        empresa_total, garcons_total, p_total = 0.0, 0.0, 0.0
-        for _, row in vendas_df.iterrows():
-            sub = float(row['subtotal'])
-            if row['status'] == 'Finalizado (Pago)':
-                empresa_total += sub
-                if int(row['taxa_paga']) == 1:
-                    garcons_total += (sub * 0.10)
-            else:
-                p_total += sub
-                        
-        col_emp, col_garc, col_pen = st.columns(3)
-        col_emp.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}")
-        col_garc.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}")
-        col_pen.metric("⚠️ Total Não Pago", f"R$ {p_total:.2f}")
-                        
-        st.markdown("---")
-        df_v_visual = vendas_df.copy()
-        df_v_visual.columns = ["Mesa", "Produto", "Qtd", "Preço Unit.", "Subtotal", "Status", "Taxa (10%)", "Horário"]
-        df_v_visual["Taxa (10%)"] = df_v_visual["Taxa (10%)"].map({1: "Sim", 0: "Não"})
-        st.dataframe(df_v_visual, use_container_width=True, hide_index=True)
-
-# --- ABA 5: EXCLUIR ---
-with subtabs[5]:
-    st.subheader("🗑️ Remover do Sistema")
-    col_del1, col_del2 = st.columns(2)
-            
-    with col_del1:
-        st.markdown("#### 🍔 Remover Produto")
-        if not df_prods.empty:
-            p_excluir = st.selectbox("Selecione o Produto:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
-            if st.button("❌ Excluir Produto", use_container_width=True):
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    cur.execute("DELETE FROM public.receitas WHERE produto_id = (SELECT id FROM public.produtos WHERE nome = %s)", (p_excluir,))
-                    cur.execute("DELETE FROM public.produtos WHERE nome = %s", (p_excluir,))
-                    c.commit()
-                st.success(f"'{p_excluir}' removido!")
-                st.rerun()
-                
-    with col_del2:
-        st.markdown("#### 📦 Remover Insumo")
-        if not df_est.empty:
-            i_excluir = st.selectbox("Selecione o Insumo:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
-            if st.button("❌ Excluir Insumo", use_container_width=True):
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    cur.execute("DELETE FROM public.receitas WHERE insumo_id = (SELECT id FROM public.estoque WHERE item = %s)", (i_excluir,))
-                    cur.execute("DELETE FROM public.estoque WHERE item = %s", (i_excluir,))
-                    c.commit()
-                st.success(f"'{i_excluir}' removido!")
-                st.rerun()
+        for m_aberta in sorted(list(set(peds["mesa"].tolist()))):
+            itens = peds[peds["mesa"] == m_aberta]
+            sub = float(itens["sub"].sum())
+            with st.expander(f"📋 Mesa {m_aberta} ➔ R$ {sub:.2f}"):
+                for _, i in itens.iterrows():
+                    st.write(f"▪️ {i['quantidade']}x {i['nome']} (R$ {i['sub']:.2f})")
+                tx = sub * 0.10 if st.checkbox("Taxa de Serviço (10%)", value=True, key=f"t_{m_aberta}") else 0.0
+                st.markdown(f"### Total Final: R$ {sub + tx:.2f}")
+                pago_opcao = st.radio("O cliente pagou a conta?", ["Sim", "Não"], key=f"pago_{m_aberta}", horizontal=True)
+                if st.button(f"💵 Fechar Conta {m_aberta}", key=f"b_{m_aberta}"):
+                    status_final = "Finalizado (Pago)" if pago_opcao == "Sim" else "Fechado (Não Pago)"
+                    with ob_cx() as c_fechar:
+                        with c_fechar.cursor() as cur_fechar:
+                            cur_fechar.execute("SET search_path TO public;")
+                            cur_fechar.execute("UPDATE public.pedidos SET status = %s, taxa_paga = %s, pago = %s WHERE mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (status_final, 1 if tx > 0 else 0, pago_opcao, m_aberta))
+                        c_fechar.commit()
+                    st.success(f"Conta da mesa {m_aberta} fechada!")
+                    st.rerun()
