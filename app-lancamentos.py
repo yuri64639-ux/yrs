@@ -8,26 +8,25 @@ import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Inclusão do seu novo bloco de estilos CSS Customizados
+# Estilos CSS corrigidos para NÃO ocultar o bloco de abas (st.tabs)
 st.markdown("""
     <style>
-    /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
-    #MainMenu, .stAppDeployButton {
+    /* Remove o botão dos 3 pontinhos e o botão Deploy */
+    .stAppDeployButton {
         visibility: hidden !important;
         display: none !important;
     }
     
-    /* 2. Oculta o ícone do GitHub e ferramentas extras sem sumir com a barra */
-    header [data-testid="stToolbar"] {
+    /* Oculta os seletores extras do toolbar sem quebrar os elementos internos da página */
+    [data-testid="stWebServiceTelemetry"] {
         display: none !important;
     }
     
-    /* 3. FORÇA a aba nativa (collapsedControl) a permanecer visível e ativa */
+    /* Garante que o controle lateral permaneça visível */
     [data-testid="collapsedControl"] {
         display: flex !important;
     }
     
-    /* 4. Corrige o topo para que a setinha lateral não fique cortada */
     header {
         background-color: transparent !important;
     }
@@ -115,7 +114,7 @@ with tabs[0]:
         q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
         if st.button("➕ Adicionar ao Pedido", type="secondary"):
             if not m.strip():
-                st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
+                st.error("Por favor, digite o número da Mesa / Comanda antes di adicionar itens!")
             else:
                 chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
                 if chave_sel in dp:
