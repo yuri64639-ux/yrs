@@ -8,18 +8,20 @@ import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Estilos CSS Customizados aplicados ao Sistema
-st.markdown("""
-    <style>
-    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
-    header [data-testid="stToolbar"] { display: none !important; }
-    [data-testid="collapsedControl"] { display: flex !important; }
-    header { background-color: transparent !important; }
-    </style>
-""", unsafe_allow_html=True)
-
 if "logado" not in st.session_state: st.session_state.logado = False
 if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
+if "ocultar_css" not in st.session_state: st.session_state.ocultar_css = True
+
+# O estilo CSS só é aplicado se ocultar_css for True
+if st.session_state.ocultar_css:
+    st.markdown("""
+        <style>
+        #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
+        header [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: flex !important; }
+        header { background-color: transparent !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
@@ -40,7 +42,7 @@ with conn.cursor() as cur:
     cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
 conn.commit()
 
-# Fluxo de Autenticação
+# Tela de Autenticação / Login Individual
 if not st.session_state.logado:
     with st.form("login_form"):
         st.subheader("📱 Acesso Individual ao Sistema")
@@ -59,12 +61,24 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO: Puxa o texto puro da primeira coluna
+            st.session_state.usuario_atual = str(resultado)
+            st.session_state.ocultar_css = True # Força ocultar ao logar
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
-    
-    # Expandir isolado para gerenciar usuários ativos sem dar conflito de submissão
+            
+    # Botão de Sair/Liberar funções nativas na tela de login
+    col_vazia, col_btn_nativ = st.columns()
+    if st.session_state.ocultar_css:
+        if col_btn_nativ.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
+            st.session_state.ocultar_css = False
+            st.rerun()
+    else:
+        if col_btn_nativ.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
+            st.session_state.ocultar_css = True
+            st.rerun()
+                
+    # --- GERENCIAMENTO INDIVIDUAL DE GARÇONS ---
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
         novo_usuario = st.text_input("Nome do Usuário/Garçom:", key="cad_user_input")
@@ -87,13 +101,12 @@ if not st.session_state.logado:
 
         st.markdown("---")
         st.write("### 📋 Usuários Ativos")
-        
         df_usuarios_cad = pd.read_sql("SELECT id, usuario FROM public.usuarios ORDER BY usuario", conn)
         
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
                 if str(row_u['usuario']).strip().lower() != 'admin':
-                    c_user, c_btn = st.columns([3, 1]) # CORREÇÃO: Definido pesos para as colunas
+                    c_user, c_btn = st.columns()
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
                         with ob_cx() as c, c.cursor() as cur:
@@ -111,19 +124,19 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 
-col_user, col_info = st.columns(2) # CORRIGIDO: Passado o número 2 explicitamente
+col_user, col_info = st.columns(2)
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+    col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
-with tabs[0]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
-    col_titulo, col_bloqueio = st.columns([3, 1]) # CORRIGIDO: Passado proporções explicitamente
+with tabs:
+    col_titulo, col_bloqueio = st.columns()
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -169,7 +182,7 @@ with tabs[0]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1]) # CORRIGIDO: Passado proporções explicitamente
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -210,7 +223,7 @@ with tabs[0]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
                 st.rerun()
 
 # --- ABA 2: Contas e Fechamentos ---
-with tabs[1]: # CORRIGIDO: Adicionado índice explícito para evitar sumiço
+with tabs:
     st.subheader("Gerenciamento de Contas")
     df_pedidos = pd.read_sql("SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if df_pedidos.empty: st.info("Nenhuma mesa aberta.")
