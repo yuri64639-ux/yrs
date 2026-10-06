@@ -64,13 +64,13 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0])
+            st.session_state.usuario_atual = str(resultado[0]) # Mantém a extração correta da string pura
             st.session_state.ocultar_css = True 
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
             
-    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS COM SENHA MASTER ---
+    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS WITH SENHA MASTER ---
     st.markdown("---")
     st.write("### 🛠️ Modo Desenvolvedor")
     col_senha, col_botao = st.columns(2)
@@ -130,8 +130,8 @@ if not st.session_state.logado:
                         st.rerun()
         else:
             st.info("Nenhum funcionário cadastrado.")
-    st.stop()
 
+# Removido st.stop() para permitir renderização contínua do painel completo da Parte 2 abaixo
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # ==============================================================================
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
@@ -205,7 +205,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns(2)
+            col_txt, col_btn = st.columns([4, 1])
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -277,7 +277,7 @@ with tabs[1]:
         st.markdown("---")
         st.markdown(f"**Subtotal:** R$ {total_mesa:.2f}")
         
-        # --- OPÇÃO EXCLUSIVA DE RETIRAR OS 10% DA TAXA ---
+        # --- CHECKBOX PARA TIRAR OS 10% ---
         tirar_10 = st.checkbox("Tirar 10% da conta (Remover Taxa de Serviço)", key="chk_remover_10_porcento")
         
         if tirar_10:
