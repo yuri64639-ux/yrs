@@ -40,7 +40,7 @@ with conn.cursor() as cur:
     cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
 conn.commit()
 
-# Tela de Autenticação / Login Individual
+# Fluxo de Autenticação
 if not st.session_state.logado:
     with st.form("login_form"):
         st.subheader("📱 Acesso Individual ao Sistema")
@@ -59,22 +59,20 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORRIGIDO: Extrai a string limpa de dentro da tupla resultado
+            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO CRÍTICA: Extrai apenas o texto puro da tupla sql
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
-                
-    # --- GERENCIAMENTO INDIVIDUAL DE GARÇONS ---
+    
+    # Expandir isolado sem usar st.form para evitar conflitos de botões paralelos
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
-        with st.form("f_cad_garcom", clear_on_submit=True):
-            novo_usuario = st.text_input("Nome do Usuário/Garçom:")
-            nova_senha = st.text_input("Defina a Senha:", type="password")
-            senha_master = st.text_input("Senha Master para autorizar:", type="password")
-            cadastrar = st.form_submit_button("Gravar Usuário")
-            
-        if cadastrar and novo_usuario.strip() and nova_senha.strip():
-            if senha_master == "orla123":
+        novo_usuario = st.text_input("Nome do Usuário/Garçom:", key="cad_user_input")
+        nova_senha = st.text_input("Defina a Senha:", type="password", key="cad_pass_input")
+        senha_master = st.text_input("Senha Master para autorizar:", type="password", key="cad_master_input")
+        
+        if st.button("Gravar Usuário", type="secondary"):
+            if novo_usuario.strip() and nova_senha.strip() and senha_master == "orla123":
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
                     cur.execute("""
@@ -82,10 +80,10 @@ if not st.session_state.logado:
                         ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha
                     """, (novo_usuario.strip(), nova_senha.strip()))
                     c.commit()
-                st.success(f"Usuário '{novo_usuario.strip()}' salvo com sucesso!")
+                st.success(f"Usuário '{novo_usuario.strip()}' salvo!")
                 st.rerun()
             else:
-                st.error("Senha Master incorreta!")
+                st.error("Preencha os campos ou verifique a Senha Master!")
 
         st.markdown("---")
         st.write("### 📋 Usuários Ativos")
