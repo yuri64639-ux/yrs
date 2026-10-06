@@ -72,9 +72,9 @@ if not st.session_state.logado:
                 for l in lista_garcons.strip().split("\n"):
                     p = l.split(";")
                     if len(p) == 2:
-                        user_cad = p[0].strip()
-                        senha_cad = p[1].strip()
-                        cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_cad, senha_cad))
+                        user_cad = p[0].strip()  # CORRIGIDO: Índice 0 é o Usuário
+                        senha_cad = p[1].strip() # CORRIGIDO: Índice 1 é a Senha
+                        cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_cad, senate_cad if 'senate_cad' in locals() else senha_cad))
                 c.commit()
             st.success("Usuários atualizados com sucesso!")
     st.stop()
@@ -85,7 +85,7 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # ==============================================================================
 
 # Mostra o garçom ativo e adiciona o informativo da última comanda modificada
-col_user, col_info = st.columns([1, 2])
+col_user, col_info = st.columns()
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
@@ -97,7 +97,7 @@ tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
 with tabs[0]:
-    col_titulo, col_bloqueio = st.columns([3, 1])
+    col_titulo, col_bloqueio = st.columns()
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -143,7 +143,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -158,7 +158,7 @@ with tabs[0]:
         if col_enviar.button("🔥 LANÇAR COMANDA COMPLETA", type="primary"):
             lista_ids = [item["id"] for item in st.session_state.carrinho]
             q_rec = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id " + ("= %s" if len(lista_ids) == 1 else "IN %s")
-            p_rec = [lista_ids[0]] if len(lista_ids) == 1 else [tuple(lista_ids)]
+            p_rec = [lista_ids] if len(lista_ids) == 1 else [tuple(lista_ids)]
             df_receitas = pd.read_sql(q_rec, conn, params=p_rec)
             
             estoque_ok = True
@@ -175,7 +175,6 @@ with tabs[0]:
                     cur.execute("SET search_path TO public;")
                     hr = datetime.now().strftime("%d/%m/%Y %H:%M")
                     for item in st.session_state.carrinho:
-                        # CORREÇÃO: Passando st.session_state.usuario_atual na coluna garcom
                         cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, status, horario, garcom) VALUES (%s, %s, %s, 'Pendente', %s, %s)", (m.strip(), item["id"], item["qtd"], hr, st.session_state.usuario_atual))
                         for _, r_ins in df_receitas[df_receitas["produto_id"] == item["id"]].iterrows():
                             cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", ((float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"], int(r_ins["insumo_id"])))
