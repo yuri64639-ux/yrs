@@ -1,8 +1,112 @@
 # ==============================================================================
-# PARTE 2: INTERFACE DE ABAS, REGISTROS DE PEDIDOS E FECHAMENTO DE CONTAS
+# PARTE 1: CONFIGURAÇÕES, LOGIN E CONEXÃO COM O BANCO DE DADOS
+# ==============================================================================
+from datetime import datetime
+import streamlit as st
+import psycopg2
+import pandas as pd
+
+st.set_page_config(page_title="Sistema de Vendas", layout="centered")
+
+st.markdown("""
+<style>
+    [data-testid="stHeader"], 
+    [data-testid="stAppToolbar"], 
+    header, 
+    .stAppDeployDropdown {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    .block-container {
+        padding-top: 1rem !important;
+    }
+    footer {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    button[data-testid="sidebarCollapsedControl"], 
+    section[data-testid="stSidebar"],
+    .stSidebarCollapseButton {
+        visibility: visible !important;
+        display: inline-flex !important;
+    }
+    [data-testid="stSidebar"] { 
+        background-color: #1E1E24; 
+    }
+    [data-testid="stSidebar"] .st-emotion-cache-1768qis, [data-testid="stSidebar"] p { 
+        color: #FFFFFF !important; 
+        font-size: 16px !important; 
+        font-weight: 500; 
+    }
+    [data-testid="stSidebarNavActiveItem"] { 
+        background-color: #007BFF !important; 
+        border-radius: 8px !important; 
+        padding: 6px 12px !important; 
+    }
+    [data-testid="stSidebarNavActiveItem"] p { 
+        color: #FFFFFF !important; 
+        font-weight: bold !important; 
+    }
+    [data-testid="stSidebarNavItems"] li:hover { 
+        background-color: #2D2D35; 
+        border-radius: 8px; 
+    }
+    .stButton>button { 
+        width: 100%; 
+        height: 3rem; 
+    }
+</style>
+""", unsafe_allow_html=True)
+
+PASS = "orla123"
+
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
+if not st.session_state.logado:
+    with st.form("login_form"):
+        st.subheader("📱 Acesso ao Sistema")
+        senha_digitada = st.text_input("Senha:", type="password")
+        if st.form_submit_button("Entrar", type="primary") and senha_digitada == PASS:
+            st.session_state.logado = True
+            st.rerun()
+    st.stop()
+
+def ob_cx():
+    c = st.secrets["connections"]["postgresql"]
+    if "url" in c:
+        return psycopg2.connect(c["url"])
+    return psycopg2.connect(
+        host=c.get("host"), port=c.get("port", 5432), database=c.get("database"),
+        user=c.get("username"), password=c.get("password"), sslmode="require"
+    )
+
+conn = ob_cx()
+with conn.cursor() as cur:
+    cur.execute("SET search_path TO public;")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT UNIQUE, quantidade REAL);
+        CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, categoria TEXT, preco REAL);
+        CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL, UNIQUE(produto_id, insumo_id));
+        CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim');
+    """)
+conn.commit()
+
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
+
+df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
+if not df_ultima_mesa.empty:
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+
+cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
+tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
+# ==============================================================================
+# PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
+    
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
@@ -89,13 +193,13 @@ with tabs[0]:
                     cur.execute("SET search_path TO public;")
                     hr = datetime.now().strftime("%d/%m/%Y %H:%M")
                     for item in st.session_state.carrinho:
-                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
+                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantity, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
                         recs_prod = df_receitas[df_receitas["produto_id"] == item["id"]]
                         for _, r_ins in recs_prod.iterrows():
                             qtd_total_gasta = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
-                            cur.execute("UPDATE public.estoque SET quantidade = Relatorios - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
+                            cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
                     c.commit()
-                st.success("🚀 Pedido lançado com sucesso!")
+                st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
                 st.session_state.carrinho = []
                 st.rerun()
 
