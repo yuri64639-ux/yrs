@@ -91,7 +91,7 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: Lançar Pedidos (Índice 0 corrigido) ---
+# --- ABA 1: Lançar Pedidos (Índice 0) ---
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
@@ -206,7 +206,7 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 2: Contas e Fechamentos (Índice 1 corrigido) ---
+# --- ABA 2: Contas e Fechamentos (Índice 1) ---
 with tabs[1]:
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("""
