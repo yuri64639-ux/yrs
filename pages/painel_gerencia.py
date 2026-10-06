@@ -64,7 +64,7 @@ with subtabs[0]:
                 st.success("Estoque atualizado!")
                 st.rerun()
 # ==============================================================================
-# PAINEL GERENCIAL - PARTE 2: CANCELAMENTOS E CADASTRO EM MASSA
+# PAINEL GERENCIAL - PARTE 2: CANCELAMENTOS (RETORNO DE RECEITA) E CADASTRO
 # ==============================================================================
 
 # --- CANCELAMENTOS (INDEX 1) ---
@@ -81,15 +81,16 @@ with subtabs[1]:
             if col2.button("Deletar", key=f"cn_{it['id']}"):
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
+                    # RESTRUTURADO: Recuperação da receita para estorno correto dos insumos ao estoque
                     rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE produto_id = %s", c, params=[int(it['produto_id'])])
                     for _, r in rc.iterrows(): 
                         cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE id = %s", ((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade']), int(r['insumo_id'])))
                     cur.execute("DELETE FROM public.pedidos WHERE id = %s", (int(it['id']),))
                     c.commit()
-                st.success("Item removido!")
+                st.success("Item removido e estoque devolvido!")
                 st.rerun()
 
-# --- CADASTRO EM MASSA (INDEX 2) ---
+# --- CADASTRO EM MASSA ATUALIZADO (INDEX 2) ---
 with subtabs[2]:
     st.subheader("🍔 Cadastro de Produtos em Massa")
     opcao_cadastro = st.radio("Escolha o método de cadastro:", ["📁 Enviar Planilha Excel", "📝 Colar Texto (Vírgula)"], key="metodo_cadastro_produtos_radio")
@@ -112,11 +113,13 @@ with subtabs[2]:
                                 n_p = str(row['Nome']).strip()
                                 c_p = str(row['Categoria']).strip()
                                 p_p = float(row['Preço'])
-                                if n_p and c_p in cats:
-                                    cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco", (n_p, c_p, p_p))
+                                
+                                cat_valida = [c for c in cats if c.lower() == c_p.lower()]
+                                if n_p and cat_valida:
+                                    cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco", (n_p, cat_valida[0], p_p))
                                     itens_gravados += 1
                             c.commit()
-                        st.success(f"🚀 Importados {itens_gravados} produtos!")
+                        st.success(f"🚀 Importados {itens_gravados} produtos com sucesso!")
                         st.rerun()
                 else:
                     st.error("Colunas obrigatórias: Nome, Categoria, Preço")
@@ -124,7 +127,7 @@ with subtabs[2]:
                 st.error(f"Erro ao processar: {e}")
     else:
         with st.form("f_prod_massa_texto", clear_on_submit=True):
-            texto_produtos = st.text_area("Lista de Produtos (Nome, Categoria, Preço):", height=200, key="txt_area_massa_original")
+            texto_produtos = st.text_area("Lista de Produtos (Nome, Categoria, Preço):", height=200, key="txt_area_massa_original", placeholder="Exemplo:\nCaipirinha, Drinks, 15.0\nBatata Frita, Porções, 35.0")
             if st.form_submit_button("🔥 Gravar Todos os Produtos") and texto_produtos.strip():
                 linhas = texto_produtos.strip().split("\n")
                 itens_gravados = 0
@@ -134,24 +137,31 @@ with subtabs[2]:
                         if "," in linha:
                             partes = linha.split(",")
                             if len(partes) == 3:
-                                n_p, c_p, p_p = partes[0].strip(), partes[1].strip(), partes[2].strip()
-                                if n_p and c_p in cats:
+                                n_p = partes[0].strip()
+                                c_p = partes[1].strip()
+                                p_p = partes[2].strip()
+                                
+                                cat_valida = [c for c in cats if c.lower() == c_p.lower()]
+                                if n_p and cat_valida:
                                     try:
                                         preco_float = float(p_p)
-                                        cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco", (n_p, c_p, preco_float))
+                                        cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco", (n_p, cat_valida[0], preco_float))
                                         itens_gravados += 1
                                     except ValueError:
                                         pass
                     c.commit()
-                st.success(f"🚀 Gravados {itens_gravados} produtos!")
-                st.rerun()
+                if itens_gravados > 0:
+                    st.success(f"🚀 Sucesso! {itens_gravados} produtos gravados!")
+                    st.rerun()
+                else:
+                    st.error("❌ 0 produtos gravados. Verifique a grafia das categorias.")
 # ==============================================================================
-# PAINEL GERENCIAL - PARTE 3: RECEITAS, RELATÓRIOS E EXCLUSÃO
+# PAINEL GERENCIAL - PARTE 3: FICHA TÉCNICA, RELATÓRIOS COMPLETOS E EXCLUSÃO
 # ==============================================================================
 
 # --- RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
 with subtabs[3]:
-    st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingramentas)")
+    st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -177,10 +187,16 @@ with subtabs[3]:
                 st.success("Receita configurada com sucesso!")
                 st.rerun()
 
-# --- 📊 RELATÓRIOS (INDEX 4) ---
+# --- 📊 RELATÓRIOS RESTAURADOS NA ÍNTEGRA (INDEX 4) ---
 with subtabs[4]:
     st.subheader("📊 Resumo Financeiro Detalhado")
-    vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn)
+    vendas_df = pd.read_sql("""
+        SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
+        FROM public.pedidos p 
+        JOIN public.produtos pr ON p.produto_id = pr.id 
+        WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)')
+        ORDER BY p.horario DESC
+    """, conn)
             
     if vendas_df.empty:
         st.info("Nenhuma comanda foi finalizada no sistema até o momento.")
@@ -197,13 +213,18 @@ with subtabs[4]:
                 pendente_total += sub_mesa
                         
         col_emp, col_garc, col_pen = st.columns(3)
-        col_emp.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}")
-        col_garc.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}")
-        col_pen.metric("⚠️ Perdas (Não Pago)", f"R$ {pendente_total:.2f}")
+        col_emp.metric("💰 Faturamento Líquido (Empresa)", f"R$ {empresa_total:.2f}")
+        col_garc.metric("🍹 Caixinha Acumulada (10%)", f"R$ {garcons_total:.2f}")
+        col_pen.metric("⚠️ Total Perdido (Não Pago)", f"R$ {pendente_total:.2f}")
+        
         st.markdown("---")
-        st.dataframe(vendas_df, use_container_width=True, hide_index=True)
+        st.subheader("📋 Histórico Detalhado de Vendas")
+        df_vendas_visual = vendas_df.copy()
+        df_vendas_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa (10%)", "Horário"]
+        df_vendas_visual["Taxa (10%)"] = df_vendas_visual["Taxa (10%)"].map({1: "Sim", 0: "Não"})
+        st.dataframe(df_vendas_visual, use_container_width=True, hide_index=True)
 
-# --- 🗑️ EXCLUIR ITENS (INDEX 5) ---
+# --- 🗑️ EXCLUIR ITENS COM LIMPEZA EM CASCATA (INDEX 5) ---
 with subtabs[5]:
     st.subheader("🗑️ Remover Produtos ou Insumos")
     col_del1, col_del2 = st.columns(2)
@@ -218,7 +239,7 @@ with subtabs[5]:
                     cur.execute("DELETE FROM public.receitas WHERE produto_id = (SELECT id FROM public.produtos WHERE nome = %s)", (prod_para_excluir,))
                     cur.execute("DELETE FROM public.produtos WHERE nome = %s", (prod_para_excluir,))
                     c.commit()
-                st.success(f"'{prod_para_excluir}' removido!")
+                st.success(f"'{prod_para_excluir}' removido com sucesso!")
                 st.rerun()
         else:
             st.info("Nenhum produto cadastrado.")
@@ -233,7 +254,7 @@ with subtabs[5]:
                     cur.execute("DELETE FROM public.receitas WHERE insumo_id = (SELECT id FROM public.estoque WHERE item = %s)", (insumo_para_excluir,))
                     cur.execute("DELETE FROM public.estoque WHERE item = %s", (insumo_para_excluir,))
                     c.commit()
-                st.success(f"'{insumo_para_excluir}' removido!")
+                st.success(f"'{insumo_para_excluir}' removido com sucesso!")
                 st.rerun()
         else:
             st.info("Nenhum insumo cadastrado.")
