@@ -8,27 +8,35 @@ import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Estilos CSS corrigidos para NÃO ocultar o bloco de abas (st.tabs)
+# Mantém seu CSS original aplicando a correção para forçar a exibição do st.tabs
 st.markdown("""
     <style>
-    /* Remove o botão dos 3 pontinhos e o botão Deploy */
-    .stAppDeployButton {
+    /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
+    #MainMenu, .stAppDeployButton {
         visibility: hidden !important;
         display: none !important;
     }
     
-    /* Oculta os seletores extras do toolbar sem quebrar os elementos internos da página */
-    [data-testid="stWebServiceTelemetry"] {
+    /* 2. Oculta o ícone do GitHub e ferramentas extras sem sumir com a barra */
+    header [data-testid="stToolbar"] {
         display: none !important;
     }
     
-    /* Garante que o controle lateral permaneça visível */
+    /* 3. FORÇA a aba nativa (collapsedControl) a permanecer visível e ativa */
     [data-testid="collapsedControl"] {
         display: flex !important;
     }
     
+    /* 4. Corrige o topo para que a setinha lateral não fique cortada */
     header {
         background-color: transparent !important;
+    }
+    
+    /* CORREÇÃO DO SUMIÇO: Blindagem estrutural para forçar st.tabs a sempre aparecer */
+    .stTabs, [data-testid="stTabs"], [data-testid="stTabsHeader"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -114,7 +122,7 @@ with tabs[0]:
         q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
         if st.button("➕ Adicionar ao Pedido", type="secondary"):
             if not m.strip():
-                st.error("Por favor, digite o número da Mesa / Comanda antes di adicionar itens!")
+                st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
             else:
                 chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
                 if chave_sel in dp:
