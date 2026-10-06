@@ -49,7 +49,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", con
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
-with subtabs[0]:
+with subtabs:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
     if not df_est_visual.empty: 
@@ -65,11 +65,11 @@ with subtabs[0]:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.success("Estoque atualizado!")
+                st.success("Estoque updated!")
                 st.rerun()
 
 # --- CANCELAMENTOS (INDEX 1) ---
-with subtabs[1]:
+with subtabs:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
     if p_ab.empty: 
@@ -129,11 +129,11 @@ with subtabs:
                             if n_p and cat_valida:
                                 try:
                                     preco_float = float(p_p)
-                                    # Extrai a string pura da categoria de dentro da lista para gravar texto limpo no Postgres
-                                    categoria_final = cat_valida[0]
+                                    # CORREÇÃO: Extrai a string pura [0] evitando passar o objeto list ao banco
+                                    categoria_final = str(cat_valida[0])
                                     
                                     cur.execute("""
-                                        INSERT INTO public.produtos (nome, category, preco) 
+                                        INSERT INTO public.produtos (nome, categoria, preco) 
                                         VALUES (%s, %s, %s) 
                                         ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco
                                     """, (n_p, categoria_final, preco_float))
