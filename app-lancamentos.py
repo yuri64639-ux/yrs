@@ -1,15 +1,14 @@
 # ==============================================================================
-# PARTE 1: CONFIGURAÇÕES, LOGIN, CONEXÃO E ESTRUTURA DO BANCO DE DADOS
+# PARTE 1: CONFIGURAÇÕES, LOGIN E CONEXÃO COM O BANCO DE DADOS
 # ==============================================================================
 from datetime import datetime
 import streamlit as st
 import psycopg2
 import pandas as pd
 
-# Configuração da página padrão do Streamlit
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Estilos CSS Customizados aplicados ao Sistema
+# Inclusão do seu novo bloco de estilos CSS Customizados
 st.markdown("""
     <style>
     /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
@@ -35,7 +34,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sistema de Autenticação / Login
 PASS = "orla123"
 if "logado" not in st.session_state:
     st.session_state.logado = False
@@ -49,7 +47,6 @@ if not st.session_state.logado:
             st.rerun()
     st.stop()
 
-# Função de conexão com o Banco de Dados PostgreSQL
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
     if "url" in c:
@@ -63,7 +60,6 @@ def ob_cx():
         sslmode="require"
     )
 
-# Inicialização e checagem das tabelas do banco de dados
 conn = ob_cx()
 with conn.cursor() as cur:
     cur.execute("SET search_path TO public;")
@@ -75,23 +71,18 @@ with conn.cursor() as cur:
     """)
 conn.commit()
 
-# Inicialização do estado do carrinho de compras virtual
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = []
-# ==============================================================================
-# PARTE 2: INTERFACE DE USUÁRIO (LANÇAMENTO DE PEDIDOS E GERENCIAMENTO DE CONTAS)
-# ==============================================================================
 
-# Alerta informativo com o número da última mesa que sofreu alterações
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
     st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
-# Definições de Categorias e navegação por abas (Tabs)
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
-
-# --- ABA 1: Lançar Pedidos (Índice 0) ---
+# ==============================================================================
+# PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
+# ==============================================================================
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
@@ -166,7 +157,7 @@ with tabs[0]:
             
             if len(lista_ids) == 1:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s"
-                params_receitas = [lista_ids]
+                params_receitas = [lista_ids[0]]
             else:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id IN %s"
                 params_receitas = [tuple(lista_ids)]
@@ -206,7 +197,6 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 2: Contas e Fechamentos (Índice 1) ---
 with tabs[1]:
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("""
