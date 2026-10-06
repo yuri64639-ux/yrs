@@ -46,33 +46,37 @@ if not st.session_state.logado:
         st.subheader("📱 Acesso Individual ao Sistema")
         user_input = st.text_input("Usuário:")
         senha_input = st.text_input("Senha:", type="password")
+        submetido = st.form_submit_button("Entrar", type="primary")
         
-        if st.form_submit_button("Entrar", type="primary"):
-            df_user = pd.read_sql("SELECT usuario FROM public.usuarios WHERE usuario = %s AND senha = %s", conn, params=[user_input.strip(), senha_input.strip()])
-            if not df_user.empty:
-                st.session_state.logado = True
-                st.session_state.usuario_atual = df_user["usuario"].iloc[0]
-                st.rerun()
-            else:
-                st.error("Usuário ou senha incorretos!")
+    if submetido:
+        user_limpo = user_input.strip()
+        senha_limpa = senha_input.strip()
+        df_user = pd.read_sql("SELECT usuario FROM public.usuarios WHERE LOWER(usuario) = LOWER(%s) AND senha = %s", conn, params=[user_limpo, senha_limpa])
+        if not df_user.empty:
+            st.session_state.logado = True
+            st.session_state.usuario_atual = df_user["usuario"].iloc[0]
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos!")
                 
     with st.expander("⚙️ Cadastrar Garçons (Apenas Administrador)"):
         with st.form("f_cad_garcom", clear_on_submit=True):
             st.write("Insira no formato: **usuario;senha** (um por linha)")
             lista_garcons = st.text_area("Lista de novos usuários:")
             senha_master = st.text_input("Senha Master para autorizar:", type="password")
+            cadastrar = st.form_submit_button("Gravar Usuários")
             
-            if st.form_submit_button("Gravar Usuários") and lista_garcons.strip() and senha_master == "orla123":
-                with ob_cx() as c, c.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    for l in lista_garcons.strip().split("\n"):
-                        p = l.split(";")
-                        if len(p) == 2:
-                            user_limpo = p[0].strip()
-                            senha_limpa = p[1].strip()
-                            cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_limpo, senha_limpa))
-                    c.commit()
-                st.success("Usuários atualizados com sucesso!")
+        if cadastrar and lista_garcons.strip() and senha_master == "orla123":
+            with ob_cx() as c, c.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                for l in lista_garcons.strip().split("\n"):
+                    p = l.split(";")
+                    if len(p) == 2:
+                        user_cad = p[0].strip()
+                        senha_cad = p[1].strip()
+                        cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_cad, senha_cad))
+                c.commit()
+            st.success("Usuários atualizados com sucesso!")
     st.stop()
 
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
