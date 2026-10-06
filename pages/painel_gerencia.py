@@ -95,52 +95,96 @@ with subtabs[1]:
                 st.success("Item removido!")
                 st.rerun()
 # ==============================================================================
-# PAINEL GERENCIAL - PARTE 2: CADASTRO EM MASSA, FICHA TÉCNICA (4 SLOTS) E MAIS
+# PAINEL GERENCIAL - PARTE 2: CADASTRO EM MASSA (EXCEL/TEXTO) E RECURSOS AVANÇADOS
 # ==============================================================================
 
-# --- CADASTRO EM MASSA RESTAURADO (INDEX 2) ---
+# --- CADASTRO EM MASSA ATUALIZADO (INDEX 2) ---
 with subtabs[2]:
     st.subheader("🍔 Cadastro de Produtos em Massa")
-    st.write("Insira um produto por linha seguindo o formato: **Nome do Produto, Categoria, Preço**")
-    st.caption("Exemplo:\nCaipirinha, Drinks, 15.0\nCerveja Heineken, Cervejas, 12.0")
     
-    with st.form("f_prod_massa", clear_on_submit=True):
-        texto_produtos = st.text_area("Lista de Produtos (use vírgula para separar):", height=200)
-        botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
+    opcao_cadastro = st.radio("Escolha o método de cadastro:", ["📁 Enviar Planilha Excel", "📝 Colar Texto (Vírgula)"], key="metodo_cadastro_produtos_radio")
+    
+    if opcao_cadastro == "📁 Enviar Planilha Excel":
+        st.markdown("Preencha a planilha com as colunas exatamente como: **Nome**, **Categoria** e **Preço**.")
+        st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
         
-        if botao_gravar and texto_produtos.strip():
-            linhas = texto_produtos.strip().split("\n")
-            itens_gravados = 0
-            
-            with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
+        arquivo_enviado = st.file_uploader("Escolha o arquivo .xlsx", type=["xlsx"], key="uploader_excel_produtos")
+        
+        if arquivo_enviado is not None:
+            try:
+                df_upload = pd.read_excel(arquivo_enviado)
+                colunas_obrigatorias = ['Nome', 'Categoria', 'Preço']
                 
-                for linha in linhas:
-                    if "," in linha:
-                        partes = linha.split(",")
-                        if len(partes) == 3:
-                            n_p = partes[0].strip()
-                            c_p = partes[1].strip()
-                            p_p = partes[2].strip()
+                if all(col in df_upload.columns for col in colunas_obrigatorias):
+                    st.success("Planilha carregada! Verifique a prévia dos dados:")
+                    st.dataframe(df_upload, use_container_width=True, hide_index=True)
+                    
+                    if st.button("🔥 Confirmar e Salvar no Banco", type="primary", use_container_width=True, key="btn_salvar_excel_bd"):
+                        itens_gravados = 0
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
                             
-                            if n_p and c_p in cats:
-                                try:
-                                    preco_float = float(p_p)
+                            for _, row in df_upload.iterrows():
+                                n_p = str(row['Nome']).strip()
+                                c_p = str(row['Categoria']).strip()
+                                p_p = float(row['Preço'])
+                                
+                                if n_p and c_p in cats:
                                     cur.execute("""
                                         INSERT INTO public.produtos (nome, categoria, preco) 
                                         VALUES (%s, %s, %s) 
                                         ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco
-                                    """, (n_p, c_p, preco_float))
+                                    """, (n_p, c_p, p_p))
                                     itens_gravados += 1
-                                except ValueError:
-                                    st.error(f"⚠️ Preço inválido na linha: {linha}")
-                c.commit()
+                            c.commit()
+                        st.success(f"🚀 Sucesso! {itens_gravados} produtos foram importados da planilha.")
+                        st.rerun()
+                else:
+                    st.error("A planilha deve conter exatamente as colunas: Nome, Categoria, Preço")
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo: {e}")
+
+    else:
+        st.write("Insira um produto por linha seguindo o formato: **Nome do Produto, Categoria, Preço**")
+        st.caption("Exemplo:\nCaipirinha, Drinks, 15.0\nCerveja Heineken, Cervejas, 12.0")
+        
+        with st.form("f_prod_massa_texto", clear_on_submit=True):
+            texto_produtos = st.text_area("Lista de Produtos (use vírgula para separar):", height=200, key="txt_area_massa_original")
+            botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
+            
+            if botao_gravar and texto_produtos.strip():
+                linhas = texto_produtos.strip().split("\n")
+                itens_gravados = 0
                 
-            if itens_gravados > 0:
-                st.success(f"🚀 Sucesso! {itens_gravados} produtos cadastrados/atualizados.")
-                st.rerun()
-            else:
-                st.warning("Nenhum produto cadastrado. Verifique a grafia das categorias.")
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    
+                    for linha in linhas:
+                        if "," in linha:
+                            partes = linha.split(",")
+                            if len(partes) == 3:
+                                n_p = partes[0].strip()
+                                c_p = partes[1].strip()
+                                p_p = partes[2].strip()
+                                
+                                if n_p and c_p in cats:
+                                    try:
+                                        preco_float = float(p_p)
+                                        cur.execute("""
+                                            INSERT INTO public.produtos (nome, categoria, preco) 
+                                            VALUES (%s, %s, %s) 
+                                            ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco
+                                        """, (n_p, c_p, preco_float))
+                                        itens_gravados += 1
+                                    except ValueError:
+                                        st.error(f"⚠️ Preço inválido na linha: {linha}")
+                    c.commit()
+                    
+                if itens_gravados > 0:
+                    st.success(f"🚀 Sucesso! {itens_gravados} produtos cadastrados/atualizados.")
+                    st.rerun()
+                else:
+                    st.warning("Nenhum produto cadastrado. Verifique a grafia das categorias.")
 
 # --- RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
 with subtabs[3]:
@@ -152,7 +196,7 @@ with subtabs[3]:
         d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
         
         with st.form("f_vinc_multi", clear_on_submit=True):
-            p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
+            p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods, key="sel_prod_receita_base")]
             st.markdown("---")
             
             col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1"); q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q1")
@@ -216,6 +260,14 @@ with subtabs[5]:
             
     with col_del1:
         if not df_prods.empty:
+# --- 🗑️ EXCLUIR ITENS (INDEX 5) ---
+with subtabs:
+    st.subheader("🗑️ Remover Produtos ou Insumos")
+    col_del1, col_del2 = st.columns(2)
+            
+    with col_del1:
+        st.markdown("#### 🍔 Remover Produto do Cardápio")
+        if not df_prods.empty:
             prod_para_excluir = st.selectbox("Deletar Produto do Cardápio:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
             if st.button("❌ Excluir Produto", use_container_width=True):
                 with ob_cx() as c, c.cursor() as cur:
@@ -225,8 +277,11 @@ with subtabs[5]:
                     c.commit()
                 st.success(f"'{prod_para_excluir}' removido!")
                 st.rerun()
+        else:
+            st.info("Nenhum produto cadastrado.")
                 
     with col_del2:
+        st.markdown("#### 📦 Remover Insumo do Estoque")
         if not df_est.empty:
             insumo_para_excluir = st.selectbox("Deletar Insumo do Estoque:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
             if st.button("❌ Excluir Insumo", use_container_width=True):
@@ -237,3 +292,5 @@ with subtabs[5]:
                     c.commit()
                 st.success(f"'{insumo_para_excluir}' removido!")
                 st.rerun()
+        else:
+            st.info("Nenhum insumo cadastrado.")
