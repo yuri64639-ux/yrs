@@ -85,7 +85,7 @@ if not st.session_state.logado:
                 st.error("Senha Master incorreta!")
     else:
         if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == "orla123":
+            if senha_painel == "adm123":
                 st.session_state.ocultar_css = True
                 st.rerun()
             else:
@@ -99,7 +99,7 @@ if not st.session_state.logado:
         senha_master = st.text_input("Senha Master para autorizar:", type="password", key="cad_master_input")
         
         if st.button("Gravar Usuário", type="secondary"):
-            if novo_usuario.strip() and nova_senha.strip() and senha_master == "orla123":
+            if novo_usuario.strip() and nova_senha.strip() and senha_master == "adm123":
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
                     cur.execute("""
