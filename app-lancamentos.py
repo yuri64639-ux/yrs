@@ -40,30 +40,31 @@ with conn.cursor() as cur:
 conn.commit()
 
 if not st.session_state.logado:
-    with st.form("login_form"):
-        st.subheader("📱 Acesso Individual ao Sistema")
-        user_input = st.text_input("Identificação do Operador:", key="log_u_clean", placeholder="Usuário").strip()
-        senha_input = st.text_input("Código de Verificação:", type="password", key="log_s_clean", placeholder="Senha").strip()
-        submetido = st.form_submit_button("Entrar", type="primary")
-            
-    if submetido:
-        with ob_cx() as c, c.cursor() as cur:
-            cur.execute("SET search_path TO public;")
-            cur.execute("SELECT usuario FROM public.usuarios WHERE LOWER(usuario) = LOWER(%s) AND senha = %s", (user_input, senha_input))
-            resultado = cur.fetchone()
-                    
-        if resultado:
-            st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0])
-            st.session_state.ocultar_css = True 
-            st.rerun()
+    st.subheader("📱 Acesso Individual ao Sistema")
+    user_input = st.text_input("Identificação do Operador:", key="campo_id_operador", placeholder="Nome cadastrado").strip()
+    senha_input = st.text_input("Código de Verificação:", type="password", key="campo_cod_verificacao", placeholder="Senha numérica").strip()
+    
+    if st.button("Confirmar Entrada", type="primary", use_container_width=True):
+        if user_input and senha_input:
+            with ob_cx() as c, c.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                cur.execute("SELECT usuario FROM public.usuarios WHERE LOWER(usuario) = LOWER(%s) AND senha = %s", (user_input, senha_input))
+                resultado = cur.fetchone()
+                        
+            if resultado:
+                st.session_state.logado = True
+                st.session_state.usuario_atual = str(resultado[0])
+                st.session_state.ocultar_css = True 
+                st.rerun()
+            else:
+                st.error("Dados de acesso incorretos!")
         else:
-            st.error("Usuário ou senha incorretos!")
+            st.error("Preencha todos os campos para validar!")
                 
     st.markdown("---")
     st.write("### 🛠️ Modo Desenvolvedor")
     col_senha, col_botao = st.columns(2)
-    senha_painel = col_senha.text_input("Chave do Painel:", type="password", key="senha_painel_nativo_clean", label_visibility="collapsed", placeholder="Senha Master")
+    senha_painel = col_senha.text_input("Chave do Painel:", type="password", key="painel_desenv_master", label_visibility="collapsed", placeholder="Senha Master")
         
     if st.session_state.ocultar_css:
         if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
@@ -71,31 +72,34 @@ if not st.session_state.logado:
                 st.session_state.ocultar_css = False
                 st.rerun()
             else:
-                st.error("Senha Master incorreta!")
+                st.error("Chave incorreta!")
     else:
         if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
             if senha_painel == "adm123":
                 st.session_state.ocultar_css = True
                 st.rerun()
             else:
-                st.error("Senha Master incorreta!")
+                st.error("Chave incorreta!")
                     
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
-        novo_usuario = st.text_input("Nome do Funcionário:", key="cad_user_input_clean")
-        nova_senha = st.text_input("Definir Código de Acesso:", type="password", key="cad_pass_input_clean")
-        senha_master = st.text_input("Chave Administrativa:", type="password", key="cad_master_input_clean")
+        novo_usuario = st.text_input("Nome do Funcionário:", key="novo_fun_nome")
+        nova_senha = st.text_input("Definir Código de Acesso:", type="password", key="novo_fun_cod")
+        senha_master = st.text_input("Chave Administrativa:", type="password", key="novo_fun_master")
                 
         if st.button("Gravar Usuário", type="secondary"):
             if novo_usuario.strip() and nova_senha.strip() and senha_master == "adm123":
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
-                    cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (novo_usuario.strip(), nova_senha.strip()))
+                    cur.execute("""
+                        INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) 
+                        ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha
+                    """, (novo_usuario.strip(), nova_senha.strip()))
                     c.commit()
                 st.success(f"Usuário '{novo_usuario.strip()}' salvo!")
                 st.rerun()
             else:
-                st.error("Preencha os campos ou verifique a Senha Master!")
+                st.error("Verifique os dados ou a chave administrativa!")
         st.markdown("---")
         st.write("### 📋 Usuários Ativos")
         df_usuarios_cad = pd.read_sql("SELECT id, usuario FROM public.usuarios ORDER BY usuario", conn)
