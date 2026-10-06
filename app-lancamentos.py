@@ -236,7 +236,7 @@ with tabs[0]:
                         recs_prod = df_receitas[df_receitas["produto_id"] == item["id"]]
                         for _, r_ins in recs_prod.iterrows():
                             qtd_total_gasta = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
-                            cur.execute("UPDATE public.estoque SET quantidade = grandfather - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
+                            cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
                     c.commit()
                 st.success("🚀 Pedido lançado com sucesso!")
                 st.session_state.carrinho = []
