@@ -37,7 +37,6 @@ with conn.cursor() as cur:
         CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL, UNIQUE(produto_id, insumo_id));
         CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
     """)
-    # Garante pelo menos um usuário administrador padrão caso a tabela esteja vazia
     cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
 conn.commit()
 
@@ -49,7 +48,7 @@ if not st.session_state.logado:
         senha_input = st.text_input("Senha:", type="password")
         
         if st.form_submit_button("Entrar", type="primary"):
-            df_user = pd.read_sql("SELECT usuario FROM public.usuarios WHERE usuario = %s AND senha = %s", conn, params=[user_input.strip(), senha_input])
+            df_user = pd.read_sql("SELECT usuario FROM public.usuarios WHERE usuario = %s AND senha = %s", conn, params=[user_input.strip(), senha_input.strip()])
             if not df_user.empty:
                 st.session_state.logado = True
                 st.session_state.usuario_atual = df_user["usuario"].iloc[0]
@@ -68,7 +67,10 @@ if not st.session_state.logado:
                     cur.execute("SET search_path TO public;")
                     for l in lista_garcons.strip().split("\n"):
                         p = l.split(";")
-                        if len(p) == 2: cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (p[0].strip(), p[1].strip()))
+                        if len(p) == 2:
+                            user_limpo = p[0].strip()
+                            senha_limpa = p[1].strip()
+                            cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_limpo, senha_limpa))
                     c.commit()
                 st.success("Usuários atualizados com sucesso!")
     st.stop()
