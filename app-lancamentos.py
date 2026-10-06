@@ -79,7 +79,7 @@ conn.commit()
 
 # --- TELA DE ACESSO (LOGIN / CADASTRO DE EMPRESA) ---
 if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+    aba_acesso = st.radio("Selecione uma option:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
 
     # Cadastro de Novos Clientes (Empresas)
     if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
@@ -171,7 +171,7 @@ if not st.session_state.logado:
             else:
                 st.error("Senha Master incorreta!")
 # ==============================================================================
-# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO)
+# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO) - RESTAURADA
 # ==============================================================================
 if st.session_state.logado:
     emp_id = st.session_state.empresa_id_atual
@@ -215,6 +215,7 @@ if st.session_state.logado:
             """, conn, params=[emp_id, f"%{busca_nome}%"])
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+                # RESTAURADO: Confirmação do item buscado na lupa
                 ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()), key="select_busca_lupa")
             else:
                 st.warning("Nenhum item encontrado com esse nome.")
@@ -230,6 +231,7 @@ if st.session_state.logado:
             """, conn, params=[emp_id, cat_sel])
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
+                # RESTAURADO: Confirmação do item filtrado por categoria
                 ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
