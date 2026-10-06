@@ -2,13 +2,12 @@
 # PARTE 1: CONFIGURAÇÕES, LOGIN INDIVIDUAL E CONEXÃO COM O BANCO DE DADOS
 # ==============================================================================
 from datetime import datetime
-import streamlit as st  # CORRIGIDO: Adicionado o 'as' que faltava
+import streamlit as st
 import psycopg2
 import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Estilos CSS Customizados aplicados ao Sistema
 st.markdown("""
     <style>
     #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
@@ -26,7 +25,6 @@ def ob_cx():
     if "url" in c: return psycopg2.connect(c["url"])
     return psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
 
-# Inicialização e checagem das tabelas do banco de dados
 conn = ob_cx()
 with conn.cursor() as cur:
     cur.execute("SET search_path TO public;")
@@ -40,7 +38,6 @@ with conn.cursor() as cur:
     cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
 conn.commit()
 
-# Tela de Autenticação / Login Individual
 if not st.session_state.logado:
     with st.form("login_form"):
         st.subheader("📱 Acesso Individual ao Sistema")
@@ -59,12 +56,11 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORRIGIDO: Puxa o texto puro da tupla
+            st.session_state.usuario_atual = str(resultado[0]) # CORRIGIDO: Extrai a string pura de dentro da tupla
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
                 
-    # --- NOVO JEITO DE CADASTRAR E GERENCIAR USUÁRIOS ---
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
         with st.form("f_cad_garcom", clear_on_submit=True):
@@ -77,10 +73,7 @@ if not st.session_state.logado:
             if senha_master == "orla123":
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
-                    cur.execute("""
-                        INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) 
-                        ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha
-                    """, (novo_usuario.strip(), nova_senha.strip()))
+                    cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (novo_usuario.strip(), nova_senha.strip()))
                     c.commit()
                 st.success(f"Usuário '{novo_usuario.strip()}' salvo com sucesso!")
                 st.rerun()
@@ -105,7 +98,6 @@ if not st.session_state.logado:
                         st.rerun()
         else:
             st.info("Nenhum funcionário cadastrado.")
-            
     st.stop()
 
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
@@ -113,8 +105,7 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 
-# Mostra o garçom ativo e adiciona o informativo da última comanda modificada
-col_user, col_info = st.columns()
+col_user, col_info = st.columns(2)
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
@@ -124,7 +115,7 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: Lançar Pedidos ---
+# --- ABA 1: Lançar Pedidos (Índice 0 Fixado) ---
 with tabs[0]:
     col_titulo, col_bloqueio = st.columns()
     col_titulo.subheader("Mesa / Comanda")
@@ -212,7 +203,7 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 2: Contas e Fechamentos ---
+# --- ABA 2: Contas e Fechamentos (Índice 1 Fixado) ---
 with tabs[1]:
     st.subheader("Gerenciamento de Contas")
     df_pedidos = pd.read_sql("SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
