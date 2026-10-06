@@ -315,12 +315,12 @@ if st.session_state.logado:
                                     WHERE empresa_id = %s AND id = %s
                                 """, (qtd_total_gasta, emp_id, int(r_ins["insumo_id"])))
                         c.commit()
-                    st.success("🚀 Pedido lançado com sucesso e estoque updated!")
+                    st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
                     st.session_state.carrinho = []
                     st.rerun()
 
     # --- ABA 2: Contas ---
-    with tabs:
+    with tabs[1]:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
