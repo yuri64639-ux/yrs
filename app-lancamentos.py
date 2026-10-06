@@ -8,42 +8,36 @@ import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# Mantém seu CSS original aplicando a correção para forçar a exibição do st.tabs
-st.markdown("""
-    <style>
-    /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
-    #MainMenu, .stAppDeployButton {
-        visibility: hidden !important;
-        display: none !important;
-    }
-    
-    /* 2. Oculta o ícone do GitHub e ferramentas extras sem sumir com a barra */
-    header [data-testid="stToolbar"] {
-        display: none !important;
-    }
-    
-    /* 3. FORÇA a aba nativa (collapsedControl) a permanecer visível e ativa */
-    [data-testid="collapsedControl"] {
-        display: flex !important;
-    }
-    
-    /* 4. Corrige o topo para que a setinha lateral não fique cortada */
-    header {
-        background-color: transparent !important;
-    }
-    
-    /* CORREÇÃO DO SUMIÇO: Blindagem estrutural para forçar st.tabs a sempre aparecer */
-    .stTabs, [data-testid="stTabs"], [data-testid="stTabsHeader"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 PASS = "orla123"
 if "logado" not in st.session_state:
     st.session_state.logado = False
+
+# Condição inteligente: O CSS só é injetado se o usuário estiver logado com sucesso
+if st.session_state.logado:
+    st.markdown("""
+        <style>
+        /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
+        #MainMenu, .stAppDeployButton {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        
+        /* 2. Oculta o ícone do GitHub e ferramentas extras sem sumir com a barra */
+        header [data-testid="stToolbar"] {
+            display: none !important;
+        }
+        
+        /* 3. FORÇA a aba nativa (collapsedControl) a permanecer visível e ativa */
+        [data-testid="collapsedControl"] {
+            display: flex !important;
+        }
+        
+        /* 4. Corrige o topo para que a setinha lateral não fique cortada */
+        header {
+            background-color: transparent !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 if not st.session_state.logado:
     with st.form("login_form"):
@@ -53,6 +47,13 @@ if not st.session_state.logado:
             st.session_state.logado = True
             st.rerun()
     st.stop()
+
+# Botão para Bloquear o aplicativo na Barra Lateral
+with st.sidebar:
+    st.write("### 🔒 Segurança")
+    if st.button("Bloquear Aplicativo", type="secondary"):
+        st.session_state.logado = False
+        st.rerun()
 
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
