@@ -59,12 +59,12 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO CRÍTICA: Extrai apenas o texto puro da tupla sql
+            st.session_state.usuario_atual = str(resultado[0]) # FIX DEFINITIVO: Extrai o texto limpo de dentro da tupla
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
     
-    # Expandir isolado sem usar st.form para evitar conflitos de botões paralelos
+    # Expandir isolado para gerenciar sem conflitar formulários paralelos
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
         novo_usuario = st.text_input("Nome do Usuário/Garçom:", key="cad_user_input")
