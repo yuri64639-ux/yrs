@@ -49,7 +49,7 @@ df_prods = pd.read_sql("SELECT id, nome FROM public.produtos ORDER BY nome", con
 subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 # --- ESTOQUE (INDEX 0) ---
-with subtabs:
+with subtabs[0]:
     st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
     if not df_est_visual.empty: 
@@ -65,11 +65,11 @@ with subtabs:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.success("Estoque updated!")
+                st.success("Estoque atualizado!")
                 st.rerun()
 
 # --- CANCELAMENTOS (INDEX 1) ---
-with subtabs:
+with subtabs[1]:
     st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
     p_ab = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn)
     if p_ab.empty: 
@@ -90,11 +90,11 @@ with subtabs:
                 st.success("Item removido e estoque devolvido!")
                 st.rerun()
 # ==============================================================================
-# PAINEL GERENCIAL - PARTE 2: CADASTRO, RECEITAS (4 SLOTS), RELATÓRIOS E EXCLUSÃO
+# PAINEL GERENCIAL - PARTE 2: CADASTRO EM MASSA, FICHA TÉCNICA E ADICIONAIS
 # ==============================================================================
 
-# --- CADASTRO EM MASSA CORRIGIDO (INDEX 2) ---
-with subtabs[2]: # CORREÇÃO AQUI: Especificado o índice 2 para a aba de cadastro
+# --- CADASTRO EM MASSA (INDEX 2) ---
+with subtabs[2]:
     st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
     st.write("Cole a sua lista abaixo seguindo o formato exato: **Nome, Categoria, Preço** (um produto por linha).")
     st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
@@ -118,18 +118,15 @@ with subtabs[2]: # CORREÇÃO AQUI: Especificado o índice 2 para a aba de cadas
                     if "," in linha:
                         partes = linha.split(",")
                         if len(partes) == 3:
-                            # Limpa os espaços em branco de cada item individualmente
                             n_p = partes[0].strip()
                             c_p = partes[1].strip()
                             p_p = partes[2].strip()
                             
-                            # Procura a categoria correspondente ignorando maiúsculas/minúsculas
                             cat_valida = [c for c in cats if c.lower() == c_p.lower()]
                             
                             if n_p and cat_valida:
                                 try:
                                     preco_float = float(p_p)
-                                    # Extrai a string pura evitando passar o objeto list ao banco
                                     categoria_final = str(cat_valida[0])
                                     
                                     cur.execute("""
@@ -149,7 +146,7 @@ with subtabs[2]: # CORREÇÃO AQUI: Especificado o índice 2 para a aba de cadas
                 st.error("❌ Nenhum produto cadastrado. Verifique se usou as vírgulas corretamente e se as categorias existem.")
 
 # --- RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
-with subtabs[3]: # CORREÇÃO AQUI: Especificado o índice 3 para a aba de receitas
+with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -177,7 +174,7 @@ with subtabs[3]: # CORREÇÃO AQUI: Especificado o índice 3 para a aba de recei
                 st.rerun()
 
 # --- 📊 RELATÓRIOS (INDEX 4) ---
-with subtabs[4]: # CORREÇÃO AQUI: Especificado o índice 4 para a aba de relatórios
+with subtabs[4]:
     st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn)
             
@@ -203,7 +200,7 @@ with subtabs[4]: # CORREÇÃO AQUI: Especificado o índice 4 para a aba de relat
         st.dataframe(vendas_df, use_container_width=True, hide_index=True)
 
 # --- 🗑️ EXCLUIR ITENS (INDEX 5) ---
-with subtabs[5]: # CORREÇÃO AQUI: Especificado o índice 5 para a aba de exclusão
+with subtabs[5]:
     st.subheader("🗑️ Remover Produtos ou Insumos")
     col_del1, col_del2 = st.columns(2)
             
