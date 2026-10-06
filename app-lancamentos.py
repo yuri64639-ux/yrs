@@ -61,7 +61,7 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0])
+            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO: Puxa o texto puríssimo do operador
             st.session_state.ocultar_css = True 
             st.rerun()
         else:
@@ -139,13 +139,13 @@ col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
+    col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: Lançar Pedidos ---
-with tabs:
+# --- ABA 1: Lançar Pedidos (Índice 0 explicitado) ---
+with tabs[0]:
     col_titulo, col_bloqueio = st.columns(2)
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
@@ -232,8 +232,8 @@ with tabs:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 2: Contas e Fechamentos ---
-with tabs:
+# --- ABA 2: Contas e Fechamentos (Índice 1 explicitado) ---
+with tabs[1]:
     st.subheader("Gerenciamento de Contas")
     df_pedidos = pd.read_sql("SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
     if df_pedidos.empty: st.info("Nenhuma mesa aberta.")
