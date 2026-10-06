@@ -78,7 +78,7 @@ if not st.session_state.logado:
     
     if st.session_state.ocultar_css:
         if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == "orla123":
+            if senha_painel == "adm123":
                 st.session_state.ocultar_css = False
                 st.rerun()
             else:
