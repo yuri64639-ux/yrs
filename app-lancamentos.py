@@ -48,13 +48,6 @@ if not st.session_state.logado:
             st.rerun()
     st.stop()
 
-# Botão para Bloquear o aplicativo na Barra Lateral
-with st.sidebar:
-    st.write("### 🔒 Segurança")
-    if st.button("Bloquear Aplicativo", type="secondary"):
-        st.session_state.logado = False
-        st.rerun()
-
 def ob_cx():
     c = st.secrets["connections"]["postgresql"]
     if "url" in c:
@@ -84,15 +77,21 @@ if "carrinho" not in st.session_state:
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 # ==============================================================================
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
-with tabs[0]:
-    st.subheader("📝 Montar Comanda / Pedido")
+with tabs:
+    # Criação de colunas no topo para colocar o botão de bloquear ao lado do título
+    col_titulo, col_bloqueio = st.columns([3, 1])
+    col_titulo.subheader("📝 Montar Comanda / Pedido")
+    if col_bloqueio.button("🔒 Bloquear App", key="bloqueio_lancador", type="secondary", use_container_width=True):
+        st.session_state.logado = False
+        st.rerun()
+
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
     st.session_state["mesa_atual"] = m
     
@@ -146,7 +145,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -165,7 +164,7 @@ with tabs[0]:
             
             if len(lista_ids) == 1:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s"
-                params_receitas = [lista_ids[0]]
+                params_receitas = [lista_ids]
             else:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id IN %s"
                 params_receitas = [tuple(lista_ids)]
@@ -205,7 +204,7 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-with tabs[1]:
+with tabs:
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("""
         SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
