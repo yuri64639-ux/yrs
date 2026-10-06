@@ -51,32 +51,62 @@ if not st.session_state.logado:
     if submetido:
         user_limpo = user_input.strip()
         senha_limpa = senha_input.strip()
-        df_user = pd.read_sql("SELECT usuario FROM public.usuarios WHERE LOWER(usuario) = LOWER(%s) AND senha = %s", conn, params=[user_limpo, senha_limpa])
-        if not df_user.empty:
+        
+        with ob_cx() as c, c.cursor() as cur:
+            cur.execute("SET search_path TO public;")
+            cur.execute("SELECT usuario FROM public.usuarios WHERE LOWER(usuario) = LOWER(%s) AND senha = %s", (user_limpo, senha_limpa))
+            resultado = cur.fetchone()
+            
+        if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = df_user["usuario"].iloc[0]
+            st.session_state.usuario_atual = resultado[0]
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
                 
-    with st.expander("⚙️ Cadastrar Garçons (Apenas Administrador)"):
+    # --- NOVO JEITO DE CADASTRAR E GERENCIAR USUÁRIOS ---
+    with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
+        st.write("### ➕ Novo Cadastro")
         with st.form("f_cad_garcom", clear_on_submit=True):
-            st.write("Insira no formato: **usuario;senha** (um por linha)")
-            lista_garcons = st.text_area("Lista de novos usuários:")
+            novo_usuario = st.text_input("Nome do Usuário/Garçom:")
+            nova_senha = st.text_input("Defina a Senha:", type="password")
             senha_master = st.text_input("Senha Master para autorizar:", type="password")
-            cadastrar = st.form_submit_button("Gravar Usuários")
+            cadastrar = st.form_submit_button("Gravar Usuário")
             
-        if cadastrar and lista_garcons.strip() and senha_master == "orla123":
-            with ob_cx() as c, c.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                for l in lista_garcons.strip().split("\n"):
-                    p = l.split(";")
-                    if len(p) == 2:
-                        user_cad = p[0].strip()  # CORRIGIDO: Índice 0 é o Usuário
-                        senha_cad = p[1].strip() # CORRIGIDO: Índice 1 é a Senha
-                        cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha", (user_cad, senate_cad if 'senate_cad' in locals() else senha_cad))
-                c.commit()
-            st.success("Usuários atualizados com sucesso!")
+        if cadastrar and novo_usuario.strip() and nova_senha.strip():
+            if senha_master == "orla123":
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("""
+                        INSERT INTO public.usuarios (usuario, senha) VALUES (%s, %s) 
+                        ON CONFLICT (usuario) DO UPDATE SET senha = EXCLUDED.senha
+                    """, (novo_usuario.strip(), nova_senha.strip()))
+                    c.commit()
+                st.success(f"Usuário '{novo_usuario.strip()}' salvo com sucesso!")
+                st.rerun()
+            else:
+                st.error("Senha Master incorreta!")
+
+        st.markdown("---")
+        st.write("### 📋 Usuários Ativos")
+        df_usuarios_cad = pd.read_sql("SELECT id, usuario FROM public.usuarios ORDER BY usuario", conn)
+        
+        if not df_usuarios_cad.empty:
+            for _, row_u in df_usuarios_cad.iterrows():
+                # Remove o admin padrão da opção de exclusão direta para segurança
+                if row_u['usuario'] != 'admin':
+                    c_user, c_btn = st.columns([3, 1])
+                    c_user.write(f"👤 **{row_u['usuario']}**")
+                    if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("DELETE FROM public.usuarios WHERE id = %s", (int(row_u['id']),))
+                            c.commit()
+                        st.success("Usuário removido!")
+                        st.rerun()
+        else:
+            st.info("Nenhum funcionário cadastrado.")
+            
     st.stop()
 
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
@@ -85,7 +115,7 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # ==============================================================================
 
 # Mostra o garçom ativo e adiciona o informativo da última comanda modificada
-col_user, col_info = st.columns()
+col_user, col_info = st.columns([1, 1])
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
@@ -97,7 +127,7 @@ tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
 with tabs[0]:
-    col_titulo, col_bloqueio = st.columns()
+    col_titulo, col_bloqueio = st.columns([3, 1])
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -143,7 +173,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns()
+            col_txt, col_btn = st.columns([4, 1])
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
