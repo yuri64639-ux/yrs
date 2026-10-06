@@ -39,6 +39,9 @@ with conn.cursor() as cur:
         CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL, UNIQUE(produto_id, insumo_id));
         CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
     """)
+    # Correção preventiva para garantir que todas as colunas existem se o banco já tiver sido criado antes
+    cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS quantidade INTEGER;")
+    cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS garcom TEXT;")
     cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
 conn.commit()
 
@@ -131,8 +134,9 @@ if not st.session_state.logado:
 
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # ==============================================================================
-# PARTE 2A: INTERFACE DE LANÇAMENTO DE PEDIDOS (CONTINUAÇÃO)
+# PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
+
 col_user, col_info = st.columns(2)
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
@@ -143,6 +147,7 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
+# --- ABA 1: Lançar Pedidos ---
 with tabs[0]:
     col_titulo, col_bloqueio = st.columns(2)
     col_titulo.subheader("Mesa / Comanda")
@@ -200,7 +205,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns(2)
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -244,12 +249,11 @@ with tabs[0]:
                             qtd_total_gasta = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
                             cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE id = %s", (qtd_total_gasta, int(r_ins["insumo_id"])))
                     c.commit()
-                st.success("🚀 Pedido lançado com sucesso!")
+                st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
                 st.session_state.carrinho = []
                 st.rerun()
-# ==============================================================================
-# PARTE 2B: GERENCIAMENTO DE CONTAS E MESAS (COM OPÇÃO DE ISENÇÃO DOS 10%)
-# ==============================================================================
+
+# --- ABA 2: Contas ---
 with tabs[1]:
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", conn)
@@ -273,11 +277,11 @@ with tabs[1]:
         st.markdown("---")
         st.markdown(f"**Subtotal:** R$ {total_mesa:.2f}")
         
-        # --- NOVO FILTRO: OPÇÃO DE RETIRAR OS 10% DA TAXA DE SERVIÇO ---
+        # --- OPÇÃO EXCLUSIVA DE RETIRAR OS 10% DA TAXA ---
         tirar_10 = st.checkbox("Tirar 10% da conta (Remover Taxa de Serviço)", key="chk_remover_10_porcento")
         
         if tirar_10:
-            st.warning("🎁 Taxa de serviço de 10% isentada.")
+            st.warning("🎁 Taxa de serviço de 10% removida do total.")
             total_geral = total_mesa
             valor_taxa_banco = 0
         else:
