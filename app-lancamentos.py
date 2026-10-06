@@ -1,38 +1,31 @@
 # ==============================================================================
-# PARTE 1: CONFIGURAÇÃO, SEGURANÇA, ESTILIZAÇÃO E BANCO DE DADOS
+# PARTE 1
 # ==============================================================================
 from datetime import datetime
 import streamlit as st
 import psycopg2
 import pandas as pd
 
-# CONFIGURAÇÃO ÚNICA DA PÁGINA
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
-# 🎨 DESIGN PROFISSIONAL E REMOÇÃO DOS MENUS SUPERIORES CORRIGIDO (CSS)
 st.markdown("""
 <style>
-    /* Oculta apenas os botões de ferramentas (Share, Deploy, Menu) sem quebrar o Header */
     [data-testid="stHeader"] [data-testid="stAppToolbar"] {
         visibility: hidden !important;
     }
-    
-    /* Remove o espaço em branco que sobrava no topo após esconder a barra */
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 1rem !important;
     }
-    
-    /* Oculta o rodapé 'Made with streamlit' */
     footer {
         visibility: hidden !important;
+        display: none !important;
     }
-    
-    /* Força as setinhas e o menu lateral a continuarem visíveis e clicáveis */
-    button[data-testid="sidebarCollapsedControl"], section[data-testid="stSidebar"] {
+    button[data-testid="sidebarCollapsedControl"], 
+    section[data-testid="stSidebar"],
+    .stSidebarCollapseButton {
         visibility: visible !important;
+        display: inline-flex !important;
     }
-
-    /* Design do Menu Lateral */
     [data-testid="stSidebar"] { 
         background-color: #1E1E24; 
     }
@@ -84,7 +77,6 @@ def ob_cx():
         user=c.get("username"), password=c.get("password"), sslmode="require"
     )
 
-# Inicializa Tabelas
 conn = ob_cx()
 with conn.cursor() as cur:
     cur.execute("SET search_path TO public;")
@@ -106,7 +98,7 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 # ==============================================================================
-# PARTE 2: INTERFACE DE ABAS, REGISTROS DE PEDIDOS E FECHAMENTO DE CONTAS
+# PARTE 2
 # ==============================================================================
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
