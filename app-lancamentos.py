@@ -2,7 +2,7 @@
 # PARTE 1: CONFIGURAÇÕES, LOGIN INDIVIDUAL E CONEXÃO COM O BANCO DE DADOS
 # ==============================================================================
 from datetime import datetime
-import streamlit as st
+import streamlit as st  # CORRIGIDO: Adicionado o 'as' que faltava
 import psycopg2
 import pandas as pd
 
@@ -59,7 +59,7 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = resultado[0]
+            st.session_state.usuario_atual = str(resultado[0]) # CORRIGIDO: Puxa o texto puro da tupla
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
@@ -93,9 +93,8 @@ if not st.session_state.logado:
         
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
-                # Remove o admin padrão da opção de exclusão direta para segurança
                 if row_u['usuario'] != 'admin':
-                    c_user, c_btn = st.columns([3, 1])
+                    c_user, c_btn = st.columns()
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
                         with ob_cx() as c, c.cursor() as cur:
@@ -115,7 +114,7 @@ if "carrinho" not in st.session_state: st.session_state.carrinho = []
 # ==============================================================================
 
 # Mostra o garçom ativo e adiciona o informativo da última comanda modificada
-col_user, col_info = st.columns([1, 1])
+col_user, col_info = st.columns()
 col_user.write(f"👤 **Operador:** {st.session_state.usuario_atual}")
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
@@ -127,7 +126,7 @@ tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
 with tabs[0]:
-    col_titulo, col_bloqueio = st.columns([3, 1])
+    col_titulo, col_bloqueio = st.columns()
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -173,7 +172,7 @@ with tabs[0]:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns([4, 1])
+            col_txt, col_btn = st.columns()
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
