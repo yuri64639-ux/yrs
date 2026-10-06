@@ -94,7 +94,7 @@ with subtabs:
 # ==============================================================================
 
 # --- CADASTRO EM MASSA CORRIGIDO (INDEX 2) ---
-with subtabs:
+with subtabs[2]: # CORREÇÃO AQUI: Especificado o índice 2 para a aba de cadastro
     st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
     st.write("Cole a sua lista abaixo seguindo o formato exato: **Nome, Categoria, Preço** (um produto por linha).")
     st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
@@ -129,7 +129,7 @@ with subtabs:
                             if n_p and cat_valida:
                                 try:
                                     preco_float = float(p_p)
-                                    # CORREÇÃO: Extrai a string pura [0] evitando passar o objeto list ao banco
+                                    # Extrai a string pura evitando passar o objeto list ao banco
                                     categoria_final = str(cat_valida[0])
                                     
                                     cur.execute("""
@@ -149,7 +149,7 @@ with subtabs:
                 st.error("❌ Nenhum produto cadastrado. Verifique se usou as vírgulas corretamente e se as categorias existem.")
 
 # --- RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
-with subtabs:
+with subtabs[3]: # CORREÇÃO AQUI: Especificado o índice 3 para a aba de receitas
     st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -177,7 +177,7 @@ with subtabs:
                 st.rerun()
 
 # --- 📊 RELATÓRIOS (INDEX 4) ---
-with subtabs:
+with subtabs[4]: # CORREÇÃO AQUI: Especificado o índice 4 para a aba de relatórios
     st.subheader("📊 Resumo Financeiro Detalhado")
     vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn)
             
@@ -203,7 +203,7 @@ with subtabs:
         st.dataframe(vendas_df, use_container_width=True, hide_index=True)
 
 # --- 🗑️ EXCLUIR ITENS (INDEX 5) ---
-with subtabs:
+with subtabs[5]: # CORREÇÃO AQUI: Especificado o índice 5 para a aba de exclusão
     st.subheader("🗑️ Remover Produtos ou Insumos")
     col_del1, col_del2 = st.columns(2)
             
