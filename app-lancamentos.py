@@ -85,13 +85,13 @@ if "carrinho" not in st.session_state:
 # Alerta informativo com o número da última mesa que sofreu alterações
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
 # Definições de Categorias e navegação por abas (Tabs)
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-# --- ABA 1: Lançar Pedidos ---
+# --- ABA 1: Lançar Pedidos (Índice 0 corrigido) ---
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
     m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input")
@@ -206,7 +206,7 @@ with tabs[0]:
                 st.session_state.carrinho = []
                 st.rerun()
 
-# --- ABA 2: Contas e Fechamentos ---
+# --- ABA 2: Contas e Fechamentos (Índice 1 corrigido) ---
 with tabs[1]:
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("""
