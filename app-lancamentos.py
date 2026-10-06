@@ -61,22 +61,32 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO: Puxa o texto puríssimo do operador
+            st.session_state.usuario_atual = str(resultado[0])
             st.session_state.ocultar_css = True 
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
             
-    # CORREÇÃO DEFINITIVA: Passado o número 2 explicitamente na criação das colunas
-    col_vazia, col_btn_nativ = st.columns(2)
+    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS COM SENHA MASTER ---
+    st.markdown("---")
+    st.write("### 🛠️ Modo Desenvolvedor")
+    col_senha, col_botao = st.columns(2)
+    senha_painel = col_senha.text_input("Senha de Autorização:", type="password", key="senha_painel_nativo", label_visibility="collapsed", placeholder="Senha Master")
+    
     if st.session_state.ocultar_css:
-        if col_btn_nativ.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
-            st.session_state.ocultar_css = False
-            st.rerun()
+        if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
+            if senha_painel == "orla123":
+                st.session_state.ocultar_css = False
+                st.rerun()
+            else:
+                st.error("Senha Master incorreta!")
     else:
-        if col_btn_nativ.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
-            st.session_state.ocultar_css = True
-            st.rerun()
+        if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
+            if senha_painel == "orla123":
+                st.session_state.ocultar_css = True
+                st.rerun()
+            else:
+                st.error("Senha Master incorreta!")
                 
     # --- GERENCIAMENTO INDIVIDUAL DE GARÇONS ---
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
@@ -106,7 +116,7 @@ if not st.session_state.logado:
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
                 if str(row_u['usuario']).strip().lower() != 'admin':
-                    c_user, c_btn = st.columns(2) # CORREÇÃO: Definido 2 colunas para evitar o mesmo erro aqui
+                    c_user, c_btn = st.columns(2)
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
                         with ob_cx() as c, c.cursor() as cur:
@@ -136,7 +146,7 @@ tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
 # --- ABA 1: Lançar Pedidos ---
 with tabs:
-    col_titulo, col_bloqueio = st.columns()
+    col_titulo, col_bloqueio = st.columns(2)
     col_titulo.subheader("Mesa / Comanda")
     if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
         st.session_state.logado = False
@@ -182,7 +192,7 @@ with tabs:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns()
+            col_txt, col_btn = st.columns(2)
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} — R$ {sub_item:.2f}")
             if col_btn.button("🗑️", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
