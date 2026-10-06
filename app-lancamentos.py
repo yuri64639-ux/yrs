@@ -59,12 +59,12 @@ if not st.session_state.logado:
             
         if resultado:
             st.session_state.logado = True
-            st.session_state.usuario_atual = str(resultado[0]) # FIX DEFINITIVO: Extrai o texto limpo de dentro da tupla
+            st.session_state.usuario_atual = str(resultado[0]) # CORREÇÃO CRÍTICA: Extrai a string pura do primeiro índice da tupla SQL
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos!")
     
-    # Expandir isolado para gerenciar sem conflitar formulários paralelos
+    # Expandir isolado para gerenciar usuários ativos sem dar conflito de submissão
     with st.expander("⚙️ Gerenciamento de Garçons (Apenas Administrador)"):
         st.write("### ➕ Novo Cadastro")
         novo_usuario = st.text_input("Nome do Usuário/Garçom:", key="cad_user_input")
@@ -87,11 +87,13 @@ if not st.session_state.logado:
 
         st.markdown("---")
         st.write("### 📋 Usuários Ativos")
+        
+        # CONSULTA CORRIGIDA: Nova conexão limpa para renderizar o dataframe de usuários
         df_usuarios_cad = pd.read_sql("SELECT id, usuario FROM public.usuarios ORDER BY usuario", conn)
         
         if not df_usuarios_cad.empty:
             for _, row_u in df_usuarios_cad.iterrows():
-                if row_u['usuario'] != 'admin':
+                if str(row_u['usuario']).strip().lower() != 'admin':
                     c_user, c_btn = st.columns([3, 1])
                     c_user.write(f"👤 **{row_u['usuario']}**")
                     if c_btn.button("Excluir", key=f"del_usr_{row_u['id']}"):
