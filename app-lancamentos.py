@@ -1,5 +1,5 @@
 # ==============================================================================
-# PARTE 1
+# PARTE 1: CONFIGURAÇÕES, LOGIN E CONEXÃO COM O BANCO DE DADOS
 # ==============================================================================
 from datetime import datetime
 import streamlit as st
@@ -10,8 +10,12 @@ st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
 st.markdown("""
 <style>
-    [data-testid="stHeader"] [data-testid="stAppToolbar"] {
+    [data-testid="stHeader"], 
+    [data-testid="stAppToolbar"], 
+    header, 
+    .stAppDeployDropdown {
         visibility: hidden !important;
+        display: none !important;
     }
     .block-container {
         padding-top: 1rem !important;
@@ -98,7 +102,7 @@ if not df_ultima_mesa.empty:
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 # ==============================================================================
-# PARTE 2
+# PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
 with tabs[0]:
     st.subheader("📝 Montar Comanda / Pedido")
@@ -189,7 +193,7 @@ with tabs[0]:
                     cur.execute("SET search_path TO public;")
                     hr = datetime.now().strftime("%d/%m/%Y %H:%M")
                     for item in st.session_state.carrinho:
-                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantidade, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
+                        cur.execute("INSERT INTO public.pedidos (mesa, produto_id, quantity, status, horario) VALUES (%s, %s, %s, 'Pendente', %s)", (m.strip(), item["id"], item["qtd"], hr))
                         recs_prod = df_receitas[df_receitas["produto_id"] == item["id"]]
                         for _, r_ins in recs_prod.iterrows():
                             qtd_total_gasta = (float(r_ins["qtd_insumo"]) / 1000.0) * item["qtd"]
