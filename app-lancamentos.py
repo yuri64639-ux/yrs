@@ -77,15 +77,14 @@ if "carrinho" not in st.session_state:
 
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 # ==============================================================================
 # PARTE 2: INTERFACE DE LANÇAMENTO DE PEDIDOS E FECHAMENTO DE CONTAS
 # ==============================================================================
-with tabs:
-    # Criação de colunas no topo para colocar o botão de bloquear ao lado do título
+with tabs[0]: # CORRIGIDO: Indicado o índice 0 da aba de Lançamentos
     col_titulo, col_bloqueio = st.columns([3, 1])
     col_titulo.subheader("📝 Montar Comanda / Pedido")
     if col_bloqueio.button("🔒 Bloquear App", key="bloqueio_lancador", type="secondary", use_container_width=True):
@@ -145,7 +144,7 @@ with tabs:
         for idx_c, item in enumerate(st.session_state.carrinho):
             sub_item = item["qtd"] * item["preco"]
             total_carrinho += sub_item
-            col_txt, col_btn = st.columns()
+            col_txt, col_btn = st.columns([4, 1])
             col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
             if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                 st.session_state.carrinho.pop(idx_c)
@@ -204,7 +203,7 @@ with tabs:
                 st.session_state.carrinho = []
                 st.rerun()
 
-with tabs:
+with tabs[1]: # CORRIGIDO: Indicado o índice 1 da aba de Contas
     st.subheader("💵 Gerenciamento de Contas e Mesas")
     df_pedidos = pd.read_sql("""
         SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
