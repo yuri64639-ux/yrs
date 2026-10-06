@@ -42,7 +42,7 @@ with conn.cursor() as cur:
     # Correção preventiva para garantir que todas as colunas existem se o banco já tiver sido criado antes
     cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS quantidade INTEGER;")
     cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS garcom TEXT;")
-    cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'orla123') ON CONFLICT DO NOTHING")
+    cur.execute("INSERT INTO public.usuarios (usuario, senha) VALUES ('admin', 'adm123') ON CONFLICT DO NOTHING")
 conn.commit()
 
 # Tela de Autenticação / Login Individual
@@ -78,7 +78,7 @@ if not st.session_state.logado:
     
     if st.session_state.ocultar_css:
         if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == "orla123":
+            if senha_painel == "adm123":
                 st.session_state.ocultar_css = False
                 st.rerun()
             else:
