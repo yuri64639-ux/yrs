@@ -9,6 +9,32 @@ import pandas as pd
 # Configuração da página padrão do Streamlit
 st.set_page_config(page_title="Sistema de Vendas", layout="centered")
 
+# Estilos CSS Customizados aplicados ao Sistema
+st.markdown("""
+    <style>
+    /* 1. Remove estritamente o botão dos 3 pontinhos e o botão Deploy */
+    #MainMenu, .stAppDeployButton {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    
+    /* 2. Oculta o ícone do GitHub e ferramentas extras sem sumir com a barra */
+    header [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    
+    /* 3. FORÇA a aba nativa (collapsedControl) a permanecer visível e ativa */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+    }
+    
+    /* 4. Corrige o topo para que a setinha lateral não fique cortada */
+    header {
+        background-color: transparent !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Sistema de Autenticação / Login
 PASS = "orla123"
 if "logado" not in st.session_state:
@@ -59,7 +85,7 @@ if "carrinho" not in st.session_state:
 # Alerta informativo com o número da última mesa que sofreu alterações
 df_ultima_mesa = pd.read_sql("SELECT mesa FROM public.pedidos WHERE status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY id DESC LIMIT 1", conn)
 if not df_ultima_mesa.empty:
-    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+    st.info(f"📌 **Última mesa modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
 # Definições de Categorias e navegação por abas (Tabs)
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
@@ -140,7 +166,7 @@ with tabs[0]:
             
             if len(lista_ids) == 1:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id = %s"
-                params_receitas = [lista_ids[0]]
+                params_receitas = [lista_ids]
             else:
                 query_receitas = "SELECT r.produto_id, r.insumo_id, r.qtd_insumo, e.item, e.quantidade as qtd_atual FROM public.receitas r JOIN public.estoque e ON r.insumo_id = e.id WHERE r.produto_id IN %s"
                 params_receitas = [tuple(lista_ids)]
