@@ -1,5 +1,5 @@
 # ==============================================================================
-# PAINEL GERENCIAL - PARTE 1: SEGURANÇA, CONEXÃO E TAB DE ESTOQUE
+# PAINEL GERENCIAL - PARTE 1: SEGURANÇA, CONEXÃO E ESTOQUE
 # ==============================================================================
 import streamlit as st
 import psycopg2
@@ -70,7 +70,7 @@ with subtabs[0]:
                     cur.execute("SET search_path TO public;")
                     cur.execute("INSERT INTO public.estoque (item, quantidade) VALUES (%s, %s) ON CONFLICT (item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade", (n_i.strip(), q_i))
                     c.commit()
-                st.success("Estoque updated!")
+                st.success("Estoque atualizado!")
                 st.rerun()
 
 # --- CANCELAMENTOS (INDEX 1) ---
@@ -94,26 +94,55 @@ with subtabs[1]:
                     c.commit()
                 st.success("Item removido!")
                 st.rerun()
+# ==============================================================================
+# PAINEL GERENCIAL - PARTE 2: CADASTRO EM MASSA, FICHA TÉCNICA (4 SLOTS) E MAIS
+# ==============================================================================
 
-# --- CADASTRO (INDEX 2) ---
+# --- CADASTRO EM MASSA RESTAURADO (INDEX 2) ---
 with subtabs[2]:
-    st.subheader("🍔 Criar Produto")
-    with st.form("f_prod", clear_on_submit=True):
-        n_p = st.text_input("Nome:")
-        c_p = st.selectbox("Categoria:", cats)
-        p_p = st.number_input("Preço de Venda:", min_value=0.0, value=15.0)
-        if st.form_submit_button("Gravar") and n_p.strip():
+    st.subheader("🍔 Cadastro de Produtos em Massa")
+    st.write("Insira um produto por linha seguindo o formato: **Nome do Produto, Categoria, Preço**")
+    st.caption("Exemplo:\nCaipirinha, Drinks, 15.0\nCerveja Heineken, Cervejas, 12.0")
+    
+    with st.form("f_prod_massa", clear_on_submit=True):
+        texto_produtos = st.text_area("Lista de Produtos (use vírgula para separar):", height=200)
+        botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
+        
+        if botao_gravar and texto_produtos.strip():
+            linhas = texto_produtos.strip().split("\n")
+            itens_gravados = 0
+            
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
-                cur.execute("INSERT INTO public.produtos (nome, categoria, preco) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING", (n_p.strip(), c_p, p_p))
+                
+                for linha in linhas:
+                    if "," in linha:
+                        partes = linha.split(",")
+                        if len(partes) == 3:
+                            n_p = partes[0].strip()
+                            c_p = partes[1].strip()
+                            p_p = partes[2].strip()
+                            
+                            if n_p and c_p in cats:
+                                try:
+                                    preco_float = float(p_p)
+                                    cur.execute("""
+                                        INSERT INTO public.produtos (nome, categoria, preco) 
+                                        VALUES (%s, %s, %s) 
+                                        ON CONFLICT (nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco
+                                    """, (n_p, c_p, preco_float))
+                                    itens_gravados += 1
+                                except ValueError:
+                                    st.error(f"⚠️ Preço inválido na linha: {linha}")
                 c.commit()
-            st.success("Produto gravado!")
-            st.rerun()
-# ==============================================================================
-# PAINEL GERENCIAL - PARTE 2: FICHA TÉCNICA (4 SLOTS), RELATÓRIOS E EXCLUSÃO
-# ==============================================================================
+                
+            if itens_gravados > 0:
+                st.success(f"🚀 Sucesso! {itens_gravados} produtos cadastrados/atualizados.")
+                st.rerun()
+            else:
+                st.warning("Nenhum produto cadastrado. Verifique a grafia das categorias.")
 
-# --- RECEITAS MULTIPLAS (INDEX 3) ---
+# --- RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
 with subtabs[3]:
     st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
     if not df_prods.empty and not df_est.empty:
@@ -126,7 +155,6 @@ with subtabs[3]:
             p_sel = d_p[st.selectbox("Selecione o Produto:", lista_prods)]
             st.markdown("---")
             
-            # Quatro slots completos de ingredientes adicionados conforme solicitado
             col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="i1"); q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q1")
             col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="i2"); q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q2")
             col5, col6 = st.columns(2); i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="i3"); q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="q3")
@@ -174,49 +202,38 @@ with subtabs[4]:
                 pendente_total += sub_mesa
                         
         col_emp, col_garc, col_pen = st.columns(3)
-        col_emp.metric("💰 Faturamento Líquido (Empresa)", f"R$ {empresa_total:.2f}")
-        col_garc.metric("🍹 Caixinha Acumulada (10%)", f"R$ {garcons_total:.2f}")
-        col_pen.metric("⚠️ Total Perdido (Não Pago)", f"R$ {pendente_total:.2f}")
+        col_emp.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}")
+        col_garc.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}")
+        col_pen.metric("⚠️ Perdas (Não Pago)", f"R$ {pendente_total:.2f}")
                         
         st.markdown("---")
-        st.subheader("📋 Histórico Detalhado de Vendas")
-                        
-        df_vendas_visual = vendas_df.copy()
-        df_vendas_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa (10%)", "Horário"]
-        df_vendas_visual["Taxa (10%)"] = df_vendas_visual["Taxa (10%)"].map({1: "Sim", 0: "Não"})
-        st.dataframe(df_vendas_visual, use_container_width=True, hide_index=True)
+        st.dataframe(vendas_df, use_container_width=True, hide_index=True)
 
-# --- 🗑️ EXCLUIR ITENS DO CARDÁPIO OU ESTOQUE (INDEX 5) ---
+# --- 🗑️ EXCLUIR ITENS (INDEX 5) ---
 with subtabs[5]:
-    st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
+    st.subheader("🗑️ Remover Produtos ou Insumos")
     col_del1, col_del2 = st.columns(2)
             
     with col_del1:
-        st.markdown("#### 🍔 Remover Produto do Cardápio")
         if not df_prods.empty:
-            prod_para_excluir = st.selectbox("Selecione o Produto para deletar permanentemente:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
+            prod_para_excluir = st.selectbox("Deletar Produto do Cardápio:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
             if st.button("❌ Excluir Produto", use_container_width=True):
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
                     cur.execute("DELETE FROM public.receitas WHERE produto_id = (SELECT id FROM public.produtos WHERE nome = %s)", (prod_para_excluir,))
                     cur.execute("DELETE FROM public.produtos WHERE nome = %s", (prod_para_excluir,))
                     c.commit()
-                st.success(f"'{prod_para_excluir}' removido com sucesso!")
+                st.success(f"'{prod_para_excluir}' removido!")
                 st.rerun()
-        else:
-            st.info("Nenhum produto cadastrado.")
                 
     with col_del2:
-        st.markdown("#### 📦 Remover Insumo do Estoque")
         if not df_est.empty:
-            insumo_para_excluir = st.selectbox("Selecione o Insumo para deletar permanentemente:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
+            insumo_para_excluir = st.selectbox("Deletar Insumo do Estoque:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
             if st.button("❌ Excluir Insumo", use_container_width=True):
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
                     cur.execute("DELETE FROM public.receitas WHERE insumo_id = (SELECT id FROM public.estoque WHERE item = %s)", (insumo_para_excluir,))
                     cur.execute("DELETE FROM public.estoque WHERE item = %s", (insumo_para_excluir,))
                     c.commit()
-                st.success(f"'{insumo_para_excluir}' removido com sucesso!")
+                st.success(f"'{insumo_para_excluir}' removido!")
                 st.rerun()
-        else:
-            st.info("Nenhum insumo cadastrado.")
