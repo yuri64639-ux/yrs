@@ -6,7 +6,7 @@ import pandas as pd
 # Configuração global da página do ecossistema multi-tenant
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-# Inicialização e persistência estrita de todas as variáveis de sessão originais
+# Inicialização e manutenção estrita de todas as variáveis de sessão originais
 if "logado" not in st.session_state: st.session_state.logado = False
 if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
 if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
@@ -72,7 +72,7 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()
+                        id_da_empresa = cur.fetchone()[0]
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
@@ -99,7 +99,7 @@ if not st.session_state.logado:
                     
                     if resultado:
                         st.session_state.logado = True
-                        # CORREÇÃO: Capturando os índices corretos da tupla retornada pelo banco
+                        # SOLUÇÃO DO BUG: Extraindo os índices corretos da tupla (0 para ID, 1 para Senha)
                         st.session_state.empresa_id_atual = int(resultado[0])
                         st.session_state.senha_master_empresa = str(resultado[1])
                         st.rerun()
@@ -118,15 +118,13 @@ if not st.session_state.logado:
             if senha_painel == "orla123":
                 st.session_state.ocultar_css = False
                 st.rerun()
-            else: 
-                st.error("Senha Master incorreta!")
+            else: st.error("Senha Master incorreta!")
     else:
         if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
             if senha_painel == "orla123":
                 st.session_state.ocultar_css = True
                 st.rerun()
-            else: 
-                st.error("Senha Master incorreta!")
+            else: st.error("Senha Master incorreta!")
     st.stop()
 # --- FASE 2: BARREIRA DO MODO DESENVOLVEDOR LOGADO ---
 if st.session_state.logado and not st.session_state.garcom_logado:
@@ -194,7 +192,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                             ON CONFLICT (empresa_id, item) DO UPDATE SET quantidade = public.estoque.quantidade + EXCLUDED.quantidade
                         """, (emp_id, n_i.strip(), q_i))
                         c.commit()
-                    st.success("Estoque atualizado!")
+                    st.success("Estoque updated!")
                     st.rerun()
 
     # --- 2. CANCELAMENTOS ---
@@ -220,7 +218,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                         cur.execute("DELETE FROM public.pedidos WHERE id = %s AND empresa_id = %s", (int(it['id']), emp_id))
                         c.commit()
                     st.success("Item removido e estoque devolvido com segurança!"); st.rerun()
-    # --- 3. CADASTRO EM MASSA (INDEX 2) ---
+    # --- 3. CADASTRO EM MASSA ---
     with subtabs:
         st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
         st.write("Cole a sua lista abaixo seguindo o formato exato: **Nome, Categoria, Preço** (um produto por linha).")
@@ -257,7 +255,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                     c.commit()
                 if itens_gravados > 0: st.success(f"🚀 Sucesso! {itens_gravados} produtos processados e salvos!"); st.rerun()
 
-    # --- 4. RECEITAS COM 4 INGREDIENTES (INDEX 3) ---
+    # --- 4. RECEITAS COM 4 INGREDIENTES ---
     with subtabs:
         st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
         if not df_prods.empty and not df_est.empty:
@@ -270,7 +268,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                 p_sel = d_p[st.selectbox("Selecione o Produto final:", lista_prods, key="sel_prod_receita_base")]
                 st.markdown("---")
                 col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="rec_i1"); q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q1")
-                col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="rec_i2"); q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q2")
+                col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="rec_i2"); q2 = col2.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q2")
                 col5, col6 = st.columns(2); i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="rec_i3"); q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q3")
                 col7, col8 = st.columns(2); i4 = col7.selectbox("Ingrediente 4:", lista_insumos, key="rec_i4"); q4 = col8.number_input("Qtd gasta 4 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q4")
                 
@@ -283,11 +281,10 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                         if i4 != "---" and q4 > 0: cur.execute("INSERT INTO public.receitas (empresa_id, produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s, %s) ON CONFLICT (empresa_id, produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (emp_id, p_sel, d_i[i4], q4))
                         c.commit()
                     st.success("Ficha técnica salva!"); st.rerun()
-        else: st.info("Cadastre insumos e produtos na conta antes.")
+        else: st.info("Cadastre insumos e produtos antes.")
 
-    # --- 5. RELATÓRIOS (INDEX 4) ---
-    with subtabs:
-        st.subheader("📊 Resumo Financeiro Detalhado")
+    # --- 5. RELATÓRIOS ---
+    with st.container():
         vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.empresa_id = %s AND p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn, params=[emp_id])
         if vendas_df.empty: st.info("Nenhuma comanda histórica para esta empresa.")
         else:
@@ -302,7 +299,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                 else: pendente_total += sub_mesa
             c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
             st.dataframe(vendas_df, use_container_width=True, hide_index=True)
-    # --- 6. EXCLUIR (INDEX 5) ---
+    # --- 6. EXCLUIR ---
     with subtabs:
         st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
         col_del1, col_del2 = st.columns(2)
@@ -325,7 +322,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                         c.commit()
                     st.success("Removido com sucesso!"); st.rerun()
 
-    # --- 7. CADASTRA GARÇOM (INDEX 6) ---
+    # --- 7. CADASTRA GARÇOM ATIVO ---
     with subtabs:
         st.subheader("👤 Gerenciamento de Usuários e Garçons")
         with st.form("cadastro_garcom_form", clear_on_submit=True):
@@ -334,7 +331,8 @@ if st.session_state.logado and not st.session_state.ocultar_css:
             if st.form_submit_button("💼 Cadastrar Novo Garçom") and novo_g_user and novo_g_senha:
                 try:
                     with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public; INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (emp_id, novo_g_user, novo_g_senha))
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (emp_id, novo_g_user, novo_g_senha))
                         c.commit()
                     st.success(f"Garçom '{novo_g_user}' cadastrado com sucesso!")
                 except Exception as e: st.error(f"Erro ou Usuário já existente: {e}")
@@ -362,9 +360,12 @@ if st.session_state.logado and not st.session_state.garcom_logado:
 # --- FASE 4: TERMINAL ATIVO DE OPERAÇÕES DO GARÇOM ---
 if st.session_state.garcom_logado:
     emp_id = st.session_state.empresa_id_atual
-    st.title(f"📋 Lançador de Pedidos - Terminal: {st.session_state.usuario_atual.upper()}")
+    st.title(f"📋 Lançador de Pedidos")
+    st.write(f"**Operador do Sistema:** {st.session_state.usuario_atual.upper()}")
+    
     if st.button("🔒 Sair / Trocar de Operador"):
         st.session_state.garcom_logado = False; st.session_state.carrinho = []; st.rerun()
+        
     df_prods_venda = pd.read_sql("SELECT id, nome, categoria, preco FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
     if df_prods_venda.empty: st.info("Nenhum produto disponível no cardápio desta empresa.")
     else:
@@ -372,6 +373,7 @@ if st.session_state.garcom_logado:
         categoria_filtro = st.selectbox("Filtrar Categoria:", ["Todos"] + sorted(list(set(df_prods_venda['categoria'].tolist()))))
         df_filtrado = df_prods_venda if categoria_filtro == "Todos" else df_prods_venda[df_prods_venda['categoria'] == categoria_filtro]
         prod_map_venda = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome']) for _, row in df_filtrado.iterrows()}
+        
         if prod_map_venda:
             produto_selecionado_string = st.selectbox("Escolha o Item:", list(prod_map_venda.keys()))
             qtd_solicitada = st.number_input("Quantidade Desejada:", min_value=1, value=1, step=1)
@@ -379,6 +381,7 @@ if st.session_state.garcom_logado:
                 id_p_venda, nome_p_venda = prod_map_venda[produto_selecionado_string]
                 st.session_state.carrinho.append({"id": id_p_venda, "nome": nome_p_venda, "qtd": qtd_solicitada})
                 st.toast(f"{nome_p_venda} adicionado!")
+        
         if st.session_state.carrinho:
             st.markdown("### 🛒 Itens no Carrinho Corrente")
             for item in st.session_state.carrinho: st.write(f"▪ *{item['qtd']}x* - {item['nome']}")
