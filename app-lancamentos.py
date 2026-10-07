@@ -88,8 +88,8 @@ def renderizar_tela_acesso():
                     
                     if resultado:
                         st.session_state.logado = True
-                        st.session_state.empresa_id_atual = int(resultado[0])
-                        st.session_state.senha_master_empresa = str(resultado[1])
+                        st.session_state.empresa_id_atual = int(resultado)
+                        st.session_state.senha_master_empresa = str(resultado)
                         st.rerun()
                     else: st.error("Credenciais da empresa incorretas!")
             else: st.info("Nenhuma empresa cadastrada ainda.")
@@ -136,7 +136,7 @@ def renderizar_painel_gerencial():
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public; INSERT INTO public.estoque (empresa_id, item, quantidade) VALUES (%s, %s, %s) ON CONFLICT (empresa_id, item) DO UPDATE SET quantidade = public.estoque.quantidade + EXCLUDED.quantidade", (emp_id, n_i.strip(), q_i))
                         c.commit()
-                    st.success("Estoque atualizado!"); st.rerun()
+                    st.success("Estoque updated!"); st.rerun()
 
     # --- 2. CANCELAMENTOS ---
     with subtabs[1]:
@@ -153,7 +153,7 @@ def renderizar_painel_gerencial():
                         cur.execute("SET search_path TO public;")
                         rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(it['produto_id'])])
                         for _, r in rc.iterrows(): 
-                             cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade'])), emp_id, int(r['insumo_id'])))
+                             cur.execute("UPDATE public.estoque SET quantidade = quantity + %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade'])), emp_id, int(r['insumo_id'])))
                         cur.execute("DELETE FROM public.pedidos WHERE id = %s AND empresa_id = %s", (int(it['id']), emp_id))
                         c.commit()
                     st.success("Item removido!"); st.rerun()
