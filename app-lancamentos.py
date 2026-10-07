@@ -51,19 +51,13 @@ with conn.cursor() as cur:
     cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     
-    # Adicionando de forma protegida as constraints necessárias para evitar UniqueViolation
-    try:
-        cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-    except Exception:
-        conn.rollback()
-    try:
-        cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-    except Exception:
-        conn.rollback()
-    try:
-        cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-    except Exception:
-        conn.rollback()
+    # Adicionando de forma protegida as constraints necessárias para o ON CONFLICT
+    try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
+    except Exception: conn.rollback()
+    try: cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
+    except Exception: conn.rollback()
+    try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
+    except Exception: conn.rollback()
 conn.commit()
 # --- FASE 1: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO ---
 if not st.session_state.logado:
@@ -82,7 +76,7 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()[0]
+                        id_da_empresa = cur.fetchone()
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
@@ -115,7 +109,7 @@ if not st.session_state.logado:
             else: st.info("Nenhuma empresa cadastrada ainda.")
     st.stop()
 
-# Layout Geral Solicitado: Abas Masters de Nível Superior
+# Layout Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
 aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
 with aba_master_sistema:
     emp_id = st.session_state.empresa_id_atual
@@ -132,10 +126,11 @@ with aba_master_sistema:
     df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
     df_prods = pd.read_sql("SELECT id, nome FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
     
+    # RESOLUÇÃO DO ESCUPO DAS SUBTABS: Declaradas fora de qualquer bloco if condicional para evitar quebras de compilação
     subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
     # --- 1. ESTOQUE ---
-    with subtabs:
+    with subtabs[0]:
         st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
         df_est_visual = df_est.copy()
         if not df_est_visual.empty: 
@@ -158,7 +153,7 @@ with aba_master_sistema:
                     st.rerun()
 
     # --- 2. CANCELAMENTOS ---
-    with subtabs:
+    with subtabs[1]:
         st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
         p_ab = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id 
@@ -181,7 +176,7 @@ with aba_master_sistema:
                         c.commit()
                     st.success("Item removido e estoque devolvido com segurança!"); st.rerun()
     # --- 3. CADASTRO EM MASSA ---
-    with subtabs:
+    with subtabs[2]:
         st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
         st.write("Cole a sua lista abaixo seguindo o formato exato: **Nome, Categoria, Preço** (um produto por linha).")
         st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
@@ -218,7 +213,7 @@ with aba_master_sistema:
                 if itens_gravados > 0: st.success(f"🚀 Sucesso! {itens_gravados} produtos salvos!"); st.rerun()
 
     # --- 4. RECEITAS COM 4 INGREDIENTES ---
-    with subtabs:
+    with subtabs[3]:
         st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
         if not df_prods.empty and not df_est.empty:
             lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
@@ -246,7 +241,7 @@ with aba_master_sistema:
         else: st.info("Cadastre insumos e produtos na conta antes.")
 
     # --- 5. RELATÓRIOS ---
-    with subtabs:
+    with subtabs[4]:
         st.subheader("📊 Resumo Financeiro Detalhado")
         vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.empresa_id = %s AND p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn, params=[emp_id])
         if vendas_df.empty: st.info("Nenhuma comanda histórica para esta empresa.")
@@ -263,7 +258,7 @@ with aba_master_sistema:
             c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
             st.dataframe(vendas_df, use_container_width=True, hide_index=True)
     # --- 6. EXCLUIR ---
-    with subtabs:
+    with subtabs[5]:
         st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
         col_del1, col_del2 = st.columns(2)
         with col_del1:
@@ -305,7 +300,7 @@ with aba_master_operador:
                 else: st.error("Credenciais do garçom incorretas!")
 
         st.markdown("---")
-        # Layout Exigido: Cadastro posicionado exatamente embaixo do formulário de login do garçom
+        # EXIGÊNCIA ABSOLUTA DE DESIGN: Módulo posicionado nativamente embaixo do login do funcionário
         with st.expander("➕ Não tem conta? Cadastrar Novo Garçom"):
             with st.form("cadastro_garcom_form", clear_on_submit=True):
                 novo_g_user = st.text_input("Defina o Nome/Usuário do Garçom:").strip()
