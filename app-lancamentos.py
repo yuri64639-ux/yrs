@@ -95,6 +95,24 @@ if not st.session_state.logado:
                         st.error("Credenciais da empresa incorretas!")
             else:
                 st.info("Nenhuma empresa cadastrada ainda.")
+
+    st.markdown("---")
+    st.write("### 🛠️ Modo Desenvolvedor")
+    col_senha, col_botao = st.columns(2)
+    senha_painel = col_senha.text_input("Senha de Autorização:", type="password", key="senha_painel_nativo", label_visibility="collapsed", placeholder="Senha Master")
+     
+    if st.session_state.ocultar_css:
+        if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
+            if senha_painel == "orla123":
+                st.session_state.ocultar_css = False
+                st.rerun()
+            else: st.error("Senha Master incorreta!")
+    else:
+        if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
+            if senha_painel == "orla123":
+                st.session_state.ocultar_css = True
+                st.rerun()
+            else: st.error("Senha Master incorreta!")
     st.stop()
 
 if st.session_state.logado and not st.session_state.garcom_logado:
@@ -114,8 +132,7 @@ if st.session_state.logado and not st.session_state.garcom_logado:
                 st.session_state.garcom_logado = True
                 st.session_state.usuario_atual = str(res_garcom[0])
                 st.rerun()
-            else:
-                st.error("Usuário ou senha do garçom incorretos!")
+            else: st.error("Usuário ou senha do garçom incorretos!")
 
     with st.expander("⚙️ Gerenciamento e Cadastro de Garçons"):
         st.write("### ➕ Cadastrar Novo Garçom")
@@ -131,15 +148,12 @@ if st.session_state.logado and not st.session_state.garcom_logado:
                             c.commit()
                         st.success(f"Garçom '{novo_nome}' cadastrado com sucesso!")
                         st.rerun()
-                    except psycopg2.errors.UniqueViolation:
-                        st.error("Este nome de usuário já está sendo usado nesta empresa.")
-                else:
-                    st.error("Preencha todos os campos para cadastrar!")
+                    except psycopg2.errors.UniqueViolation: st.error("Este nome de usuário já está sendo usado.")
+                else: st.error("Preencha todos os campos!")
 
         st.markdown("---")
         st.write("### 📋 Garçons Ativos")
         df_garcons = pd.read_sql("SELECT id, usuario FROM public.usuarios WHERE empresa_id = %s ORDER BY usuario", conn, params=[st.session_state.empresa_id_atual])
-        
         if not df_garcons.empty:
             for _, row_g in df_garcons.iterrows():
                 col_g_nome, col_g_btn = st.columns(2)
@@ -151,8 +165,7 @@ if st.session_state.logado and not st.session_state.garcom_logado:
                         c.commit()
                     st.success("Funcionário removido!")
                     st.rerun()
-        else:
-            st.info("Nenhum garçom cadastrado ainda.")
+        else: st.info("Nenhum garçom cadastrado ainda.")
 
     if st.button("🔒 Bloquear Terminal da Empresa"):
         st.session_state.logado = False
@@ -305,7 +318,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
                                     WHERE empresa_id = %s AND id = %s
                                 """, (qtd_total_gasta, emp_id, int(r_ins["insumo_id"])))
                         c.commit()
-                    st.success("🚀 Pedido lançado com sucesso e estoque updated!")
+                    st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
                     st.session_state.carrinho = []
                     st.rerun()
 
