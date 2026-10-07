@@ -1,37 +1,161 @@
+# ============================================================================== #
+# PARTE 1 DE 3: CONFIGURAÇÕES, BANCO DE DADOS E AUTENTICAÇÃO MULTICLIENTE        #
+# ============================================================================== #
+from datetime import datetime
+import streamlit as st
+import psycopg2
+import pandas as pd
+
+st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
+
+# --- GERENCIAMENTO DE SESSÃO ---
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "usuario_atual" not in st.session_state:
+    st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state:
+    st.session_state.empresa_id_atual = None
+if "garcom_logado" not in st.session_state:
+    st.session_state.garcom_logado = False
+if "ocultar_css" not in st.session_state:
+    st.session_state.ocultar_css = True
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
+
+# Aplicação do estilo CSS ocultando botões nativos
+if st.session_state.ocultar_css:
+    st.markdown("""
+        <style>
+        #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
+        header [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: flex !important; }
+        header { background-color: transparent !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+def ob_cx():
+    c = st.secrets["connections"]["postgresql"]
+    if "url" in c: return psycopg2.connect(c["url"])
+    return psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
+
+# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
+conn = ob_cx()
+with conn.cursor() as cur:
+    cur.execute("SET search_path TO public;")
+    
+    # 1. Tabela de Empresas/Clientes
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.empresas (
+            id SERIAL PRIMARY KEY, 
+            nome_empresa TEXT UNIQUE NOT NULL,
+            data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    
+    # 2. Tabelas operacionais base
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
+        CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
+        CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
+        CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
+        CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
+    """)
+    
+    # --- AJUSTE AUTOMÁTICO DE COLUNAS FALTANTES ---
+    cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+    
+    try:
+        cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
+    except Exception: conn.rollback()
+
+conn.commit()
+
+# --- ETAPA 1: TELA DE ACESSO DA EMPRESA ---
+if not st.session_state.logado:
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+
+    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
+        with st.form("cadastro_empresa_form"):
+            st.subheader("🏢 Cadastrar Empresa no Sistema")
+            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
+            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
+            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
+            botao_cadastrar = st.form_submit_button("Criar Minha Conta", type="primary")
+            
+            if botao_cadastrar and nova_empresa and adm_usuario and adm_senha:
+                try:
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
+                        id_da_empresa = cur.fetchone()[0]
+                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                        c.commit()
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada!")
+                except Exception as e:
+                    st.error(f"Erro no cadastro: {e}")
+    else:
+        with st.form("login_form"):
+            st.subheader("📱 Login do Estabelecimento (Empresa)")
+            df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM public.empresas ORDER BY nome_empresa", conn)
+            dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
+            
+            if dict_empresas:
+                empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
+                user_input = st.text_input("Usuário Master da Empresa:")
+                senha_input = st.text_input("Senha Master:", type="password")
+                submetido = st.form_submit_button("Liberar Terminal", type="primary")
+                
+                if submetido:
+                    id_empresa_login = dict_empresas[empresa_selecionada]
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("SELECT empresa_id FROM public.usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (id_empresa_login, user_input.strip(), senha_input.strip()))
+                        resultado = cur.fetchone()
+                    
+                    if resultado:
                         st.session_state.logado = True
-                        st.session_state.usuario_atual = str(resultado[0])
-                        st.session_state.empresa_id_atual = int(resultado[1])
-                        st.session_state.ocultar_css = True
+                        st.session_state.empresa_id_atual = int(resultado[0])
                         st.rerun()
                     else:
-                        st.error("Usuário ou senha incorretos para esta empresa!")
+                        st.error("Credenciais da empresa incorretas!")
             else:
                 st.info("Nenhuma empresa cadastrada ainda.")
+    st.stop()
 
-    # --- BOTÃO DE ALTERNAR FUNÇÕES NATIVAS COM SENHA MASTER FIXED ---
-    st.markdown("---")
-    st.write("### 🛠️ Modo Desenvolvedor")
-    col_senha, col_botao = st.columns(2)
-    senha_painel = col_senha.text_input("Senha de Autorização:", type="password", key="senha_painel_nativo", label_visibility="collapsed", placeholder="Senha Master")
-     
-    if st.session_state.ocultar_css:
-        if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == "orla123":
-                st.session_state.ocultar_css = False
+# --- ETAPA 2: TELA DE LOGIN INDIVIDUAL DO GARÇOM ---
+if st.session_state.logado and not st.session_state.garcom_logado:
+    with st.form("login_garcom_form"):
+        st.subheader("👤 Identificação do Garçom")
+        garcom_input = st.text_input("Usuário/Nome do Garçom:")
+        senha_garcom = st.text_input("Senha do Garçom:", type="password")
+        submetido_garcom = st.form_submit_button("Entrar no Sistema", type="primary")
+        
+        if submetido_garcom:
+            with ob_cx() as c, c.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                cur.execute("SELECT usuario FROM public.usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (st.session_state.empresa_id_atual, garcom_input.strip().lower(), senha_garcom.strip()))
+                res_garcom = cur.fetchone()
+            
+            if res_garcom:
+                st.session_state.garcom_logado = True
+                st.session_state.usuario_atual = str(res_garcom[0])
                 st.rerun()
             else:
-                st.error("Senha Master incorreta!")
-    else:
-        if col_botao.button("🔒 Ocultar Funções Nativas", type="secondary", use_container_width=True):
-            if senha_painel == "adm123":
-                st.session_state.ocultar_css = True
-                st.rerun()
-            else:
-                st.error("Senha Master incorreta!")
+                st.error("Usuário ou senha do garçom incorretos!")
+                
+    if st.button("🔒 Bloquear Terminal da Empresa"):
+        st.session_state.logado = False
+        st.session_state.empresa_id_atual = None
+        st.rerun()
+    st.stop()
 # ============================================================================== #
 # PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO)                     #
 # ============================================================================== #
-if st.session_state.logado:
+if st.session_state.logado and st.session_state.garcom_logado:
     emp_id = st.session_state.empresa_id_atual
 
     col_user, col_info = st.columns(2)
@@ -53,10 +177,11 @@ if st.session_state.logado:
     with tabs[0]:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
-        if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
-            st.session_state.logado = False
+        
+        # LOGOFF EXCLUSIVO DO GARÇOM (MANTÉM TERMINAL DA EMPRESA ATIVO)
+        if col_bloqueio.button("🔒 Trocar Operador", key="bloqueio_lancador", type="secondary", use_container_width=True):
+            st.session_state.garcom_logado = False
             st.session_state.usuario_atual = ""
-            st.session_state.empresa_id_atual = None
             st.session_state.carrinho = []
             st.rerun()
 
@@ -100,7 +225,7 @@ if st.session_state.logado:
         else:
             texto_exibicao = ""
             
-        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_2")
+        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_3")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
