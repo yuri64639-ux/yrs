@@ -109,7 +109,7 @@ if not st.session_state.logado:
             else: st.info("Nenhuma empresa cadastrada ainda.")
     st.stop()
 
-# Layout Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
+# Layout Geral Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
 aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
 with aba_master_sistema:
     emp_id = st.session_state.empresa_id_atual
@@ -126,7 +126,6 @@ with aba_master_sistema:
     df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
     df_prods = pd.read_sql("SELECT id, nome FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
     
-    # RESOLUÇÃO DO ESCUPO DAS SUBTABS: Declaradas fora de qualquer bloco if condicional para evitar quebras de compilação
     subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
     # --- 1. ESTOQUE ---
@@ -300,7 +299,7 @@ with aba_master_operador:
                 else: st.error("Credenciais do garçom incorretas!")
 
         st.markdown("---")
-        # EXIGÊNCIA ABSOLUTA DE DESIGN: Módulo posicionado nativamente embaixo do login do funcionário
+        # Layout Exigido: Cadastro posicionado exatamente embaixo do formulário de login do garçom
         with st.expander("➕ Não tem conta? Cadastrar Novo Garçom"):
             with st.form("cadastro_garcom_form", clear_on_submit=True):
                 novo_g_user = st.text_input("Defina o Nome/Usuário do Garçom:").strip()
