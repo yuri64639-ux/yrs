@@ -104,7 +104,7 @@ if not st.session_state.logado:
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("SET search_path TO public;")
                             cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                            id_da_empresa = cur.fetchone()[0]
+                            id_da_empresa = cur.fetchone()
                             
                             cur.execute("""
                                 INSERT INTO public.usuarios (empresa_id, usuario, senha) 
@@ -146,8 +146,8 @@ if not st.session_state.logado:
                     
                     if resultado:
                         st.session_state.logado = True
-                        st.session_state.usuario_atual = str(resultado[0])
-                        st.session_state.empresa_id_atual = int(resultado[1])
+                        st.session_state.usuario_atual = str(resultado)
+                        st.session_state.empresa_id_atual = int(resultado)
                         st.session_state.ocultar_css = True
                         st.rerun()
                     else:
@@ -191,13 +191,13 @@ if st.session_state.logado:
     """, conn, params=[emp_id])
     
     if not df_ultima_mesa.empty:
-        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
     # --- ABA 1: Lançar Pedidos ---
-    with tabs[0]:
+    with tabs:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
         if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
@@ -215,7 +215,7 @@ if st.session_state.logado:
 
         if busca_nome:
             prods_filtrados = pd.read_sql("""
-                SELECT id, nome, preco, categoria FROM public.produtos 
+                SELECT id, nome, preco, delete_from_cart_by_index_or_id FROM public.produtos 
                 WHERE empresa_id = %s AND LOWER(nome) LIKE LOWER(%s) ORDER BY nome
             """, conn, params=[emp_id, f"%{busca_nome}%"])
             if not prods_filtrados.empty:
@@ -239,15 +239,15 @@ if st.session_state.logado:
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
 
-        # --- CONTAINER SEGURO DO CAMPO "ITEM ESCOLHIDO" (SEMPRE VISÍVEL) ---
-        st.markdown("### 🎯 Confirmação do Operador")
+        # --- NOVO CAMPO VISUAL (ESTILO INPUT IGUAL DA LUPA) ---
         chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
         
         if dp and chave_sel in dp:
-            item_atual = dp[chave_sel]
-            st.info(f"✨ **Produto Selecionado:** {item_atual['nome']} | **Valor:** R$ {item_atual['preco']:.2f}")
+            texto_exibicao = f"{dp[chave_sel]['nome']} — R$ {dp[chave_sel]['preco']:.2f}"
         else:
-            st.write("👉 *Aguardando seleção de um produto válido...*")
+            texto_exibicao = ""
+            
+        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
@@ -271,7 +271,7 @@ if st.session_state.logado:
             for idx_c, item in enumerate(st.session_state.carrinho):
                 sub_item = item["qtd"] * item["preco"]
                 total_carrinho += sub_item
-                col_txt, col_btn = st.columns([4, 1])
+                col_txt, col_btn = st.columns()
                 col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
                 if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                     st.session_state.carrinho.pop(idx_c)
@@ -334,7 +334,7 @@ if st.session_state.logado:
                     st.rerun()
 
     # --- ABA 2: Contas ---
-    with tabs[1]:
+    with tabs:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
