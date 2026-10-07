@@ -1,167 +1,10 @@
-from datetime import datetime
-import streamlit as st
-import psycopg2
-import pandas as pd
-
-# Configuração global da página do ecossistema multi-tenant
-st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
-
-# Inicialização e manutenção estrita de todas as variáveis de sessão originais
-if "logado" not in st.session_state: st.session_state.logado = False
-if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
-if "senha_master_empresa" not in st.session_state: st.session_state.senha_master_empresa = ""
-if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
-if "carrinho" not in st.session_state: st.session_state.carrinho = []
-
-# Ocultação do menu nativo do Streamlit via injeção de CSS
-st.markdown("""
-    <style>
-    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
-    header [data-testid="stToolbar"] { display: none !important; }
-    [data-testid="collapsedControl"] { display: none !important; }
-    header { background-color: transparent !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Conexão dinâmica protegida com o PostgreSQL para mitigar quedas de concorrência
-def ob_cx():
-    c = st.secrets["connections"]["postgresql"]
-    if "url" in c: return psycopg2.connect(c["url"])
-    return psycopg2.connect(
-        host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), 
-        user=c.get("username"), password=c.get("password"), sslmode="require"
-    )
-
-# Inicialização e verificação de tabelas no banco de dados de forma isolada
-try:
-    with ob_cx() as conn_init, conn_init.cursor() as cur:
-        cur.execute("SET search_path TO public;")
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS public.empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-            CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
-            CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
-            CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
-            CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
-            CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
-        """)
-        cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-        
-        try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-        except Exception: conn_init.rollback()
-        try: cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-        except Exception: conn_init.rollback()
-        try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-        except Exception: conn_init.rollback()
-        try: cur.execute("ALTER TABLE public.receitas ADD CONSTRAINT unique_empresa_receita UNIQUE(empresa_id, produto_id, insumo_id);")
-        except Exception: conn_init.rollback()
-        conn_init.commit()
-except Exception as e:
-    st.error(f"Erro estrutural de banco: {e}")
-
-# --- FASE 1: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO ---
-if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
-
-    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
-        with st.form("cadastro_empresa_form"):
-            st.subheader("🏢 Cadastrar Empresa no Sistema")
-            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
-            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
-            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
-            botao_cadastrar = st.form_submit_button("Criar Minha Conta", type="primary")
-            
-            if botao_cadastrar and nova_empresa and adm_usuario and adm_senha:
-                try:
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()
-                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
-                        c.commit()
-                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
-                except Exception as e: st.error(f"Erro no cadastro: {e}")
-    else:
-        with st.form("login_form"):
-            st.subheader("📱 Login do Estabelecimento (Empresa)")
-            with ob_cx() as conn_read:
-                df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM public.empresas ORDER BY nome_empresa", conn_read)
-            dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
-            
-            if dict_empresas:
-                empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
-                user_input = st.text_input("Usuário Master da Empresa:")
-                senha_input = st.text_input("Senha Master:", type="password")
-                submetido = st.form_submit_button("Liberar Terminal", type="primary")
-                
-                if submetido:
-                    id_empresa_login = dict_empresas[empresa_selecionada]
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("SELECT empresa_id, senha FROM public.usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (id_empresa_login, user_input.strip(), senha_input.strip()))
-                        resultado = cur.fetchone()
-                    
-                    if resultado:
-                        st.session_state.logado = True
-                        st.session_state.empresa_id_atual = int(resultado[0])
-                        st.session_state.senha_master_empresa = str(resultado[1])
-                        st.rerun()
-                    else: st.error("Credenciais da empresa incorretas!")
-            else: st.info("Nenhuma empresa cadastrada ainda.")
-    st.stop()
-
-# Layout Geral Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
-aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
-
-with aba_master_sistema:
-    emp_id = st.session_state.empresa_id_atual
-    cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
-    
-    # 🔒 VALIDAÇÃO DE ACESSO DA GERÊNCIA POR SENHA MASTER DA EMPRESA
-    st.subheader("🔒 Acesso Restrito à Gerência")
-    confirma_senha_master = st.text_input("Digite a Senha Master para liberar as ferramentas administrativas:", type="password", key="senha_master_gerencia_input")
-    
-    if confirma_senha_master != st.session_state.senha_master_empresa:
-        if confirma_senha_master:
-            st.error("❌ Senha Master incorreta! Acesso negado.")
-        st.info("Aguardando autenticação do administrador para exibir dados de estoque, receitas e relatórios.")
-        
-        st.markdown("---")
-        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", key="master_lock_disabled"):
-            st.session_state.logado = False
-            st.session_state.empresa_id_atual = None
-            st.session_state.senha_master_empresa = ""
-            st.session_state.garcom_logado = False
-            st.session_state.carrinho = []
-            st.rerun()
-        st.stop()
-
-    st.success("🔓 Acesso Gerencial Autorizado!")
-    if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", key="master_lock_empresa"):
-        st.session_state.logado = False
-        st.session_state.empresa_id_atual = None
-        st.session_state.senha_master_empresa = ""
-        st.session_state.garcom_logado = False
-        st.session_state.carrinho = []
-        st.rerun()
-    
-    with ob_cx() as conn_tabs:
-        df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque WHERE empresa_id = %s ORDER BY item", conn_tabs, params=[emp_id])
-        df_prods = pd.read_sql("SELECT id, nome FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn_tabs, params=[emp_id])
-        df_garcons = pd.read_sql("SELECT id, usuario FROM public.usuarios WHERE empresa_id = %s ORDER BY usuario", conn_tabs, params=[emp_id])
-    
-    subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 # --- 1. ESTOQUE ---
 with subtabs[0]:
 st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
 df_est_visual = df_est.copy()
 if not df_est_visual.empty:
 df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual"]
-st.dataframe(df_est_visual, hide_index=True)
+st.dataframe(df_est_visual, hide_index=True, use_container_width=True)
 with st.expander("➕ Alimentar Estoque"):
 with st.form("f_ins", clear_on_submit=True):
 n_i = st.text_input("Insumo:")
@@ -258,7 +101,9 @@ if i4 != "---" and q4 > 0: cur.execute("INSERT INTO public.receitas (empresa_id,
 c.commit()
 st.success("Ficha técnica salva!"); st.rerun()
 else: st.info("Cadastre insumos e produtos na conta antes.")
-# --- 5. RELATÓRIOS ---
+
+--- 5. RELATÓRIOS ---
+
 with subtabs[4]:
 st.subheader("📊 Resumo Financeiro Detalhado")
 with ob_cx() as conn_rep:
@@ -275,7 +120,7 @@ empresa_total += sub_mesa
 if taxa_marcada: garcons_total += (sub_mesa * 0.10)
 else: pendente_total += sub_mesa
 c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
-st.dataframe(vendas_df, hide_index=True)
+st.dataframe(vendas_df, use_container_width=True)
 # --- 6. EXCLUIR ---
 with subtabs[5]:
 st.subheader("🗑️ Remover Produtos, Insumos ou Garçons do Sistema")
@@ -283,7 +128,7 @@ col_del1, col_del2, col_del3 = st.columns(3)
 with col_del1:
 if not df_prods.empty:
 prod_para_excluir = st.selectbox("Selecione o Produto para deletar permanentemente:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
-if st.button("❌ Excluir Produto"):
+if st.button("❌ Excluir Produto", use_container_width=True):
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public;")
 cur.execute("DELETE FROM public.receitas WHERE empresa_id = %s AND produto_id = (SELECT id FROM public.produtos WHERE empresa_id = %s AND nome = %s)", (emp_id, emp_id, prod_para_excluir))
@@ -293,7 +138,7 @@ st.success("Removido com sucesso!"); st.rerun()
 with col_del2:
 if not df_est.empty:
 insumo_para_excluir = st.selectbox("Selecione o Insumo para deletar permanentemente:", [r['item'] for _, r in df_est.iterrows()], key="del_ins_sel")
-if st.button("❌ Excluir Insumo"):
+if st.button("❌ Excluir Insumo", use_container_width=True):
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public; DELETE FROM public.receitas WHERE empresa_id = %s AND insumo_id = (SELECT id FROM public.estoque WHERE empresa_id = %s AND item = %s); DELETE FROM public.estoque WHERE empresa_id = %s AND item = %s;", (emp_id, emp_id, insumo_para_excluir, emp_id, insumo_para_excluir))
 c.commit()
@@ -301,7 +146,7 @@ st.success("Removido com sucesso!"); st.rerun()
 with col_del3:
 if not df_garcons.empty:
 garcom_para_excluir = st.selectbox("Selecione o Garçom para desligar do sistema:", [r['usuario'] for _, r in df_garcons.iterrows()], key="del_garcom_sel")
-if st.button("❌ Remover Funcionário"):
+if st.button("❌ Remover Funcionário", use_container_width=True):
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public;")
 cur.execute("DELETE FROM public.usuarios WHERE empresa_id = %s AND usuario = %s", (emp_id, garcom_para_excluir))
@@ -319,7 +164,7 @@ senha_garcom = st.text_input("Senha do Garçom:", type="password")
 if st.form_submit_button("Entrar no Sistema", type="primary"):
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public;")
-cur.execute("SELECT usuario FROM public.usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (st.session_state.empresa_id_atual, garcom_input.strip().lower(), senha_garcom.strip()))
+cur.execute("SELECT usuario, senha FROM public.usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (st.session_state.empresa_id_atual, garcom_input.strip().lower(), senha_garcom.strip()))
 res_garcom = cur.fetchone()
 if res_garcom:
 st.session_state.garcom_logado = True
@@ -342,7 +187,7 @@ except Exception as e: st.error(f"Erro ou funcionário já existente no banco: {
 if st.session_state.garcom_logado:
 emp_id = st.session_state.empresa_id_atual
 st.subheader(f"📋 Terminal de Pedidos Ativo — Operador: {st.session_state.usuario_atual.upper()}")
-if st.button("🔒 Sair / Trocar de Garçom", key="logoff_garcom_atend"):
+if st.button("🔒 Sair / Trocar de Garçom", key="logoff_garcom_atend", use_container_width=True):
 st.session_state.garcom_logado = False
 st.session_state.usuario_atual = ""
 st.session_state.carrinho = []
@@ -369,7 +214,7 @@ else:
 prod_map_venda = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome']) for _, row in df_filtrado.iterrows()}
 produto_selecionado_string = st.selectbox("Escolha o Item:", list(prod_map_venda.keys()))
 qtd_solicitada = st.number_input("Quantidade Desejada:", min_value=1, value=1, step=1)
-if st.button("➕ Adicionar ao Carrinho"):
+if st.button("➕ Adicionar ao Carrinho", use_container_width=True):
 id_p_venda, nome_p_venda = prod_map_venda[produto_selecionado_string]
 st.session_state.carrinho.append({"id": id_p_venda, "nome": nome_p_venda, "qtd": qtd_solicitada})
 st.toast(f"{nome_p_venda} adicionado ao carrinho!")
@@ -378,8 +223,8 @@ st.markdown("### 🛒 Itens no Carrinho Corrente")
 for item in st.session_state.carrinho: st.write(f"▪ {item['qtd']}x - {item['nome']}")
 confirmacao_garcom = st.checkbox("✅ Eu confirmo que conferi os itens do pedido com o cliente.", value=False)
 col_limpar, col_enviar = st.columns(2)
-if col_limpar.button("🗑️ Limpar Carrinho"): st.session_state.carrinho = []; st.rerun()
-if col_enviar.button("🚀 Confirmar e Enviar Pedido", type="primary"):
+if col_limpar.button("🗑️ Limpar Carrinho", use_container_width=True): st.session_state.carrinho = []; st.rerun()
+if col_enviar.button("🚀 Confirmar e Enviar Pedido", type="primary", use_container_width=True):
 if not confirmacao_garcom:
 st.error("🔒 Atenção: Você precisa marcar o campo de confirmação antes de enviar!")
 else:
@@ -410,7 +255,7 @@ mesa_ver = st.selectbox("Selecione a Mesa para comanda ativa:", mesas_abertas)
 df_mesa_filtrada = pedidos_ativos[pedidos_ativos['mesa'] == mesa_ver]
 st.markdown(f"#### 📋 Comanda: {mesa_ver}")
 if 'Pendente' in df_mesa_filtrada['status'].tolist():
-if st.button("✅ Confirmar Todos os Itens Pendentes desta Mesa"):
+if st.button("✅ Confirmar Todos os Itens Pendentes desta Mesa", use_container_width=True):
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Confirmado' WHERE empresa_id = %s AND mesa = %s AND status = 'Pendente'", (emp_id, mesa_ver))
 c.commit()
@@ -435,17 +280,9 @@ c1.metric("Subtotal Consumo", f"R$ {subtotal_mesa:.2f}")
 c2.metric("Taxa Serviço (10%)", f"R$ {taxa_servico:.2f}")
 c3.metric("TOTAL DA CONTA", f"R$ {total_geral:.2f}")
 inclui_taxa = st.checkbox("Cliente aceitou pagar os 10%?", value=True, key="chk_taxa_fechamento")
-if st.button("💰 Finalizar e Receber Pagamento (Fechar Mesa)", type="primary"):
+if st.button("💰 Finalizar e Receber Pagamento (Fechar Mesa)", type="primary", use_container_width=True):
 valor_taxa_salvar = 1 if inclui_taxa else 0
 with ob_cx() as c, c.cursor() as cur:
 cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE empresa_id = %s AND mesa = %s AND status IN ('Pendente', 'Confirmado')", (valor_taxa_salvar, emp_id, mesa_ver))
 c.commit()
 st.success(f"Conta da {mesa_ver} fechada com sucesso!"); st.rerun()
-
-O código agora está unificado e completamente alinhado, eliminando os erros de importação gerados pelos arquivos que o GitHub não encontrava.
-
-<FollowUp>
-Assim que salvar esta versão mestre unificada, me informe:
-* Se a **tela de login** abriu normalmente no navegador.
-* Se deseja que eu monte o script SQL para fazer a **carga inicial de destilados** diretamente no banco de dados.
-</FollowUp>
