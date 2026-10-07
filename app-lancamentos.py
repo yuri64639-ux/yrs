@@ -1,153 +1,6 @@
-# ============================================================================== #
-# PARTE 1 DE 3: CONFIGURAÇÕES, BANCO DE DADOS E AUTENTICAÇÃO MULTICLIENTE        #
-# ============================================================================== #
-from datetime import datetime
-import streamlit as st
-import psycopg2
-import pandas as pd
-
-st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
-
-# --- GERENCIAMENTO DE SESSÃO ---
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "usuario_atual" not in st.session_state:
-    st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state:
-    st.session_state.empresa_id_atual = None
-if "ocultar_css" not in st.session_state:
-    st.session_state.ocultar_css = True
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = []
-
-# Aplicação do estilo CSS ocultando botões nativos
-if st.session_state.ocultar_css:
-    st.markdown("""
-        <style>
-        #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
-        header [data-testid="stToolbar"] { display: none !important; }
-        [data-testid="collapsedControl"] { display: flex !important; }
-        header { background-color: transparent !important; }
-        </style>
-    """, unsafe_allow_html=True)
-
-def ob_cx():
-    c = st.secrets["connections"]["postgresql"]
-    if "url" in c: return psycopg2.connect(c["url"])
-    return psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
-
-# --- INICIALIZAÇÃO DO BANCO DE DADOS (MULTI-TENANT COM ALTERAÇÃO PREVENTIVA) ---
-conn = ob_cx()
-with conn.cursor() as cur:
-    cur.execute("SET search_path TO public;")
-    
-    # 1. Tabela de Empresas/Clientes
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.empresas (
-            id SERIAL PRIMARY KEY, 
-            nome_empresa TEXT UNIQUE NOT NULL,
-            data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    
-    # 2. Tabelas operacionais base
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
-        CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
-        CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
-        CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
-        CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
-    """)
-    
-    # --- AJUSTE AUTOMÁTICO DE COLUNAS FALTANTES ---
-    cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    
-    # Adiciona chaves de unicidade compostas (ignora se já existirem)
-    try:
-        cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-    except Exception: conn.rollback()
-    try:
-        cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-    except Exception: conn.rollback()
-    try:
-        cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-    except Exception: conn.rollback()
-    try:
-        cur.execute("ALTER TABLE public.receitas ADD CONSTRAINT unique_empresa_receita UNIQUE(empresa_id, produto_id, insumo_id);")
-    except Exception: conn.rollback()
-
-conn.commit()
-
-# --- TELA DE ACESSO (LOGIN / CADASTRO DE EMPRESA) ---
-if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
-
-    # Cadastro de Novos Clientes (Empresas)
-    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
-        with st.form("cadastro_empresa_form"):
-            st.subheader("🏢 Cadastrar Empresa no Sistema")
-            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
-            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
-            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
-            
-            botao_cadastrar = st.form_submit_button("Criar Minha Conta", type="primary")
-            
-            if botao_cadastrar:
-                if not nova_empresa or not adm_usuario or not adm_senha:
-                    st.error("Por favor, preencha todos os campos do formulário.")
-                else:
-                    try:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                            id_da_empresa = cur.fetchone()
-                            
-                            cur.execute("""
-                                INSERT INTO public.usuarios (empresa_id, usuario, senha) 
-                                VALUES (%s, %s, %s);
-                            """, (id_da_empresa, adm_usuario, adm_senha))
-                            c.commit()
-                        st.success(f"🎉 Empresa '{nova_empresa}' criada! Mude para a aba de Login para acessar.")
-                    except psycopg2.errors.UniqueViolation:
-                        st.error("Erro: Esse nome de empresa ou usuário já está em uso.")
-                    except Exception as e:
-                        st.error(f"Ocorreu um erro no cadastro: {e}")
-
-    # Tela de Login por Empresa
-    else:
-        with st.form("login_form"):
-            st.subheader("📱 Acesso Individual ao Sistema")
-            
-            df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM public.empresas ORDER BY nome_empresa", conn)
-            dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
-            
-            if dict_empresas:
-                empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
-                user_input = st.text_input("Usuário:")
-                senha_input = st.text_input("Senha:", type="password")
-                submetido = st.form_submit_button("Entrar", type="primary")
-                
-                if submetido:
-                    user_limpo = user_input.strip()
-                    senha_limpa = senha_input.strip()
-                    id_empresa_login = dict_empresas[empresa_selecionada]
-                    
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("""
-                            SELECT usuario, empresa_id FROM public.usuarios 
-                            WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s
-                        """, (id_empresa_login, user_limpo, senha_limpa))
-                        resultado = cur.fetchone()
-                    
-                    if resultado:
                         st.session_state.logado = True
-                        st.session_state.usuario_atual = str(resultado)
-                        st.session_state.empresa_id_atual = int(resultado)
+                        st.session_state.usuario_atual = str(resultado[0])
+                        st.session_state.empresa_id_atual = int(resultado[1])
                         st.session_state.ocultar_css = True
                         st.rerun()
                     else:
@@ -191,13 +44,13 @@ if st.session_state.logado:
     """, conn, params=[emp_id])
     
     if not df_ultima_mesa.empty:
-        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
+        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
     # --- ABA 1: Lançar Pedidos ---
-    with tabs:
+    with tabs[0]:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
         if col_bloqueio.button("🔒 Sair", key="bloqueio_lancador", type="secondary", use_container_width=True):
@@ -215,7 +68,7 @@ if st.session_state.logado:
 
         if busca_nome:
             prods_filtrados = pd.read_sql("""
-                SELECT id, nome, preco, delete_from_cart_by_index_or_id FROM public.produtos 
+                SELECT id, nome, preco, categoria FROM public.produtos 
                 WHERE empresa_id = %s AND LOWER(nome) LIKE LOWER(%s) ORDER BY nome
             """, conn, params=[emp_id, f"%{busca_nome}%"])
             if not prods_filtrados.empty:
@@ -239,7 +92,7 @@ if st.session_state.logado:
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
 
-        # --- NOVO CAMPO VISUAL (ESTILO INPUT IGUAL DA LUPA) ---
+        # --- CAMPO VISUAL IDENTICO AO DA LUPA COM O PRODUTO ESCOLHIDO ---
         chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
         
         if dp and chave_sel in dp:
@@ -247,7 +100,7 @@ if st.session_state.logado:
         else:
             texto_exibicao = ""
             
-        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico")
+        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_2")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
@@ -271,7 +124,7 @@ if st.session_state.logado:
             for idx_c, item in enumerate(st.session_state.carrinho):
                 sub_item = item["qtd"] * item["preco"]
                 total_carrinho += sub_item
-                col_txt, col_btn = st.columns()
+                col_txt, col_btn = st.columns([4, 1])
                 col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
                 if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                     st.session_state.carrinho.pop(idx_c)
