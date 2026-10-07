@@ -1,6 +1,6 @@
-# ==============================================================================
-# PARTE 1 DE 3: CONFIGURAÇÕES, BANCO DE DADOS E AUTENTICAÇÃO MULTICLIENTE
-# ==============================================================================
+# ============================================================================== #
+# PARTE 1 DE 3: CONFIGURAÇÕES, BANCO DE DADOS E AUTENTICAÇÃO MULTICLIENTE        #
+# ============================================================================== #
 from datetime import datetime
 import streamlit as st
 import psycopg2
@@ -9,11 +9,16 @@ import pandas as pd
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
 # --- GERENCIAMENTO DE SESSÃO ---
-if "logado" not in st.session_state: st.session_state.logado = False
-if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
-if "ocultar_css" not in st.session_state: st.session_state.ocultar_css = True
-if "carrinho" not in st.session_state: st.session_state.carrinho = []
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "usuario_atual" not in st.session_state:
+    st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state:
+    st.session_state.empresa_id_atual = None
+if "ocultar_css" not in st.session_state:
+    st.session_state.ocultar_css = True
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
 
 # Aplicação do estilo CSS ocultando botões nativos
 if st.session_state.ocultar_css:
@@ -79,7 +84,7 @@ conn.commit()
 
 # --- TELA DE ACESSO (LOGIN / CADASTRO DE EMPRESA) ---
 if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma option:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
 
     # Cadastro de Novos Clientes (Empresas)
     if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
@@ -155,7 +160,7 @@ if not st.session_state.logado:
     st.write("### 🛠️ Modo Desenvolvedor")
     col_senha, col_botao = st.columns(2)
     senha_painel = col_senha.text_input("Senha de Autorização:", type="password", key="senha_painel_nativo", label_visibility="collapsed", placeholder="Senha Master")
-         
+     
     if st.session_state.ocultar_css:
         if col_botao.button("🔓 Exibir Funções Nativas", type="secondary", use_container_width=True):
             if senha_painel == "orla123":
@@ -170,9 +175,9 @@ if not st.session_state.logado:
                 st.rerun()
             else:
                 st.error("Senha Master incorreta!")
-# ==============================================================================
-# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO) - RESTAURADA
-# ==============================================================================
+# ============================================================================== #
+# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO) - RESTAURADA         #
+# ============================================================================== #
 if st.session_state.logado:
     emp_id = st.session_state.empresa_id_atual
 
@@ -204,10 +209,10 @@ if st.session_state.logado:
 
         m = st.text_input("Mesa / Comanda:", value=st.session_state.get("mesa_atual", ""), key="mesa_global_input", label_visibility="collapsed")
         st.session_state["mesa_atual"] = m
-                 
+        
         busca_nome = st.text_input("🔍 Digite o nome do produto:", key="lupa_busca_topo_absoluto").strip()
         dp = {}
-                 
+
         if busca_nome:
             prods_filtrados = pd.read_sql("""
                 SELECT id, nome, preco, categoria FROM public.produtos 
@@ -219,11 +224,11 @@ if st.session_state.logado:
                 ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()), key="select_busca_lupa")
             else:
                 st.warning("Nenhum item encontrado com esse nome.")
-                         
+        
         st.markdown("---")
         st.markdown("**Ou navegue pelas Categorias:**")
         cat_sel = st.selectbox("Selecione a Categoria para listar:", cats, key="categoria_filtro")
-                 
+
         if not busca_nome:
             prods_filtrados = pd.read_sql("""
                 SELECT id, nome, preco, categoria FROM public.produtos 
@@ -235,7 +240,14 @@ if st.session_state.logado:
                 ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
-                         
+
+        # --- CAMPO ADICIONADO: ITEM ESCOLHIDO PELO GARÇOM ---
+        if dp:
+            chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
+            if chave_sel in dp:
+                item_atual = dp[chave_sel]
+                st.info(f"🎯 **Item Escolhido:** {item_atual['nome']} | **Preço Unitário:** R$ {item_atual['preco']:.2f}")
+
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
             if st.button("➕ Adicionar ao Pedido", type="secondary"):
@@ -264,15 +276,15 @@ if st.session_state.logado:
                 if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                     st.session_state.carrinho.pop(idx_c)
                     st.rerun()
-                                 
+                                     
             st.markdown(f"### 🧾 Total Parcial: R$ {total_carrinho:.2f}")
             col_cancelar, col_enviar = st.columns(2)
             if col_cancelar.button("❌ Limpar Todo o Rascunho"):
                 st.session_state.carrinho = []
                 st.rerun()
-# ==============================================================================
-# PARTE 3 DE 3: ATUALIZAÇÃO DE ESTOQUE, ENVIO DE PEDIDO E ABA DE CONTAS
-# ==============================================================================
+# ============================================================================== #
+# PARTE 3 DE 3: ATUALIZAÇÃO DE ESTOQUE, ENVIO DE PEDIDO E ABA DE CONTAS         #
+# ============================================================================== #
             if col_enviar.button("🔥 LANÇAR COMANDA COMPLETA", type="primary"):
                 estoque_geral_ok = True
                 lista_ids = [item["id"] for item in st.session_state.carrinho]
@@ -284,7 +296,7 @@ if st.session_state.logado:
                     JOIN public.estoque e ON r.insumo_id = e.id 
                     WHERE e.empresa_id = %s AND r.produto_id IN %s
                 """, conn, params=(emp_id, q_ids))
-                                 
+                                         
                 est_simulado = {}
                 for _, r_ins in df_receitas.iterrows():
                     if r_ins["insumo_id"] not in est_simulado:
@@ -330,28 +342,28 @@ if st.session_state.logado:
             JOIN public.produtos pr ON p.produto_id = pr.id 
             WHERE p.empresa_id = %s AND p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')
         """, conn, params=[emp_id])
-                 
+                         
         if df_pedidos.empty:
             st.info("Nenhuma mesa com consumo aberto.")
         else:
             mesas_abertas = sorted(list(set(df_pedidos["mesa"].tolist())))
             m_conta = st.selectbox("Selecione a Mesa para fechar:", mesas_abertas, key="selecao_mesa_conta")
-                         
+                                     
             pedidos_da_mesa = df_pedidos[df_pedidos["mesa"] == m_conta]
             total_mesa = 0.0
             st.markdown(f"### 📋 Extrato da Comanda: {m_conta}")
-                         
+                                     
             for _, row in pedidos_da_mesa.iterrows():
                 sub = row["quantidade"] * row["preco"]
                 total_mesa += sub
                 st.write(f"▪️ {row['quantidade']}x {row['nome']} — R$ {sub:.2f} ({row['status']})")
-                             
+                                         
             taxa = total_mesa * 0.10
             st.markdown("---")
             st.markdown(f"**Subtotal:** R$ {total_mesa:.2f}")
-                         
+                                     
             tirar_10 = st.checkbox("Tirar 10% da conta (Remover Taxa de Serviço)", key="chk_remover_10_porcento")
-                         
+                                     
             if tirar_10:
                 st.warning("🎁 Taxa de serviço de 10% removida do total.")
                 total_geral = total_mesa
@@ -360,9 +372,9 @@ if st.session_state.logado:
                 st.markdown(f"**Taxa de Serviço (10%):** R$ {taxa:.2f}")
                 total_geral = total_mesa + taxa
                 valor_taxa_banco = 1
-                             
+                                         
             st.markdown(f"## Total Geral: R$ {total_geral:.2f}")
-                         
+                                     
             col_paga, col_npaga = st.columns(2)
             if col_paga.button("✅ Confirmar Pagamento Completo", type="primary", use_container_width=True):
                 with ob_cx() as c, c.cursor() as cur:
