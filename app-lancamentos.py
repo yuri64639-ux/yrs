@@ -229,7 +229,7 @@ if st.session_state.logado and not st.session_state.ocultar_css:
                 itens_gravados = 0
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
-                    for linha in linhas:
+                    for linha in hashtags:
                         if "," in linha:
                             partes = linha.split(",")
                             if len(partes) == 3:
@@ -263,10 +263,18 @@ if st.session_state.logado and not st.session_state.ocultar_css:
             with st.form("f_vinc_multi", clear_on_submit=True):
                 p_sel = d_p[st.selectbox("Selecione o Produto final:", lista_prods, key="sel_prod_receita_base")]
                 st.markdown("---")
-                col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="rec_i1"); q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q1")
-                col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="rec_i2"); q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q2")
-                col5, col6 = st.columns(2); i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="rec_i3"); q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q3")
-                col7, col8 = st.columns(2); i4 = col7.selectbox("Ingrediente 4:", lista_insumos, key="rec_i4"); q4 = col8.number_input("Qtd gasta 4 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q4")
+                col1, col2 = st.columns(2)
+                i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="rec_i1")
+                q1 = col2.number_input("Qtd gasta 1 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q1")
+                col3, col4 = st.columns(2)
+                i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="rec_i2")
+                q2 = col4.number_input("Qtd gasta 2 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q2")
+                col5, col6 = st.columns(2)
+                i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="rec_i3")
+                q3 = col6.number_input("Qtd gasta 3 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q3")
+                col7, col8 = st.columns(2)
+                i4 = col7.selectbox("Ingrediente 4:", lista_insumos, key="rec_i4")
+                q4 = col8.number_input("Qtd gasta 4 (em ml ou g):", min_value=0.0, value=0.0, step=5.0, key="rec_q4")
                 
                 if st.form_submit_button("🔥 Gravar Receita Completa"):
                     with ob_cx() as c, c.cursor() as cur:
@@ -353,7 +361,7 @@ if st.session_state.logado and not st.session_state.garcom_logado:
                 else: st.error("Credenciais do garçom incorretas!")
     st.stop()
 
-# --- FASE 4: TERMINAL ATIVO DE OPERAÇÕES DO GARÇOM (LANÇADOR COMPLETO ORIGINAL) ---
+# --- FASE 4: TERMINAL ATIVO DE OPERAÇÕES DO GARÇOM ---
 if st.session_state.garcom_logado:
     emp_id = st.session_state.empresa_id_atual
     st.title(f"📋 Terminal Operacional de Pedidos")
@@ -384,77 +392,61 @@ if st.session_state.garcom_logado:
             if st.session_state.carrinho:
                 st.markdown("### 🛒 Itens no Carrinho Corrente")
                 for item in st.session_state.carrinho: st.write(f"▪ *{item['qtd']}x* - {item['nome']}")
+                
+                confirmacao_garcom = st.checkbox("✅ Eu confirmo que conferi os itens do pedido com o cliente.", value=False)
+                
                 col_limpar, col_enviar = st.columns(2)
                 if col_limpar.button("🗑️ Limpar Carrinho", use_container_width=True): st.session_state.carrinho = []; st.rerun()
+                
                 if col_enviar.button("🚀 Confirmar e Enviar Pedido", type="primary", use_container_width=True):
-                    horario_atual = datetime.now().strftime("%H:%M:%S")
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        for item in st.session_state.carrinho:
-                            cur.execute("INSERT INTO public.pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s)", (emp_id, mesa_operacao.strip(), item['id'], item['qtd'], horario_atual, st.session_state.usuario_atual))
-                            rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, item['id']])
-                            for _, r in rc.iterrows(): cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(item['qtd'])), emp_id, int(r['insumo_id'])))
-                        c.commit()
-                    st.success("Pedido lançado!"); st.session_state.carrinho = []; st.rerun()
+                    if not confirmacao_garcom:
+                        st.error("🔒 Atenção: Você precisa marcar o campo de confirmação antes de enviar!")
+                    else:
+                        horario_atual = datetime.now().strftime("%H:%M:%S")
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            for item in st.session_state.carrinho:
+                                cur.execute("INSERT INTO public.pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s)", (emp_id, mesa_operacao.strip(), item['id'], item['qtd'], horario_atual, st.session_state.usuario_atual))
+                                rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, item['id']])
+                                for _, r in rc.iterrows(): cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(item['qtd'])), emp_id, int(r['insumo_id'])))
+                            c.commit()
+                        st.success("Pedido lançado!"); st.session_state.carrinho = []; st.rerun()
 
     elif aba_operacao == "🧾 Gerenciar Contas / Fechar Mesas":
         pedidos_ativos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status 
             FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id 
-            WHERE p.empresa_id = %s AND p.status IN ('Pendente', 'Confirmado') ORDER BY p.mesa
+            WHERE p.empresa_id = %s AND p.status = 'Pendente' ORDER BY p.mesa
         """, conn, params=[emp_id])
         
         if pedidos_ativos.empty: st.info("Não há nenhuma conta ou mesa aberta no momento.")
         else:
-            lupa_busca = st.text_input("🔍 Lupa - Digite para buscar uma comanda/mesa ativa:").strip()
-            df_mesas_ativas = pedidos_ativos[pedidos_ativos['mesa'].str.contains(lupa_busca, case=False, na=False)] if lupa_busca else pedidos_ativos
+            mesas_abertas = sorted(list(set(pedidos_ativos['mesa'].tolist())))
+            mesa_ver = st.selectbox("Selecione a Mesa para Fechamento:", mesas_abertas)
+            df_mesa_filtrada = pedidos_ativos[pedidos_ativos['mesa'] == mesa_ver]
             
-            if df_mesas_ativas.empty: st.warning("Nenhuma mesa ativa corresponde à busca.")
-            else:
-                mesas_abertas = sorted(list(set(df_mesas_ativas['mesa'].tolist())))
-                mesa_ver = st.selectbox("Selecione a Mesa para conferência:", mesas_abertas)
-                df_mesa_filtrada = pedidos_ativos[pedidos_ativos['mesa'] == mesa_ver]
-                
-                st.markdown(f"#### 📋 Comanda: {mesa_ver}")
-                
-                if 'Pendente' in df_mesa_filtrada['status'].tolist():
-                    if st.button("✅ Confirmar Todos os Itens Pendentes", use_container_width=True):
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Confirmado' WHERE empresa_id = %s AND mesa = %s AND status = 'Pendente'", (emp_id, mesa_ver))
-                            c.commit()
-                        st.success("Itens confirmados!"); st.rerun()
-                
-                for _, row in df_mesa_filtrada.iterrows():
-                    c_item, c_status, c_acao = st.columns(3)
-                    c_item.write(f"▪ **{row['quantidade']}x** {row['produto']} *(R$ {row['subtotal']:.2f})*")
-                    if row['status'] == 'Pendente':
-                        c_status.warning("⏳ Pendente")
-                        if c_acao.button("Confirmar", key=f"conf_ind_{row['id']}"):
-                            with ob_cx() as c, c.cursor() as cur:
-                                cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Confirmado' WHERE id = %s AND empresa_id = %s", (int(row['id']), emp_id))
-                                c.commit()
-                            st.rerun()
-                    else: c_status.success("🔥 Confirmado")
-                
-                subtotal_mesa = float(df_mesa_filtrada['subtotal'].sum())
-                taxa_servico = subtotal_mesa * 0.10
-                total_geral = subtotal_mesa + taxa_servico
-                
-                st.markdown("---")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Subtotal Consumo", f"R$ {subtotal_mesa:.2f}")
-                c2.metric("Taxa Serviço (10%)", f"R$ {taxa_servico:.2f}")
-                c3.metric("TOTAL DA CONTA", f"R$ {total_geral:.2f}")
-                
-                inclui_taxa = st.checkbox("Cliente aceitou pagar os 10%?", value=True, key="chk_taxa_fechamento")
-                if st.button("💰 Finalizar e Receber Pagamento (Fechar Mesa)", type="primary", use_container_width=True):
-                    valor_taxa_salvar = 1 if inclui_taxa else 0
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE empresa_id = %s AND mesa = %s AND status IN ('Pendente', 'Confirmado')", (valor_taxa_salvar, emp_id, mesa_ver))
-                        c.commit()
-st.success(f"Conta da {mesa_ver} fechada!"); st.rerun()
+            lupa_busca = st.text_input("🔍 Lupa de Busca (Pesquisar item lançado nesta mesa):", value="", placeholder="Digite o nome do produto...")
+            if lupa_busca.strip():
+                df_mesa_filtrada = df_mesa_filtrada[df_mesa_filtrada['produto'].str.contains(lupa_busca, case=False, na=False)]
+            
+            st.markdown(f"#### 📋 Consumo Atual da {mesa_ver}")
+            st.dataframe(df_mesa_filtrada[["produto", "quantidade", "preco", "subtotal"]], use_container_width=True, hide_index=True)
+            
+            subtotal_mesa = float(df_mesa_filtrada['subtotal'].sum())
+            taxa_servico = subtotal_mesa * 0.10
+            total_geral = subtotal_mesa + taxa_servico
+            
+            st.markdown("---")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Subtotal Consumo", f"R$ {subtotal_mesa:.2f}")
+            c2.metric("Taxa Serviço (10%)", f"R$ {taxa_servico:.2f}")
+            c3.metric("TOTAL DA CONTA", f"R$ {total_geral:.2f}")
+            
+            inclui_taxa = st.checkbox("Cliente aceitou pagar os 10%?", value=True, key="chk_taxa_fechamento")
+            if st.button("💰 Finalizar e Receber Pagamento (Fechar Mesa)", type="primary", use_container_width=True):
+                valor_taxa_salvar = 1 if inclui_taxa else 0
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE empresa_id = %s AND mesa = %s AND status = 'Pendente'", (valor_taxa_salvar, emp_id, mesa_ver))
+                    c.commit()
+                st.success(f"Conta da {mesa_ver} fechada com sucesso!"); st.rerun()
 conn.close()
-
-<FollowUp>
-O código foi completamente reestruturado e o erro de login foi solucionado. Faça o commit das modificações no seu repositório GitHub e verifique o comportamento. O terminal carregou corretamente e permitiu o **cadastro dos garçons** na nova interface?
-</FollowUp>
