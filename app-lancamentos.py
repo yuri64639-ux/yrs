@@ -62,7 +62,7 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()[0]
+                        id_da_empresa = cur.fetchone()
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada! Mude para a aba de login.")
@@ -89,7 +89,7 @@ if not st.session_state.logado:
                     
                     if resultado:
                         st.session_state.logado = True
-                        st.session_state.empresa_id_atual = int(resultado[0])
+                        st.session_state.empresa_id_atual = int(resultado)
                         st.rerun()
                     else:
                         st.error("Credenciais da empresa incorretas!")
@@ -130,7 +130,7 @@ if st.session_state.logado and not st.session_state.garcom_logado:
             
             if res_garcom:
                 st.session_state.garcom_logado = True
-                st.session_state.usuario_atual = str(res_garcom[0])
+                st.session_state.usuario_atual = str(res_garcom)
                 st.rerun()
             else: st.error("Usuário ou senha do garçom incorretos!")
 
@@ -185,12 +185,12 @@ if st.session_state.logado and st.session_state.garcom_logado:
     """, conn, params=[emp_id])
     
     if not df_ultima_mesa.empty:
-        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
+        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
 
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-    with tabs[0]:
+    with tabs:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
         
@@ -217,6 +217,15 @@ if st.session_state.logado and st.session_state.garcom_logado:
             else:
                 st.warning("Nenhum item encontrado com esse nome.")
         
+        chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
+        
+        if dp and chave_sel in dp:
+            texto_exibicao = f"{dp[chave_sel]['nome']} — R$ {dp[chave_sel]['preco']:.2f}"
+        else:
+            texto_exibicao = ""
+            
+        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_final")
+        
         st.markdown("---")
         st.markdown("**Ou navegue pelas Categorias:**")
         cat_sel = st.selectbox("Selecione a Categoria para listar:", cats, key="categoria_filtro")
@@ -232,21 +241,13 @@ if st.session_state.logado and st.session_state.garcom_logado:
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
 
-        chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
-        
-        if dp and chave_sel in dp:
-            texto_exibicao = f"{dp[chave_sel]['nome']} — R$ {dp[chave_sel]['preco']:.2f}"
-        else:
-            texto_exibicao = ""
-            
-        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_final")
-
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
             if st.button("➕ Adicionar ao Pedido", type="secondary"):
                 if not m.strip():
                     st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
                 else:
+                    chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
                     if chave_sel in dp:
                         item_escolhido = dp[chave_sel]
                         st.session_state.carrinho.append({
@@ -263,7 +264,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
             for idx_c, item in enumerate(st.session_state.carrinho):
                 sub_item = item["qtd"] * item["preco"]
                 total_carrinho += sub_item
-                col_txt, col_btn = st.columns([4, 1])
+                col_txt, col_btn = st.columns()
                 col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
                 if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                     st.session_state.carrinho.pop(idx_c)
@@ -322,7 +323,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
                     st.session_state.carrinho = []
                     st.rerun()
 
-    with tabs[1]:
+    with tabs:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
