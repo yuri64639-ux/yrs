@@ -176,7 +176,7 @@ if not st.session_state.logado:
             else:
                 st.error("Senha Master incorreta!")
 # ============================================================================== #
-# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO) - RESTAURADA         #
+# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO)                     #
 # ============================================================================== #
 if st.session_state.logado:
     emp_id = st.session_state.empresa_id_atual
@@ -220,7 +220,6 @@ if st.session_state.logado:
             """, conn, params=[emp_id, f"%{busca_nome}%"])
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
-                # RESTAURADO: Confirmação do item buscado na lupa
                 ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()), key="select_busca_lupa")
             else:
                 st.warning("Nenhum item encontrado com esse nome.")
@@ -236,17 +235,19 @@ if st.session_state.logado:
             """, conn, params=[emp_id, cat_sel])
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
-                # RESTAURADO: Confirmação do item filtrado por categoria
                 ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
 
-        # --- CAMPO ADICIONADO: ITEM ESCOLHIDO PELO GARÇOM ---
-        if dp:
-            chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
-            if chave_sel in dp:
-                item_atual = dp[chave_sel]
-                st.info(f"🎯 **Item Escolhido:** {item_atual['nome']} | **Preço Unitário:** R$ {item_atual['preco']:.2f}")
+        # --- CONTAINER SEGURO DO CAMPO "ITEM ESCOLHIDO" (SEMPRE VISÍVEL) ---
+        st.markdown("### 🎯 Confirmação do Operador")
+        chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
+        
+        if dp and chave_sel in dp:
+            item_atual = dp[chave_sel]
+            st.info(f"✨ **Produto Selecionado:** {item_atual['nome']} | **Valor:** R$ {item_atual['preco']:.2f}")
+        else:
+            st.write("👉 *Aguardando seleção de um produto válido...*")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
@@ -254,7 +255,6 @@ if st.session_state.logado:
                 if not m.strip():
                     st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
                 else:
-                    chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
                     if chave_sel in dp:
                         item_escolhido = dp[chave_sel]
                         st.session_state.carrinho.append({
