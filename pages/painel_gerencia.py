@@ -4,13 +4,13 @@ import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Painel Gerencial", layout="centered")
+ADMIN = "admin123"
 
 if "logado" not in st.session_state or not st.session_state.logado:
     st.error("🔒 Por favor, faça login pelo terminal principal antes de acessar o Painel Gerencial!")
     st.stop()
 
 emp_id = st.session_state.empresa_id_atual
-ADMIN_SENHA = "admin123"
 
 if "ok_g" not in st.session_state: 
     st.session_state["ok_g"] = False
@@ -20,7 +20,7 @@ if not st.session_state["ok_g"]:
         st.subheader("🔒 Acesso Restrito da Gerência")
         senha_input = st.text_input("Senha Master:", type="password")
         if st.form_submit_button("🔓 Liberar"):
-            if senha_input == ADMIN_SENHA:
+            if senha_input == ADMIN:
                 st.session_state["ok_g"] = True
                 st.rerun()
             else: st.error("Senha incorreta!")
@@ -41,10 +41,10 @@ cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "
 df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
 df_prods = pd.read_sql("SELECT id, nome FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
 
-subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas"])
+subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
 with subtabs[0]:
-    st.subheader("📦 Estoque Atual")
+    st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
     df_est_visual = df_est.copy()
     if not df_est_visual.empty: 
         df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual (L / Kg)"]
@@ -53,7 +53,7 @@ with subtabs[0]:
     with st.expander("➕ Alimentar Estoque"):
         with st.form("f_ins", clear_on_submit=True):
             n_i = st.text_input("Insumo:")
-            q_i = st.number_input("Qtd:", min_value=0.0, value=1.0, step=1.0)
+            q_i = st.number_input("Qtd Inteira (Litros, Quilos ou Un):", min_value=0.0, value=1.0, step=1.0)
             if st.form_submit_button("Salvar") and n_i.strip():
                 with ob_cx() as c, c.cursor() as cur:
                     cur.execute("SET search_path TO public;")
@@ -95,16 +95,23 @@ with subtabs[1]:
 with subtabs[2]:
     st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
     st.write("Cole a sua lista abaixo seguindo o formato exato: **Nome, Categoria, Preço** (um produto por linha).")
+    st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
     
     with st.form("f_prod_massa_texto_direto", clear_on_submit=True):
-        texto_produtos = st.text_area("Cole seus produtos aqui:", height=250, placeholder="Exemplo:\nCaipirinha, Drinks, 15.0\nHeineken, Cervejas, 12.0")
+        texto_produtos = st.text_area(
+            "Cole seus produtos aqui:", 
+            height=250, 
+            placeholder="Exemplo:\nCaipirinha, Drinks, 15.0\nHeineken, Cervejas, 12.0\nBatata Frita, Porções, 35.0"
+        )
         botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
         
         if botao_gravar and texto_produtos.strip():
             linhas = texto_produtos.strip().split("\n")
             itens_gravados = 0
+            
             with ob_cx() as c, c.cursor() as cur:
                 cur.execute("SET search_path TO public;")
+                
                 for linha in linhas:
                     if "," in linha:
                         partes = linha.split(",")
@@ -112,11 +119,14 @@ with subtabs[2]:
                             n_p = partes[0].strip()
                             c_p = partes[1].strip()
                             p_p = partes[2].strip()
+                            
                             cat_valida = [c for c in cats if c.lower() == c_p.lower()]
+                            
                             if n_p and cat_valida:
                                 try:
                                     preco_float = float(p_p)
                                     categoria_final = str(cat_valida[0])
+                                    
                                     cur.execute("""
                                         INSERT INTO public.produtos (empresa_id, nome, categoria, preco) 
                                         VALUES (%s, %s, %s, %s) 
@@ -125,12 +135,14 @@ with subtabs[2]:
                                     itens_gravados += 1
                                 except ValueError: pass
                 c.commit()
+            
             if itens_gravados > 0:
-                st.success(f"🚀 Sucesso! {itens_gravados} produtos processados!")
+                st.success(f"🚀 Sucesso! {itens_gravados} produtos foram processados e salvos no banco!")
                 st.rerun()
-            else: st.error("❌ Nenhum produto cadastrado. Verifique o formato ou categorias.")
-with subtabs:
-    st.subheader("🔬 Montar Ficha Técnico-Operacional")
+            else:
+                st.error("❌ Nenhum produto cadastrado. Verifique o formato ou categorias.")
+with subtabs[3]:
+    st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingredientes)")
     if not df_prods.empty and not df_est.empty:
         lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
         lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
@@ -179,3 +191,39 @@ with subtabs:
                     st.error("Adicione pelo menos um ingrediente com quantidade válida!")
     else:
         st.info("Cadastre produtos e insumos no estoque antes de criar fichas técnicas.")
+
+with subtabs[4]:
+    st.subheader("📊 Relatórios e Indicadores por Garçom")
+    
+    df_vendas = pd.read_sql("""
+        SELECT p.garcom, SUM(p.quantidade * pr.preco) as faturamento, COUNT(p.id) as total_pedidos
+        FROM public.pedidos p
+        JOIN public.produtos pr ON p.produto_id = pr.id
+        WHERE p.empresa_id = %s AND p.status = 'Finalizado (Pago)'
+        GROUP BY p.garcom ORDER BY faturamento DESC
+    """, conn, params=[emp_id])
+    
+    if df_vendas.empty:
+        st.info("Nenhum faturamento registrado para consolidação de indicadores.")
+    else:
+        st.write("### Desempenho da Equipe")
+        st.dataframe(df_vendas, use_container_width=True, hide_index=True)
+        
+        st.write("### Gráfico de Faturamento por Garçom (R$)")
+        st.bar_chart(data=df_vendas, x="garcom", y="faturamento", use_container_width=True)
+
+with subtabs[5]:
+    st.subheader("🗑️ Remover Produtos do Cardápio")
+    
+    if not df_prods.empty:
+        prod_remover = st.selectbox("Selecione o produto para remover permanentemente:", [r['nome'] for _, r in df_prods.iterrows()], key="sb_prod_rem")
+        
+        if st.button("❌ Confirmar Exclusão Definitiva", type="primary"):
+            with ob_cx() as c, c.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                cur.execute("DELETE FROM public.produtos WHERE empresa_id = %s AND nome = %s", (emp_id, prod_remover))
+                c.commit()
+            st.success(f"Produto '{prod_remover}' removido do banco com sucesso!")
+            st.rerun()
+    else:
+        st.info("Nenhum produto cadastrado para exclusão.")
