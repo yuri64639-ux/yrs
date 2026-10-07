@@ -1,57 +1,61 @@
 import streamlit as st
-import psycopg2
+from banco import inicializar_tabelas, ob_cx
+from acesso import renderizar_tela_acesso
+from gerencia import renderizar_painel_gerencial
+from garcom import renderizar_terminal_garcom, lancar_novo_pedido
+from contas import gerenciar_contas_ativas
 
-def ob_cx():
-    """Conexão dinâmica com o Banco de Dados PostgreSQL utilizando dados do st.secrets."""
-    c = st.secrets["connections"]["postgresql"]
-    if "url" in c: 
-        return psycopg2.connect(c["url"])
-    return psycopg2.connect(
-        host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), 
-        user=c.get("username"), password=c.get("password"), sslmode="require"
-    )
+# Configuração global da página do ecossistema multi-tenant
+st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-def inicializar_tabelas():
-    """Criação e checagem de tabelas relacionais em lote com chaves estrangeiras."""
-    try:
-        with ob_cx() as conn, conn.cursor() as cur:
-            cur.execute("SET search_path TO public;")
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS public.empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
-                CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
-                CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
-                CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
-                CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
-            """)
-            cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            
-            try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-            except Exception: conn.rollback()
-            try: cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-            except Exception: conn.rollback()
-            try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-            except Exception: conn.rollback()
-            try: cur.execute("ALTER TABLE public.receitas ADD CONSTRAINT unique_empresa_receita UNIQUE(empresa_id, produto_id, insumo_id);")
-            except Exception: conn.rollback()
-            conn.commit()
-    except Exception as e:
-        st.error(f"Erro crítico na inicialização das tabelas: {e}")
-import streamlit as st
-import pandas as pd
-from banco import ob_cx
+# Inicialização e manutenção estrita de todas as variáveis de sessão originais
+if "logado" not in st.session_state: st.session_state.logado = False
+if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
+if "senha_master_empresa" not in st.session_state: st.session_state.senha_master_empresa = ""
+if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
+if "carrinho" not in st.session_state: st.session_state.carrinho = []
 
-def renderizar_fase_acesso():
-    """FASE 1: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO (Multi-Tenant)"""
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
-    
-    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
-        with st.form("cadastro_empresa_form"):
-            st.subheader("🏢 Cadastrar Empresa no Sistema")
+# Ocultação do menu nativo do Streamlit via injeção de CSS
+st.markdown("""
+    <style>
+    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
+    header [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    header { background-color: transparent !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Inicializa as tabelas relacionais em lote de forma protegida
+inicializar_tabelas()
+
+# Controle de fluxo de acesso da empresa
+if not st.session_state.logado:
+    renderizar_tela_acesso()
+
+# Layout Geral Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
+aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
+
+with aba_master_sistema:
+    emp_id = st.session_state.empresa_id_atual
+    if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", use_container_width=True, key="master_lock_empresa"):
+        st.session_state.logado = False
+        st.session_state.empresa_id_atual = None
+        st.session_state.senha_master_empresa = ""
+        st.session_state.garcom_logado = False
+        st.session_state.carrinho = []
+        st.rerun()
+    renderizar_painel_gerencial()
+
+with aba_master_operador:
+    emp_id = st.session_state.empresa_id_atual
+    garcom_ativo = renderizar_terminal_garcom()
+    if garcom_ativo:
+        aba_operacao = st.radio("Selecione a Ação:", ["➕ Lançar Pedido (Abrir/Adicionar Itens)", "🧾 Gerenciar Contas / Fechar Mesas"], horizontal=True)
+        if aba_operacao == "➕ Lançar Pedido (Abrir/Adicionar Itens)": lancar_novo_pedido(emp_id)
+        elif aba_operacao == "🧾 Gerenciar Contas / Fechar Mesas": gerenciar_contas_ativas(emp_id)
+
+st.subheader("🏢 Cadastrar Empresa no Sistema")
             nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
             adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
             adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
