@@ -1,6 +1,3 @@
-# ============================================================================== #
-# PARTE 1 DE 3: CONFIGURAÇÕES, BANCO DE DADOS E AUTENTICAÇÃO MULTICLIENTE        #
-# ============================================================================== #
 from datetime import datetime
 import streamlit as st
 import psycopg2
@@ -8,21 +5,13 @@ import pandas as pd
 
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-# --- GERENCIAMENTO DE SESSÃO ---
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "usuario_atual" not in st.session_state:
-    st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state:
-    st.session_state.empresa_id_atual = None
-if "garcom_logado" not in st.session_state:
-    st.session_state.garcom_logado = False
-if "ocultar_css" not in st.session_state:
-    st.session_state.ocultar_css = True
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = []
+if "logado" not in st.session_state: st.session_state.logado = False
+if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
+if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
+if "ocultar_css" not in st.session_state: st.session_state.ocultar_css = True
+if "carrinho" not in st.session_state: st.session_state.carrinho = []
 
-# Aplicação do estilo CSS ocultando botões nativos
 if st.session_state.ocultar_css:
     st.markdown("""
         <style>
@@ -38,43 +27,25 @@ def ob_cx():
     if "url" in c: return psycopg2.connect(c["url"])
     return psycopg2.connect(host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), user=c.get("username"), password=c.get("password"), sslmode="require")
 
-# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
 conn = ob_cx()
 with conn.cursor() as cur:
     cur.execute("SET search_path TO public;")
-    
-    # 1. Tabela de Empresas/Clientes
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.empresas (
-            id SERIAL PRIMARY KEY, 
-            nome_empresa TEXT UNIQUE NOT NULL,
-            data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    
-    # 2. Tabelas operacionais base
-    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
         CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
         CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
         CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
         CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Sim', garcom TEXT);
     """)
-    
-    # --- AJUSTE AUTOMÁTICO DE COLUNAS FALTANTES ---
     cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
     cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-    
-    try:
-        cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
+    try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
     except Exception: conn.rollback()
-
 conn.commit()
-
-# --- ETAPA 1: TELA DE ACESSO DA EMPRESA ---
 if not st.session_state.logado:
     aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
 
@@ -94,7 +65,7 @@ if not st.session_state.logado:
                         id_da_empresa = cur.fetchone()[0]
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
-                    st.success(f"🎉 Empresa '{nova_empresa}' criada!")
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada! Mude para a aba de login.")
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
     else:
@@ -126,7 +97,6 @@ if not st.session_state.logado:
                 st.info("Nenhuma empresa cadastrada ainda.")
     st.stop()
 
-# --- ETAPA 2: TELA DE LOGIN INDIVIDUAL DO GARÇOM ---
 if st.session_state.logado and not st.session_state.garcom_logado:
     with st.form("login_garcom_form"):
         st.subheader("👤 Identificação do Garçom")
@@ -146,15 +116,49 @@ if st.session_state.logado and not st.session_state.garcom_logado:
                 st.rerun()
             else:
                 st.error("Usuário ou senha do garçom incorretos!")
-                
+
+    with st.expander("⚙️ Gerenciamento e Cadastro de Garçons"):
+        st.write("### ➕ Cadastrar Novo Garçom")
+        with st.form("f_cad_garcom", clear_on_submit=True):
+            novo_nome = st.text_input("Nome/Usuário do Garçom:").strip()
+            nova_senha = st.text_input("Senha de Acesso:", type="password").strip()
+            if st.form_submit_button("Gravar Funcionário"):
+                if novo_nome and nova_senha:
+                    try:
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s)", (st.session_state.empresa_id_atual, novo_nome.lower(), nova_senha))
+                            c.commit()
+                        st.success(f"Garçom '{novo_nome}' cadastrado com sucesso!")
+                        st.rerun()
+                    except psycopg2.errors.UniqueViolation:
+                        st.error("Este nome de usuário já está sendo usado nesta empresa.")
+                else:
+                    st.error("Preencha todos os campos para cadastrar!")
+
+        st.markdown("---")
+        st.write("### 📋 Garçons Ativos")
+        df_garcons = pd.read_sql("SELECT id, usuario FROM public.usuarios WHERE empresa_id = %s ORDER BY usuario", conn, params=[st.session_state.empresa_id_atual])
+        
+        if not df_garcons.empty:
+            for _, row_g in df_garcons.iterrows():
+                col_g_nome, col_g_btn = st.columns(2)
+                col_g_nome.write(f"👤 {row_g['usuario'].upper()}")
+                if col_g_btn.button("Remover", key=f"del_g_{row_g['id']}"):
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("DELETE FROM public.usuarios WHERE id = %s", (int(row_g['id']),))
+                        c.commit()
+                    st.success("Funcionário removido!")
+                    st.rerun()
+        else:
+            st.info("Nenhum garçom cadastrado ainda.")
+
     if st.button("🔒 Bloquear Terminal da Empresa"):
         st.session_state.logado = False
         st.session_state.empresa_id_atual = None
         st.rerun()
     st.stop()
-# ============================================================================== #
-# PARTE 2 DE 3: INTERFACE DE LANÇAMENTO DE PEDIDOS (LOGADO)                     #
-# ============================================================================== #
 if st.session_state.logado and st.session_state.garcom_logado:
     emp_id = st.session_state.empresa_id_atual
 
@@ -173,12 +177,10 @@ if st.session_state.logado and st.session_state.garcom_logado:
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-    # --- ABA 1: Lançar Pedidos ---
     with tabs[0]:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
         
-        # LOGOFF EXCLUSIVO DO GARÇOM (MANTÉM TERMINAL DA EMPRESA ATIVO)
         if col_bloqueio.button("🔒 Trocar Operador", key="bloqueio_lancador", type="secondary", use_container_width=True):
             st.session_state.garcom_logado = False
             st.session_state.usuario_atual = ""
@@ -217,7 +219,6 @@ if st.session_state.logado and st.session_state.garcom_logado:
             else:
                 st.warning("Nenhum item encontrado nesta categoria.")
 
-        # --- CAMPO VISUAL IDENTICO AO DA LUPA COM O PRODUTO ESCOLHIDO ---
         chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
         
         if dp and chave_sel in dp:
@@ -225,7 +226,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
         else:
             texto_exibicao = ""
             
-        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_3")
+        st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_final")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
@@ -260,9 +261,6 @@ if st.session_state.logado and st.session_state.garcom_logado:
             if col_cancelar.button("❌ Limpar Todo o Rascunho"):
                 st.session_state.carrinho = []
                 st.rerun()
-# ============================================================================== #
-# PARTE 3 DE 3: ATUALIZAÇÃO DE ESTOQUE, ENVIO DE PEDIDO E ABA DE CONTAS         #
-# ============================================================================== #
             if col_enviar.button("🔥 LANÇAR COMANDA COMPLETA", type="primary"):
                 estoque_geral_ok = True
                 lista_ids = [item["id"] for item in st.session_state.carrinho]
@@ -307,12 +305,11 @@ if st.session_state.logado and st.session_state.garcom_logado:
                                     WHERE empresa_id = %s AND id = %s
                                 """, (qtd_total_gasta, emp_id, int(r_ins["insumo_id"])))
                         c.commit()
-                    st.success("🚀 Pedido lançado com sucesso e estoque atualizado!")
+                    st.success("🚀 Pedido lançado com sucesso e estoque updated!")
                     st.session_state.carrinho = []
                     st.rerun()
 
-    # --- ABA 2: Contas ---
-    with tabs:
+    with tabs[1]:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
