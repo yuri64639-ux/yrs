@@ -66,8 +66,7 @@ if not st.session_state.logado:
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada! Mude para a aba de login.")
-                except Exception as e:
-                    st.error(f"Erro no cadastro: {e}")
+                except Exception as e: st.error(f"Erro no cadastro: {e}")
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
@@ -91,10 +90,8 @@ if not st.session_state.logado:
                         st.session_state.logado = True
                         st.session_state.empresa_id_atual = int(resultado)
                         st.rerun()
-                    else:
-                        st.error("Credenciais da empresa incorretas!")
-            else:
-                st.info("Nenhuma empresa cadastrada ainda.")
+                    else: st.error("Credenciais da empresa incorretas!")
+            else: st.info("Nenhuma empresa cadastrada ainda.")
 
     st.markdown("---")
     st.write("### 🛠️ Modo Desenvolvedor")
@@ -130,7 +127,7 @@ if st.session_state.logado and not st.session_state.garcom_logado:
             
             if res_garcom:
                 st.session_state.garcom_logado = True
-                st.session_state.usuario_atual = str(res_garcom)
+                st.session_state.usuario_atual = str(res_garcom[0])
                 st.rerun()
             else: st.error("Usuário ou senha do garçom incorretos!")
 
@@ -185,12 +182,12 @@ if st.session_state.logado and st.session_state.garcom_logado:
     """, conn, params=[emp_id])
     
     if not df_ultima_mesa.empty:
-        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc}")
+        col_info.info(f"📌 **Última modificada:** Comanda {df_ultima_mesa['mesa'].iloc[0]}")
 
     cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
     tabs = st.tabs(["🚀 Lançar Pedidos", "💵 Contas"])
 
-    with tabs:
+    with tabs[0]:
         col_titulo, col_bloqueio = st.columns(2)
         col_titulo.subheader("Mesa / Comanda")
         
@@ -214,15 +211,12 @@ if st.session_state.logado and st.session_state.garcom_logado:
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
                 ps = st.selectbox("Confirmar Item selecionado:", list(dp.keys()), key="select_busca_lupa")
-            else:
-                st.warning("Nenhum item encontrado com esse nome.")
+            else: st.warning("Nenhum item encontrado com esse nome.")
         
         chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
         
-        if dp and chave_sel in dp:
-            texto_exibicao = f"{dp[chave_sel]['nome']} — R$ {dp[chave_sel]['preco']:.2f}"
-        else:
-            texto_exibicao = ""
+        if dp and chave_sel in dp: texto_exibicao = f"{dp[chave_sel]['nome']} — R$ {dp[chave_sel]['preco']:.2f}"
+        else: texto_exibicao = ""
             
         st.text_input("📌 Produto Escolhido:", value=texto_exibicao, disabled=True, key="campo_visual_produto_escolhido_identico_final")
         
@@ -238,14 +232,12 @@ if st.session_state.logado and st.session_state.garcom_logado:
             if not prods_filtrados.empty:
                 dp = {f"{r['nome']} ({r['categoria']}) - R$ {r['preco']:.2f}": r for _, r in prods_filtrados.iterrows()}
                 ps = st.selectbox("Confirmar Item filtrado por Categoria:", list(dp.keys()), key="select_cat_refinado")
-            else:
-                st.warning("Nenhum item encontrado nesta categoria.")
+            else: st.warning("Nenhum item encontrado nesta categoria.")
 
         if dp:
             q = st.number_input("Quantidade:", min_value=1, value=1, key="quantidade_item")
             if st.button("➕ Adicionar ao Pedido", type="secondary"):
-                if not m.strip():
-                    st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
+                if not m.strip(): st.error("Por favor, digite o número da Mesa / Comanda antes de adicionar itens!")
                 else:
                     chave_sel = st.session_state.get("select_busca_lupa") if busca_nome else st.session_state.get("select_cat_refinado")
                     if chave_sel in dp:
@@ -264,7 +256,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
             for idx_c, item in enumerate(st.session_state.carrinho):
                 sub_item = item["qtd"] * item["preco"]
                 total_carrinho += sub_item
-                col_txt, col_btn = st.columns()
+                col_txt, col_btn = st.columns([4, 1])
                 col_txt.write(f"▪️ **{item['qtd']}x** {item['nome']} [{item['categoria']}] — R$ {sub_item:.2f}")
                 if col_btn.button("🗑️ Remover", key=f"rem_{idx_c}"):
                     st.session_state.carrinho.pop(idx_c)
@@ -323,7 +315,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
                     st.session_state.carrinho = []
                     st.rerun()
 
-    with tabs:
+    with tabs[1]:
         st.subheader("💵 Gerenciamento de Contas e Mesas")
         df_pedidos = pd.read_sql("""
             SELECT p.id, p.mesa, pr.nome, pr.preco, p.quantidade, p.status, p.taxa_paga 
@@ -332,8 +324,7 @@ if st.session_state.logado and st.session_state.garcom_logado:
             WHERE p.empresa_id = %s AND p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')
         """, conn, params=[emp_id])
                          
-        if df_pedidos.empty:
-            st.info("Nenhuma mesa com consumo aberto.")
+        if df_pedidos.empty: st.info("Nenhuma mesa com consumo aberto.")
         else:
             mesas_abertas = sorted(list(set(df_pedidos["mesa"].tolist())))
             m_conta = st.selectbox("Selecione a Mesa para fechar:", mesas_abertas, key="selecao_mesa_conta")
@@ -354,7 +345,6 @@ if st.session_state.logado and st.session_state.garcom_logado:
             tirar_10 = st.checkbox("Tirar 10% da conta (Remover Taxa de Serviço)", key="chk_remover_10_porcento")
                                      
             if tirar_10:
-                st.warning("🎁 Taxa de serviço de 10% removida do total.")
                 total_geral = total_mesa
                 valor_taxa_banco = 0
             else:
