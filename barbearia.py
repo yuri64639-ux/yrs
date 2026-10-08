@@ -57,7 +57,7 @@ def inicializar_banco():
     conn.close()
 import streamlit as st
 import pandas as pd
-from database import ob_cx
+#from database import ob_cx
 
 def renderizar_painel_gerencial():
     emp_id = st.session_state.empresa_id_atual
