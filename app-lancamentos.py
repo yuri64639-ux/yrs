@@ -74,8 +74,8 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()
-                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa[0], adm_usuario, adm_senha))
+                        id_da_empresa = cur.fetchone()[0]
+                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
                 except Exception as e: st.error(f"Erro no cadastro: {e}")
@@ -178,7 +178,7 @@ with aba_master_sistema:
                             cur.execute("SET search_path TO public;")
                             rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(it['produto_id'])])
                             for _, r in rc.iterrows(): 
-                                 cur.execute("UPDATE public.estoque SET quantidade = quantidade + %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade'])), emp_id, int(r['insumo_id'])))
+                                 cur.execute("UPDATE public.estoque SET quantidade = grandfather.quantidade + %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(it['quantidade'])), emp_id, int(r['insumo_id'])))
                             cur.execute("DELETE FROM public.pedidos WHERE id = %s AND empresa_id = %s", (int(it['id']), emp_id))
                             c.commit()
                         st.success("Item removido e estoque devolvido com segurança!"); st.rerun()
@@ -253,8 +253,15 @@ with aba_master_sistema:
             vendas_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.empresa_id = %s AND p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn, params=[emp_id])
             if vendas_df.empty: st.info("Nenhuma comanda histórica para esta empresa.")
             else:
+                # SEPARAÇÃO DO RELATÓRIO EM DATAS DISTINCTS VIA INTERFACE
+                vendas_df['data_somente'] = vendas_df['horario'].apply(lambda x: str(x).split(" ")[0] if " " in str(x) else "Sem Data")
+                lista_datas_disponiveis = sorted(list(set(vendas_df['data_somente'].tolist())), reverse=True)
+                data_filtro_relatorio = st.selectbox("📅 Selecione a Data para filtrar o relatório:", lista_datas_disponiveis)
+                
+                df_vendas_filtrado_data = vendas_df[vendas_df['data_somente'] == data_filtro_relatorio]
+                
                 empresa_total, garcons_total, pendente_total = 0.0, 0.0, 0.0
-                for mesa_id, group in vendas_df.groupby('mesa'):
+                for mesa_id, group in df_vendas_filtrado_data.groupby('mesa'):
                     sub_mesa = float(group['subtotal'].sum())
                     status_mesa = group['status'].iloc[0]
                     taxa_marcada = int(group['taxa_paga'].iloc[0]) == 1
@@ -264,7 +271,8 @@ with aba_master_sistema:
                     else: pendente_total += sub_mesa
                 c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
                 
-                df_relatorio_visual = vendas_df.copy()
+                df_relatorio_visual = df_vendas_filtrado_data.copy()
+                df_relatorio_visual = df_relatorio_visual.drop(columns=['data_somente'])
                 df_relatorio_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa Paga", "Data/Hora"]
                 st.dataframe(df_relatorio_visual, use_container_width=True, hide_index=True)
 
@@ -390,7 +398,7 @@ with aba_master_operador:
                         if not confirmacao_garcom:
                             st.error("🔒 Atenção: Você precisa marcar o campo de confirmação antes de enviar!")
                         else:
-                            horario_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                            horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             with ob_cx() as c, c.cursor() as cur:
                                 cur.execute("SET search_path TO public;")
                                 for item in st.session_state.carrinho:
