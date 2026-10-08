@@ -129,7 +129,6 @@ with aba_master_sistema:
     if senha_gerencial_digitada != st.session_state.senha_master_empresa:
         st.warning("🔒 Conteúdo restrito. Insira a senha master correta para acessar as ferramentas de gestão.")
     else:
-        # BOTAO EXIGIDO PARA BLOQUEAR A ABA GERENCIAL IMEDIATAMENTE (Limpa o input via rerun)
         if st.button("❌ Bloquear Aba Gerencial Imediatamente", type="secondary", use_container_width=True, key="btn_bloquear_aba_gerencial"):
             st.rerun()
 
@@ -308,18 +307,25 @@ with aba_master_operador:
                     st.rerun()
                 else: st.error("Credenciais do garçom incorretas!")
         st.markdown("---")
+        
+        # EXIGÊNCIA DEMANDADA: Solicitação da senha master para validar o cadastro do funcionário
         with st.expander("➕ Não tem conta? Cadastrar Novo Garçom"):
             with st.form("cadastro_garcom_form", clear_on_submit=True):
                 novo_g_user = st.text_input("Defina o Nome/Usuário do Garçom:").strip()
                 novo_g_senha = st.text_input("Defina a Senha de Acesso:", type="password").strip()
+                senha_admin_validacao = st.text_input("Digite a Senha Master da Empresa para Autorizar:", type="password").strip()
+                
                 if st.form_submit_button("💼 Confirmar Cadastro do Funcionário") and novo_g_user and novo_g_senha:
-                    try:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (st.session_state.empresa_id_atual, novo_g_user, novo_g_senha))
-                            c.commit()
-                        st.success(f"Garçom '{novo_g_user}' cadastrado! Digite os dados acima para efetuar o login.")
-                    except Exception as e: st.error(f"Erro ou funcionário já existente no banco: {e}")
+                    if senha_admin_validacao != st.session_state.senha_master_empresa:
+                        st.error("🔒 Autorização negada: A senha master da empresa está incorreta!")
+                    else:
+                        try:
+                            with ob_cx() as c, c.cursor() as cur:
+                                cur.execute("SET search_path TO public;")
+                                cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (st.session_state.empresa_id_atual, novo_g_user, novo_g_senha))
+                                c.commit()
+                            st.success(f"Garçom '{novo_g_user}' cadastrado! Digite os dados acima para efetuar o login.")
+                        except Exception as e: st.error(f"Erro ou funcionário já existente no banco: {e}")
     # EXIBE O TERMINAL DO LANÇADOR SE O GARÇOM ESTIVER LOGADO
     if st.session_state.garcom_logado:
         emp_id = st.session_state.empresa_id_atual
@@ -346,7 +352,7 @@ with aba_master_operador:
                 categoria_filtro = st.selectbox("Filtrar Categoria:", ["Todos"] + sorted(list(set(df_prods_venda['categoria'].tolist()))))
                 df_filtrado = df_prods_venda if categoria_filtro == "Todos" else df_prods_venda[df_prods_venda['categoria'] == categoria_filtro]
                 
-                # Aplicação do filtro por texto digitado se a lupa contiver dados
+                # Aplicação do filtro por text digitado se a lupa contiver dados
                 if lupa_produtos:
                     df_filtrado = df_filtrado[df_filtrado['nome'].str.contains(lupa_produtos, case=False, na=False)]
                 
