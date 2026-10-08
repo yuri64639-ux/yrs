@@ -105,6 +105,7 @@ if not st.session_state.logado:
                         st.rerun()
                     else: st.error("Credenciais da empresa incorretas!")
             else: st.info("Nenhuma empresa cadastrada ainda.")
+    conn.close()
     st.stop()
 # Layout Geral Demandado: Abas Masters de Nível Superior Logo Após o Login da Empresa
 aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
@@ -129,7 +130,7 @@ with aba_master_sistema:
         st.warning("🔒 Conteúdo restrito. Insira a senha master correta para acessar as ferramentas de gestão.")
     else:
         # BOTAO EXIGIDO PARA BLOQUEAR A ABA GERENCIAL IMEDIATAMENTE (Limpa o input via rerun)
-        if st.button("❌ Bloquear Aba Gerencial Immediate", type="secondary", use_container_width=True, key="btn_bloquear_aba_gerencial"):
+        if st.button("❌ Bloquear Aba Gerencial Imediatamente", type="secondary", use_container_width=True, key="btn_bloquear_aba_gerencial"):
             st.rerun()
 
         df_est = pd.read_sql("SELECT id, item, quantidade FROM public.estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
