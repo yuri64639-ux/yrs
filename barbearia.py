@@ -282,7 +282,7 @@ def renderizar_terminal_barbeiro():
     conn.close()
 import streamlit as st
 import pandas as pd
-from database import inicializar_banco, ob_cx
+#from database import inicializar_banco, ob_cx
 from gerencial import renderizar_painel_gerencial
 from terminal import renderizar_terminal_barbeiro
 
