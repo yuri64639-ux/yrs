@@ -18,7 +18,7 @@ with sqlite3.connect("barber.db") as conn:
     df_b = pd.read_sql("SELECT nome FROM barbeiros ORDER BY nome", conn)
 
 if not st.session_state.aut:
-    menu = st.radio("Escolha o tipo de acesso:", ["📅 Sou Cliente (Agendar Horário)", "💈 Sou da Equipe (Painel Interno)"], horizontal=True)
+    menu = st.radio("Selecione uma opção de acesso:", ["📅 Sou Cliente (Agendar Horário)", "💈 Sou da Equipe (Painel Interno)"], horizontal=True)
     
     if menu == "📅 Sou Cliente (Agendar Horário)":
         st.subheader("📅 Agende seu Horário Conosco")
@@ -141,20 +141,32 @@ with tab_operacional:
             df_comandas_abertas = pd.read_sql("SELECT c.id, c.cliente, s.nome as servico, c.valor, c.barbeiro FROM comandas c JOIN servicos s ON c.servico_id = s.id WHERE c.status = 'Aberto'", conn)
             df_agenda_clientes = pd.read_sql("SELECT a.id, a.cliente, s.nome as servico, s.preco, a.barbeiro, a.data, a.horario FROM agenda a JOIN servicos s ON a.servico_id = s.id WHERE a.status = 'Agendado' ORDER BY a.data, a.horario", conn)
         
-        # Exibição dos horários marcados pelos próprios clientes no portal externo
-        if not df_agenda_clientes.empty:
-            st.markdown("### 📅 Próximos Clientes Agendados (Portal do Cliente)")
-            for _, row_a in df_agenda_clientes.iterrows():
-                coluna_texto, col_botao_acao = st.columns(2)
-                coluna_texto.write(f"⏰ **{row_a['horario']}** ({row_a['data']}) — **{row_a['cliente']}**")
+        # --- TABELA DE CORTES AGENDADOS ---
+        st.markdown("### 📅 Tabela de Cortes Agendados (Portal do Cliente)")
+        if df_agenda_clientes.empty:
+            st.info("ℹ️ Nenhum horário agendado por clientes para os próximos dias.")
+        else:
+            df_tabela_visual = df_agenda_clientes.copy()
+            df_tabela_visual.columns = ["ID", "Cliente", "Serviço solicitado", "Preço", "Barbeiro", "Data", "Horário"]
+            st.dataframe(df_tabela_visual[["Horário", "Data", "Cliente", "Barbeiro", "Serviço solicitado"]], use_container_width=True, hide_index=True)
+            
+            st.markdown("**Iniciar Atendimento da Agenda:**")
+            lista_id_agenda = {f"{row['horario']} - {row['cliente']} c/ {row['barbeiro']}": row['id'] for _, row in df_agenda_clientes.iterrows()}
+            agenda_atender = st.selectbox("Selecione o cliente agendado para iniciar:", list(lista_id_agenda.keys()), key="sb_atender_agenda")
+            
+            if st.button("🚀 Abrir Comanda do Cliente Selecionado", use_container_width=True):
+                id_agenda_final = lista_id_agenda[agenda_atender]
                 
-                if col_botao_acao.button("Atender", key=f"btn_agenda_{row_a['id']}", use_container_width=True):
-                    with sqlite3.connect("barber.db") as conn:
-                        cur = conn.cursor()
-                        cur.execute("INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) VALUES (?, ?, ?, ?, ?)", (row_a['cliente'], row_a['id'], row_a['barbeiro'], row_a['preco'], row_a['data']))
-                        cur.execute("UPDATE agenda SET status = 'Atendido' WHERE id = ?", (row_a['id'],))
+                with sqlite3.connect("barber.db") as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT cliente, barbeiro, data, servico_id, preco FROM agenda a JOIN servicos s ON a.servico_id = s.id WHERE a.id = ?", (id_agenda_final,))
+                    r_atend = cur.fetchone()
+                    
+                    if r_atend:
+                        cur.execute("INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) VALUES (?, ?, ?, ?, ?)", (r_atend[0], r_atend[3], r_atend[1], r_atend[4], r_atend[2]))
+                        cur.execute("UPDATE agenda SET status = 'Atendido' WHERE id = ?", (id_agenda_final,))
                         conn.commit()
-                    st.success(f"Comanda de {row_a['cliente']} aberta!"); st.rerun()
+                st.success("Comanda de atendimento iniciada com sucesso!"); st.rerun()
 
         st.markdown("---")
         st.markdown("### 🧾 Comandas em Atendimento")
