@@ -158,7 +158,7 @@ if not st.session_state.garcom_logado:
                     df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual"]
                 st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
                                     
-                with st.expander("➕ Alimentar Estoque"):
+                with st.expander("➕ Alimentar Estoque (Individual)"):
                     with st.form("f_ins", clear_on_submit=True):
                         n_i = st.text_input("Insumo:")
                         q_i = st.number_input("Qtd Inteira (Litros, Quilos ou Un):", min_value=0.0, value=1.0, step=1.0)
@@ -172,6 +172,37 @@ if not st.session_state.garcom_logado:
                                 c.commit()
                             st.success("Estoque atualizado!")
                             st.rerun()
+
+                with st.expander("🍔 Alimentar Estoque em Massa (Copiar e Colar)"):
+                    st.write("Cole a sua lista abaixo seguindo o formato exato: **Insumo, Quantidade** (um insumo por linha).")
+                    with st.form("f_ins_massa_texto_direto", clear_on_submit=True):
+                        texto_insumos = st.text_area("Cole seus insumos aqui:", height=200, placeholder="Exemplo:\nVodka, 10.0\nLimão, 50.0")
+                        botao_gravar_insumos = st.form_submit_button("🔥 Gravar Todos os Insumos")
+                        
+                        if botao_gravar_insumos and texto_insumos.strip():
+                            linhas_ins = texto_insumos.strip().split("\n")
+                            insumos_gravados = 0
+                            with ob_cx() as c, c.cursor() as cur:
+                                cur.execute("SET search_path TO public;")
+                                for linha_ins in linhas_ins:
+                                    if "," in linha_ins:
+                                        partes_ins = linha_ins.split(",")
+                                        if len(partes_ins) == 2:
+                                            n_ins = partes_ins[0].strip()
+                                            q_ins = partes_ins[1].strip()
+                                            if n_ins:
+                                                try:
+                                                    qtd_float = float(q_ins)
+                                                    cur.execute("""
+                                                        INSERT INTO public.estoque (empresa_id, item, quantidade) 
+                                                        VALUES (%s, %s, %s) 
+                                                        ON CONFLICT (empresa_id, item) DO UPDATE SET quantidade = public.estoque.quantidade + EXCLUDED.quantidade
+                                                    """, (emp_id, n_ins, qtd_float))
+                                                    insumos_gravados += 1
+                                                except ValueError: pass
+                                c.commit()
+                            if insumos_gravados > 0: 
+                                st.success(f"🚀 Sucesso! {insumos_gravados} insumos processados/adicionados ao estoque!"); st.rerun()
 
             # --- 2. CANCELAMENTOS ---
             with subtabs[1]:
