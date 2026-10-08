@@ -4,113 +4,58 @@ import pandas as pd
 from datetime import datetime, date, time
 from banco import init_db
 
-# Configuração e inicialização estrutural
-st.set_page_config(page_title="Barbearia Prime - Agendamento Cloud", layout="centered")
+st.set_page_config(page_title="Barbearia Prime", layout="centered")
 init_db()
 
-# Gerenciamento nativo de variáveis de sessão da aplicação
-if "aut" not in st.session_state: 
-    st.session_state.aut = False
-if "usr" not in st.session_state: 
-    st.session_state.usr = ""
-if "car" not in st.session_state: 
-    st.session_state.car = []
+if "aut" not in st.session_state: st.session_state.aut = False
+if "usr" not in st.session_state: st.session_state.usr = ""
+if "car" not in st.session_state: st.session_state.car = []
 
-# Customização da interface para ambiente mobile e ocultação de menus nativos
-st.markdown("""
-    <style>
-    [data-testid="stHeader"], [data-testid="stAppToolbar"], header {
-        visibility: hidden !important;
-        display: none !important;
-    }
-    .stButton>button {
-        width: 100%;
-        height: 3rem;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown("<style>#MainMenu, .stAppDeployButton {visibility: hidden; display: none;} header [data-testid='stToolbar'] {display: none;} [data-testid='collapsedControl'] {display: none;} .stButton>button {width: 100%; height: 3rem;}</style>", unsafe_allow_html=True)
 
-# Consultas globais de dados para abastecer os seletores da interface
 with sqlite3.connect("barber.db") as conn:
-    df_servicos = pd.read_sql("SELECT id, nome, preco FROM servicos ORDER BY nome", conn)
-    df_barbeiros = pd.read_sql("SELECT nome FROM barbeiros ORDER BY nome", conn)
+    df_s = pd.read_sql("SELECT id, nome, preco FROM servicos ORDER BY nome", conn)
+    df_b = pd.read_sql("SELECT nome FROM barbeiros ORDER BY nome", conn)
 
-# ------------------------------------------------------------------------------
-# PORTAL DE DIRECIONAMENTO: CLIENTE OU PROFISSIONAL DA EQUIPE
-# ------------------------------------------------------------------------------
 if not st.session_state.aut:
-    tipo_acesso = st.radio(
-        "Selecione uma opção de acesso:", 
-        ["📅 Sou Cliente (Agendar Meu Horário)", "💈 Sou da Equipe (Painel de Trabalho)"], 
-        horizontal=True
-    )
+    menu = st.radio("Escolha o tipo de acesso:", ["📅 Sou Cliente (Agendar Horário)", "💈 Sou da Equipe (Painel Interno)"], horizontal=True)
     
-    # --- ÁREA EXCLUSIVA DE AUTOAGENDAMENTO DO CLIENTE ---
-    if tipo_acesso == "📅 Sou Cliente (Agendar Meu Horário)":
+    if menu == "📅 Sou Cliente (Agendar Horário)":
         st.subheader("📅 Agende seu Horário Conosco")
+        c_nome = st.text_input("Seu Nome Completo:").strip()
+        b_agenda = st.selectbox("Escolha o Barbeiro:", df_b['nome'].tolist() if not df_b.empty else ["Disponível"])
+        s_agenda = st.selectbox("Escolha o Serviço:", df_s['nome'].tolist() if not df_s.empty else ["Nenhum cadastrado"])
+        col_d, col_h = st.columns(2)
+        d_sel = col_d.date_input("Data desejada:", min_value=date.today())
+        h_sel = col_h.time_input("Horário desejado:", value=time(9, 0))
         
-        nome_cliente = st.text_input("Seu Nome Completo:").strip()
-        barbeiro_sel = st.selectbox("Escolha o Profissional:", df_barbeiros['nome'].tolist() if not df_barbeiros.empty else ["Disponível"])
-        servico_sel = st.selectbox("Escolha o Serviço desejado:", df_servicos['nome'].tolist() if not df_servicos.empty else ["Nenhum cadastrado"])
-        
-        col_data, col_hora = st.columns(2)
-        data_sel = col_data.date_input("Escolha o Dia:", min_value=date.today())
-        hora_sel = col_hora.time_input("Escolha o Horário:", value=time(9, 0))
-        
-        if st.button("💾 Confirmar Meu Agendamento", type="primary"):
-            if not nome_cliente:
-                st.error("❌ Por favor, digite seu nome completo para confirmar o agendamento.")
-            elif servico_sel == "Nenhum cadastrado":
-                st.error("❌ Não há serviços disponíveis para agendamento no momento.")
-            else:
-                data_string = data_sel.strftime("%Y-%m-%d")
-                hora_string = hora_sel.strftime("%H:%M")
-                
+        if st.button("💾 Confirmar Meu Agendamento", type="primary") and c_nome and s_agenda != "Nenhum cadastrado":
+            d_str, h_str = d_sel.strftime("%Y-%m-%d"), h_sel.strftime("%H:%M")
+            with sqlite3.connect("barber.db") as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM agenda WHERE barbeiro = ? AND data = ? AND horario = ? AND status = 'Agendado'", (b_agenda, d_str, h_str))
+                if cur.fetchone(): st.error("❌ Este horário já está ocupado com este profissional. Escolha outro!")
+                else:
+                    cur.execute("SELECT id FROM servicos WHERE nome = ?", (s_agenda,))
+                    s_id = cur.fetchone()[0]
+                    cur.execute("INSERT INTO agenda (cliente, servico_id, barbeiro, data, horario) VALUES (?, ?, ?, ?, ?)", (c_nome, s_id, b_agenda, d_str, h_str))
+                    conn.commit()
+                    st.success(f"🎉 Tudo certo, {c_nome}! Agendado para o dia {d_sel.strftime('%d/%m/%Y')} às {h_str}.")
+        st.stop()
+    else:
+        with st.form("l_f"):
+            st.subheader("🔒 Acesso Restrito da Equipe")
+            u = st.text_input("Barbeiro:").strip()
+            p = st.text_input("Senha:", type="password").strip()
+            if st.form_submit_button("Entrar no Sistema", type="primary") and u and p:
                 with sqlite3.connect("barber.db") as conn:
                     cur = conn.cursor()
-                    # Validação de choque de agenda: impede dois clientes no mesmo horário com o mesmo profissional
-                    cur.execute("""
-                        SELECT id FROM agenda 
-                        WHERE barbeiro = ? AND data = ? AND horario = ? AND status = 'Agendado'
-                    """, (barbeiro_sel, data_string, hora_string))
-                    
-                    if cur.fetchone():
-                        st.error("❌ Este horário já se encontra ocupado com este profissional. Por favor, escolha outra hora!")
-                    else:
-                        cur.execute("SELECT id FROM servicos WHERE nome = ?", (servico_sel,))
-                        servico_id = cur.fetchone()[0]
-                        
-                        cur.execute("""
-                            INSERT INTO agenda (cliente, servico_id, barbeiro, data, horario) 
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (nome_cliente, servico_id, barbeiro_sel, data_string, hora_string))
-                        conn.commit()
-                        
-                        st.success(f"🎉 Tudo pronto, {nome_cliente}! Seu horário foi reservado para o dia {data_sel.strftime('%d/%m/%Y')} às {hora_string}.")
-        st.stop()
-        
-    # --- FORMULÁRIO DE AUTENTICAÇÃO DA EQUIPE INTERNA ---
-    else:
-        with st.form("formulario_login_equipe"):
-            st.subheader("🔒 Acesso Restrito da Equipe")
-            usuario_login = st.text_input("Nome do Barbeiro / Usuário:").strip()
-            senha_login = st.text_input("Senha de Acesso:", type="password").strip()
-            
-            if st.form_submit_button("Entrar no Sistema", type="primary"):
-                if usuario_login and senha_login:
-                    with sqlite3.connect("barber.db") as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT nome FROM barbeiros WHERE LOWER(nome) = ? AND senha = ?", (usuario_login.lower(), senha_login))
-                        resultado_usuario = cur.fetchone()
-                        
-                    if resultado_usuario:
-                        st.session_state.aut = True
-                        st.session_state.usr = resultado_usuario[0]
-                        st.rerun()
-                    else:
-                        st.error("❌ Nome de usuário ou senha de acesso incorretos.")
-                else:
-                    st.error("❌ Preencha todos os campos do formulário para efetuar o login.")
+                    cur.execute("SELECT nome FROM barbeiros WHERE LOWER(nome) = ? AND senha = ?", (u.lower(), p))
+                    res = cur.fetchone()
+                if res:
+                    st.session_state.aut, st.session_state.usr = True, res[0]
+                    st.rerun()
+                else: st.error("Incorreto.")
         st.stop()
 
 # ------------------------------------------------------------------------------
@@ -139,11 +84,11 @@ with tab_operacional:
     if aba_interna == "➕ Atendimento em Cadeira":
         cliente_cadeira = st.text_input("Identificação do Cliente / Cadeira:", value="Cadeira 01").strip()
         
-        if df_servicos.empty:
+        if df_s.empty:
             st.warning("⚠️ Nenhum serviço cadastrado no catálogo administrativo.")
         else:
             filtro_busca = st.text_input("🔍 Buscar Serviço por Nome:").strip()
-            df_serv_filtrado = df_servicos.copy()
+            df_serv_filtrado = df_s.copy()
             
             if filtro_busca:
                 df_serv_filtrado = df_serv_filtrado[df_serv_filtrado['nome'].str.contains(filtro_busca, case=False, na=False)]
@@ -184,10 +129,7 @@ with tab_operacional:
                         with sqlite3.connect("barber.db") as conn:
                             cur = conn.cursor()
                             for item in st.session_state.car:
-                                cur.execute("""
-                                    INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) 
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, (cliente_cadeira, item['id'], st.session_state.usr, item['preco'], data_string_hoje))
+                                cur.execute("INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) VALUES (?, ?, ?, ?, ?)", (cliente_cadeira, item['id'], st.session_state.usr, item['preco'], data_string_hoje))
                             conn.commit()
                         st.success("🚀 Atendimento enviado com sucesso para a fila do caixa!")
                         st.session_state.car = []
@@ -203,8 +145,8 @@ with tab_operacional:
         if not df_agenda_clientes.empty:
             st.markdown("### 📅 Próximos Clientes Agendados (Portal do Cliente)")
             for _, row_a in df_agenda_clientes.iterrows():
-                coluna_texto, col_botao_acao = st.columns([3, 1])
-                coluna_texto.write(f"⏰ **{row_a['horario']}** ({row_a['data']}) — **{row_a['cliente']}** com {row_a['barbeiro']} [{row_a['servico']}]")
+                coluna_texto, col_botao_acao = st.columns(2)
+                coluna_texto.write(f"⏰ **{row_a['horario']}** ({row_a['data']}) — **{row_a['cliente']}**")
                 
                 if col_botao_acao.button("Atender", key=f"btn_agenda_{row_a['id']}", use_container_width=True):
                     with sqlite3.connect("barber.db") as conn:
@@ -212,13 +154,13 @@ with tab_operacional:
                         cur.execute("INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) VALUES (?, ?, ?, ?, ?)", (row_a['cliente'], row_a['id'], row_a['barbeiro'], row_a['preco'], row_a['data']))
                         cur.execute("UPDATE agenda SET status = 'Atendido' WHERE id = ?", (row_a['id'],))
                         conn.commit()
-                    st.success(f"Comanda de {row_a['cliente']} aberta com sucesso!"); st.rerun()
-        
+                    st.success(f"Comanda de {row_a['cliente']} aberta!"); st.rerun()
+
         st.markdown("---")
-        st.markdown("### 🧾 Comandas em Atendimento (Aguardando Pagamento)")
+        st.markdown("### 🧾 Comandas em Atendimento")
         
         if df_comandas_abertas.empty:
-            st.info("ℹ️ Não há comandas ou cadeiras abertas no caixa no momento.")
+            st.info("ℹ️ Não há comandas abertas no caixa no momento.")
         else:
             pesquisa_caixa = st.text_input("🔍 Pesquisar Comanda por Cliente:").strip()
             if pesquisa_caixa:
@@ -228,22 +170,22 @@ with tab_operacional:
                 clientes_ativos = sorted(list(set(df_comandas_abertas['cliente'].tolist())))
                 cliente_caixa_selecionado = st.selectbox("Selecione o Cliente para fechar a conta:", clientes_ativos)
                 
-                df_cliente_comanda = df_comandas_abertas[df_comandas_abertas['cliente'] == cliente_caixa_selecionada]
+                df_cliente_comanda = df_comandas_abertas[df_comandas_abertas['cliente'] == cliente_caixa_selecionado]
                 subtotal_caixa = sum(row['valor'] for _, row in df_cliente_comanda.iterrows())
                 
                 st.markdown(f"#### Detalhes do Consumo: {cliente_caixa_selecionado}")
                 for _, row in df_cliente_comanda.iterrows():
-                    st.write(f"▪ **{row['servico']}** (Profissional: {row['barbeiro']}) — R$ {row['valor']:.2f}")
+                    st.write(f"▪ **{row['servico']}** ({row['barbeiro']}) — R$ {row['valor']:.2f}")
                     
                 st.markdown(f"## Total Geral: R$ {subtotal_caixa:.2f}")
-                calcular_comissao = st.checkbox("Pagar comissão padrão (50%) ao profissional por este serviço?", value=True)
+                calcular_comissao = st.checkbox("Pagar comissão padrão (50%) por este serviço?", value=True)
                 
                 if st.button("💰 Finalizar e Receber Pagamento", type="primary", use_container_width=True):
                     with sqlite3.connect("barber.db") as conn:
                         cur = conn.cursor()
                         cur.execute("UPDATE comandas SET status = 'Finalizado', comissao = ? WHERE cliente = ? AND status = 'Aberto'", (1 if calcular_comissao else 0, cliente_caixa_selecionado))
                         conn.commit()
-                    st.success(f"✅ Conta de {cliente_caixa_selecionado} fechada e arquivada com sucesso!"); st.rerun()
+                    st.success(f"✅ Conta de {cliente_caixa_selecionado} fechada com sucesso!"); st.rerun()
 
 # ==================== PAINEL DO ADMINISTRADOR ====================
 with tab_gerencial:
@@ -258,7 +200,7 @@ with tab_gerencial:
         # --- ABA GERENCIAL 1: CADASTRO DE SERVIÇOS EM MASSA ---
         with sub_abas_gerenciais[0]:
             st.markdown("Cole seus serviços seguindo o formato exato: **Nome do Serviço, Preço** (um serviço por linha).")
-            texto_lote_servicos = st.text_area("Lista de Serviços:", placeholder="Corte Degradê, 45.0\nBarba Clássica, 30.0\nSobrancelha, 15.0", height=150)
+            texto_lote_servicos = st.text_area("Lista de Serviços:", placeholder="Corte Degradê, 45.0\nBarba Clássica, 30.0", height=150)
             
             if st.button("🔥 Salvar Catálogo no Banco") and texto_lote_servicos.strip():
                 linhas_texto = texto_lote_servicos.strip().split("\n")
@@ -274,4 +216,75 @@ with tab_gerencial:
                                 preco_serv_final = partes_linha[1].strip()
                                 if nome_serv_final:
                                     try:
-                                        cur.execute("""
+                                        cur.execute("INSERT INTO servicos (nome, preco) VALUES (?, ?) ON CONFLICT(nome) DO UPDATE SET preco = EXCLUDED.preco", (nome_serv_final, float(preco_serv_final)))
+                                        servicos_processados += 1
+                                    except: pass
+                    conn.commit()
+                st.success(f"🚀 {servicos_processados} serviços salvos no catálogo!"); st.rerun()
+                
+            st.markdown("---")
+            if not df_s.empty:
+                st.subheader("📋 Serviços Ativos")
+                servico_para_remover = st.selectbox("Selecione um serviço para excluir:", df_s['nome'].tolist())
+                
+                if st.button("❌ Remover Serviço do Catálogo"):
+                    with sqlite3.connect("barber.db") as conn:
+                        conn.cursor().execute("DELETE FROM servicos WHERE nome = ?", (servico_para_remover,))
+                        conn.commit()
+                    st.success("Serviço removido!"); st.rerun()
+
+        # --- ABA GERENCIAL 2: CADASTRO INDIVIDUAL DA EQUIPE ---
+        with sub_abas_gerenciais[1]:
+            st.subheader("👥 Registrar Novo Barbeiro")
+            with st.form("form_novo_barbeiro", clear_on_submit=True):
+                nome_novo_b = st.text_input("Nome do Profissional:").strip()
+                senha_novo_b = st.text_input("Defina a Senha de Acesso:", type="password").strip()
+                
+                if st.form_submit_button("💼 Registrar Funcionário") and nome_novo_b and senha_novo_b:
+                    try:
+                        with sqlite3.connect("barber.db") as conn:
+                            conn.cursor().execute("INSERT INTO barbeiros (nome, senha) VALUES (?, ?)", (nome_novo_b, senha_novo_b))
+                            conn.commit()
+                        st.success(f"🎉 Profissional '{nome_novo_b}' registrado!"); st.rerun()
+                    except:
+                        st.error("❌ Nome já existente na equipe.")
+                        
+            st.markdown("---")
+            if not df_b.empty:
+                st.subheader("👥 Equipe Ativa")
+                lista_barbeiros_excluir = [nome for nome in df_b['nome'].tolist() if nome.lower() != 'admin']
+                if lista_barbeiros_excluir:
+                    barbeiro_para_remover = st.selectbox("Selecione um profissional para desligar:", lista_barbeiros_excluir)
+                    if st.button("❌ Desativar Profissional da Equipe"):
+                        with sqlite3.connect("barber.db") as conn:
+                            conn.cursor().execute("DELETE FROM barbeiros WHERE nome = ?", (barbeiro_para_remover,))
+                            conn.commit()
+                        st.success("Profissional removido!"); st.rerun()
+                else:
+                    st.info("Apenas o usuário Admin master está registrado na equipe.")
+
+        # --- ABA GERENCIAL 3: RELATÓRIOS FINANCEIROS E COMISSÕES ---
+        with sub_abas_gerenciais[2]:
+            st.subheader("📊 Faturamento e Desempenho Operacional")
+            with sqlite3.connect("barber.db") as conn:
+                df_historico_fechado = pd.read_sql("SELECT c.cliente, s.nome as servico, c.barbeiro, c.valor, c.comissao, c.data FROM comandas c JOIN servicos s ON c.servico_id = s.id WHERE c.status = 'Finalizado' ORDER BY c.id DESC", conn)
+                
+            if df_historico_fechado.empty:
+                st.info("ℹ️ Nenhuma comanda fechada e paga no sistema até o momento.")
+            else:
+                lista_datas_fechamento = sorted(list(set(df_historico_fechado['data'].tolist())), reverse=True)
+                data_filtro_relatorio = st.selectbox("📅 Selecione o Dia para auditoria:", lista_datas_fechamento)
+                
+                df_relatorio_dia = df_historico_fechado[df_historico_fechado['data'] == data_filtro_relatorio]
+                
+                faturamento_bruto_dia = float(df_relatorio_dia['valor'].sum())
+                comissoes_totais_dia = float(df_relatorio_dia[df_relatorio_dia['comissao'] == 1]['valor'].sum() * 0.50)
+                lucro_liquido_casa = faturamento_bruto_dia - comissoes_totais_dia
+                
+                col_b1, col_b2, col_b3 = st.columns(3)
+                col_b1.metric("💰 Faturamento Bruto", f"R$ {faturamento_bruto_dia:.2f}")
+                col_b2.metric("💈 Comissões Pagas (50%)", f"R$ {comissoes_totais_dia:.2f}")
+                col_b3.metric("📈 Lucro Líquido da Casa", f"R$ {lucro_liquido_casa:.2f}")
+                
+                st.markdown("---")
+                st.dataframe(df_relatorio_dia, use_container_width=True, hide_index=True)
