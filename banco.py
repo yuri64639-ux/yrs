@@ -46,8 +46,12 @@ def init_db():
             )
         """)
         
-        # Garante a criação do usuário Admin padrão caso o banco seja novo
-        cur.execute("SELECT COUNT(*) FROM barbeiros")
+        # Altera o usuário master padrão do sistema para 'Artur' ao invés de 'Admin'
+        cur.execute("SELECT COUNT(*) FROM barbeiros WHERE LOWER(nome) = 'artur'")
         if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO barbeiros (nome, senha) VALUES ('Admin', '1234')")
+            # Remove qualquer resquício antigo do usuário Admin se o banco já existir
+            cur.execute("DELETE FROM barbeiros WHERE LOWER(nome) = 'admin'")
+            # Cria Artur como o administrador e barbeiro principal do sistema (Senha: 1234)
+            cur.execute("INSERT INTO barbeiros (nome, senha) VALUES ('Artur', '1234')")
+            
         conn.commit()
