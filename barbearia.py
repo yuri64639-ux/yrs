@@ -172,7 +172,7 @@ def renderizar_painel_gerencial():
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from database import ob_cx
+#from database import ob_cx
 
 def renderizar_terminal_barbeiro():
     emp_id = st.session_state.empresa_id_atual
