@@ -74,8 +74,8 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()[0]
-                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                        id_da_empresa = cur.fetchone()
+                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa[0], adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
                 except Exception as e: st.error(f"Erro no cadastro: {e}")
@@ -263,12 +263,15 @@ with aba_master_sistema:
                         if taxa_marcada: garcons_total += (sub_mesa * 0.10)
                     else: pendente_total += sub_mesa
                 c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
-                st.dataframe(vendas_df, use_container_width=True, hide_index=True)
+                
+                df_relatorio_visual = vendas_df.copy()
+                df_relatorio_visual.columns = ["Mesa/Comanda", "Produto", "Quantidade", "Preço Unitário", "Subtotal", "Status", "Taxa Paga", "Data/Hora"]
+                st.dataframe(df_relatorio_visual, use_container_width=True, hide_index=True)
 
         # --- 6. EXCLUIR ---
         with subtabs[5]:
-            st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
-            col_del1, col_del2 = st.columns(2)
+            st.subheader("🗑️ Remover Produtos, Insumos ou Garçons do Sistema")
+            col_del1, col_del2, col_del3 = st.columns(3)
             with col_del1:
                 if not df_prods.empty:
                     prod_para_excluir = st.selectbox("Selecione o Produto para deletar permanentemente:", [r['nome'] for _, r in df_prods.iterrows()], key="del_prod_sel")
@@ -287,6 +290,16 @@ with aba_master_sistema:
                             cur.execute("SET search_path TO public; DELETE FROM public.receitas WHERE empresa_id = %s AND insumo_id = (SELECT id FROM public.estoque WHERE empresa_id = %s AND item = %s); DELETE FROM public.estoque WHERE empresa_id = %s AND item = %s;", (emp_id, emp_id, insumo_para_excluir, emp_id, insumo_para_excluir))
                             c.commit()
                         st.success("Removido com sucesso!"); st.rerun()
+            with col_del3:
+                df_garcons_excluir = pd.read_sql("SELECT id, usuario FROM public.usuarios WHERE empresa_id = %s ORDER BY usuario", conn, params=[emp_id])
+                if not df_garcons_excluir.empty:
+                    garcom_para_excluir = st.selectbox("Selecione o Garçom para deletar permanentemente:", [r['usuario'] for _, r in df_garcons_excluir.iterrows()], key="del_garcom_sel")
+                    if st.button("❌ Excluir Garçom", use_container_width=True):
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("DELETE FROM public.usuarios WHERE empresa_id = %s AND usuario = %s", (emp_id, garcom_para_excluir))
+                            c.commit()
+                        st.success("Funcionário removido!"); st.rerun()
 
 # --- RENDERIZAÇÃO DA ABA MASTER 2: TERMINAL OPERACIONAL DO GARÇOM ---
 with aba_master_operador:
@@ -307,8 +320,6 @@ with aba_master_operador:
                     st.rerun()
                 else: st.error("Credenciais do garçom incorretas!")
         st.markdown("---")
-        
-        # EXIGÊNCIA DEMANDADA: Solicitação da senha master para validar o cadastro do funcionário
         with st.expander("➕ Não tem conta? Cadastrar Novo Garçom"):
             with st.form("cadastro_garcom_form", clear_on_submit=True):
                 novo_g_user = st.text_input("Defina o Nome/Usuário do Garçom:").strip()
@@ -352,7 +363,7 @@ with aba_master_operador:
                 categoria_filtro = st.selectbox("Filtrar Categoria:", ["Todos"] + sorted(list(set(df_prods_venda['categoria'].tolist()))))
                 df_filtrado = df_prods_venda if categoria_filtro == "Todos" else df_prods_venda[df_prods_venda['categoria'] == categoria_filtro]
                 
-                # Aplicação do filtro por text digitado se a lupa contiver dados
+                # Aplicação do filtro por texto digitado se a lupa contiver dados
                 if lupa_produtos:
                     df_filtrado = df_filtrado[df_filtrado['nome'].str.contains(lupa_produtos, case=False, na=False)]
                 
@@ -379,7 +390,7 @@ with aba_master_operador:
                         if not confirmacao_garcom:
                             st.error("🔒 Atenção: Você precisa marcar o campo de confirmação antes de enviar!")
                         else:
-                            horario_atual = datetime.now().strftime("%H:%M:%S")
+                            horario_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                             with ob_cx() as c, c.cursor() as cur:
                                 cur.execute("SET search_path TO public;")
                                 for item in st.session_state.carrinho:
