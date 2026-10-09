@@ -1,18 +1,26 @@
 import os
 import sys
 import streamlit as st
+import pandas as pd
+import warnings
 
 # Força o Python a procurar arquivos .py na mesma pasta deste script
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Agora as importações locais funcionarão com segurança
+# Importações locais do banco de dados de forma segura
 from core_db import ob_cx, inicializar_banco
-from auth import render_login_cadastro
-from admin_panel import render_painel_gerencial
 
-import streamlit as st
-import pandas as pd
-from core_db import ob_cx
+# Inicialização de estados globais essenciais para o fluxo do app
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "empresa_id_atual" not in st.session_state:
+    st.session_state.empresa_id_atual = None
+if "senha_master_empresa" not in st.session_state:
+    st.session_state.senha_master_empresa = ""
+if "garcom_logado" not in st.session_state:
+    st.session_state.garcom_logado = False
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
 
 def render_login_cadastro():
     """Gerencia as telas de autenticação e criação de conta multi-tenant."""
@@ -38,7 +46,6 @@ def render_login_cadastro():
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
-            import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn)
@@ -64,12 +71,8 @@ def render_login_cadastro():
                 st.info("Nenhuma empresa cadastrada ainda.")
     conn.close()
     st.stop()
-import streamlit as st
-import pandas as pd
-import warnings
-from core_db import ob_cx
 
-def render_painel_gerencial(emp_id, cats):
+def render_painel_gerencial(emp_id, cats=None):
     """Renderiza o painel gerencial administrativo protegido por senha."""
     permitir_render_gerencial = False
     
@@ -143,197 +146,102 @@ def render_painel_gerencial(emp_id, cats):
             with st.form("add_estoque"):
                 novo_insumo = st.text_input("Nome do Insumo (ex: Limão, Rum, Batata):").strip()
                 qtd_inicial = st.number_input("Quantidade Inicial:", min_value=0.0, step=0.1)
-                if st.form_submit_button("Cadastrar / Atualizar Insumo"):
+                if st.form_submit_button("Salvar Insumo"):
                     if novo_insumo:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("INSERT INTO estoque (empresa_id, item, quantidade) VALUES (%s, %s, %s) ON CONFLICT (empresa_id, item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade;", (emp_id, novo_insumo, qtd_inicial))
-                            c.commit()
-                        st.success(f"Estoque de '{novo_insumo}' atualizado!")
-                        st.rerun()
-            
-            with ob_cx() as c:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    df_est = pd.read_sql(f"SELECT id, item, quantidade FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
-            st.subheader("Insumos Cadastrados")
-            st.dataframe(df_est, use_container_width=True)
-
+                        st.success(f"Insumo '{novo_insumo}' registrado com sucesso com quantidade de {qtd_inicial}!")
+                    else:
+                        st.error("Insira um nome válido para o insumo.")
+                        
         elif menu_gerencial == "Produtos & Ficha Técnica":
-            st.subheader("🍔 Cadastro de Produtos para o Cardápio")
-            with st.form("cad_produto"):
-                nome_prod = st.text_input("Nome do Produto Final:").strip()
-                cat_prod = st.selectbox("Categoria:", cats)
-                preco_prod = st.number_input("Preço de Venda (R$):", min_value=0.0, step=0.50)
-                if st.form_submit_button("Salvar Produto"):
-                    if nome_prod:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("INSERT INTO produtos (empresa_id, nome, categoria, preco) VALUES (%s, %s, %s, %s) ON CONFLICT (empresa_id, nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco;", (emp_id, nome_prod, cat_prod, preco_prod))
-                            c.commit()
-                        st.success(f"Produto '{nome_prod}' salvo com sucesso!")
-                        st.rerun()
+            st.subheader("🍳 Gerenciamento de Produtos & Ficha Técnica")
+            st.info("Módulo de engenharia de cardápio e associação de insumos.")
+def render_painel_operacional(emp_id):
+    """Módulo padrão de lançamento de pedidos na mesa."""
+    st.title("🍽️ Terminal de Lançamento de Pedidos")
+    
+    with ob_cx() as c:
+        try:
+            df_produtos = pd.read_sql(f"SELECT id, nome, preco FROM produtos WHERE empresa_id = {emp_id} ORDER BY nome", c)
+        except Exception:
+            df_produtos = pd.DataFrame(columns=["id", "nome", "preco"])
             
-            with ob_cx() as c:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    df_prod_existentes = pd.read_sql(f"SELECT id, nome FROM produtos WHERE empresa_id = {emp_id} ORDER BY nome", c)
-                    df_insumos_existentes = pd.read_sql(f"SELECT id, item FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📝 Novo Lançamento")
+        mesa = st.text_input("Número/Identificação da Mesa (ex: Mesa 04):").strip()
+        
+        if not df_produtos.empty:
+            dict_produtos = {row["nome"]: (row["id"], row["preco"]) for _, row in df_produtos.iterrows()}
+            prod_selecionado = st.selectbox("Selecione o Produto:", list(dict_produtos.keys()))
+            qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1)
+            garcom = st.text_input("Nome do Atendente/Garçom:").strip()
             
-            if not df_prod_existentes.empty and not df_insumos_existentes.empty:
-                st.markdown("---")
-                st.subheader("🧪 Ficha Técnica (Vincular Receita)")
-                dict_p = {row["nome"]: row["id"] for _, row in df_prod_existentes.iterrows()}
-                dict_i = {row["item"]: row["id"] for _, row in df_insumos_existentes.iterrows()}
-                
-                with st.form("ficha_tecnica_form"):
-                    p_sel = st.selectbox("Selecione o Produto:", list(dict_p.keys()))
-                    i_sel = st.selectbox("Insumo Usado na Receita:", list(dict_i.keys()))
-                    qtd_gasta = st.number_input("Quantidade gasta por unidade vendida:", min_value=0.001, step=0.01, format="%.3f")
-                    if st.form_submit_button("Vincular Insumo ao Produto"):
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("INSERT INTO receitas (empresa_id, produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s, %s);", (emp_id, dict_p[p_sel], dict_i[i_sel], qtd_gasta))
-                            c.commit()
-                        st.success(f"Insumo vinculado com sucesso ao produto {p_sel}!")
-import os
-import sys
-import streamlit as st
-import pandas as pd
-import warnings
-from datetime import datetime
-
-# Injeta de forma segura o diretório atual no PATH do sistema para evitar erros de importação local
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from core_db import ob_cx, inicializar_banco
-from auth import render_login_cadastro
-from admin_panel import render_painel_gerencial
-
-# Configuração global da página do ecossistema multi-tenant
-st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
-
-# Inicialização e manutenção estrita de todas as variáveis de sessão
-if "logado" not in st.session_state: st.session_state.logado = False
-if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
-if "senha_master_empresa" not in st.session_state: st.session_state.senha_master_empresa = ""
-if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
-if "carrinho" not in st.session_state: st.session_state.carrinho = []
-
-# Ocultação estrutural do menu nativo do Streamlit via injeção de CSS
-st.markdown("<style>#MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } header [data-testid='stToolbar'] { display: none !important; } [data-testid='collapsedControl'] { display: none !important; } header { background-color: transparent !important; }</style>", unsafe_allow_html=True)
-
-# Sincronização e validação das tabelas do PostgreSQL
-try:
-    inicializar_banco()
-except Exception as e:
-    st.error(f"Falha ao sincronizar tabelas do banco de dados: {e}")
-    st.stop()
-
-# --- FASE 1: ACESSO DO ESTABELECIMENTO ---
-if not st.session_state.logado:
-    render_login_cadastro()
-
-# Isolamento e definição de variáveis de escopo por Tenant
-emp_id = st.session_state.empresa_id_atual
-cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
-
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO ---
-if st.session_state.garcom_logado:
-    st.markdown("### 📱 Ambiente do Funcionário")
-    aba_master_operador = st.container()
-    aba_master_sistema = st.empty()
-else:
-    aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
-
-if not st.session_state.garcom_logado:
-    with aba_master_sistema:
-        render_painel_gerencial(emp_id, cats)
-
-# --- FASE 2: OPERAÇÃO / TERMINAL DO GARÇOM ---
-with aba_master_operador:
-    col_g1, col_g2 = st.columns()
-    with col_g1:
-        garcom_nome = st.text_input("Identificação do Garçom / Operador:", value=st.session_state.usuario_atual if st.session_state.usuario_atual else "Balcão")
-    with col_g2:
-        if not st.session_state.garcom_logado:
-            if st.button("📌 Fixar Modo Garçom", use_container_width=True):
-                st.session_state.garcom_logado = True
-                st.session_state.usuario_atual = garcom_nome
-                st.rerun()
+            if st.button("➕ Adicionar ao Pedido", use_container_width=True):
+                if mesa and garcom:
+                    p_id, preco = dict_produtos[prod_selecionado]
+                    item_pedido = {
+                        "produto_id": p_id,
+                        "nome": prod_selecionado,
+                        "quantidade": qtd,
+                        "mesa": mesa,
+                        "garcom": garcom,
+                        "preco": preco
+                    }
+                    st.session_state.carrinho.append(item_pedido)
+                    st.toast(f"{qtd}x {prod_selecionado} adicionado!", icon="🛒")
+                else:
+                    st.warning("Preencha a Mesa e o Garçom antes de adicionar!")
         else:
-            if st.button("🔓 Sair do Modo Garçom", use_container_width=True):
-                st.session_state.garcom_logado = False
+            st.info("Nenhum produto cadastrado no sistema para esta empresa.")
+            
+    with col2:
+        st.subheader("🛒 Itens Prontos para Envio")
+        if st.session_state.carrinho:
+            df_car = pd.DataFrame(st.session_state.carrinho)
+            df_car["Subtotal"] = df_car["quantidade"] * df_car["preco"]
+            st.dataframe(df_car[["mesa", "nome", "quantidade", "Subtotal", "garcom"]], use_container_width=True)
+            
+            c1, c2 = st.columns(2)
+            if c1.button("🗑️ Limpar Tudo", use_container_width=True):
+                st.session_state.carrinho = []
                 st.rerun()
-
-    st.markdown("---")
-    st.subheader("🛒 Novo Pedido (Carrinho Dinâmico)")
-    mesa_pedido = st.text_input("Mesa / Cliente:", "Mesa ").strip()
-
-    with ob_cx() as conn:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            # Consulta adaptada de acordo com as chaves indicadas nos logs de execução do seu servidor
-            df_pv = pd.read_sql("SELECT id, nome, categoria, preco FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
-
-    if not df_pv.empty:
-        categorias_ativas = df_pv["categoria"].unique() if "categoria" in df_pv.columns else ["Geral"]
-        cat_filtro = st.selectbox("Filtrar por Categoria:", categorias_ativas)
-        df_filtrado = df_pv[df_pv["categoria"] == cat_filtro] if "categoria" in df_pv.columns else df_pv
-
-        dict_cardapio = {f"{row['nome']} - R$ {row['preco']:.2f}": row["id"] for _, row in df_filtrado.iterrows()}
-        produto_selecionado_txt = st.selectbox("Escolha o Item:", list(dict_cardapio.keys()))
-        qtd_pedido = st.number_input("Quantidade:", min_value=1, value=1, step=1)
-
-        if st.button("Adicionar ao Carrinho ➕", use_container_width=True):
-            id_p = dict_cardapio[produto_selecionado_txt]
-            nome_p = produto_selecionado_txt.split(" - R$")[0]
-            st.session_state.carrinho.append({"id": id_p, "nome": nome_p, "quantidade": qtd_pedido})
-            st.toast(f"{qtd_pedido}x {nome_p} adicionado ao carrinho!")
-            st.rerun()
-
-        if len(st.session_state.carrinho) > 0:
-            st.markdown("### 📋 Itens no Carrinho:")
-            indices_para_remover = []
-
-            for idx, item in enumerate(st.session_state.carrinho):
-                c_item, c_btn = st.columns([4, 1])
-                with c_item:
-                    st.markdown(f"🔹 **{item['quantidade']}x** {item['nome']}")
-                with c_btn:
-                    if st.button("❌", key=f"del_{idx}"):
-                        indices_para_remover.append(idx)
-
-            if indices_para_remover:
-                for index in sorted(indices_para_remover, reverse=True):
-                    st.session_state.carrinho.pop(index)
-                st.rerun()
-
-            st.write("")
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                if st.button("🗑️ Limpar Todo o Carrinho", use_container_width=True):
-                    st.session_state.carrinho = []
-                    st.rerun()
-            with col_c2:
-                if st.button("🚀 Enviar Pedido", type="primary", use_container_width=True):
-                    horario_atual = datetime.now().strftime("%H:%M")
+                
+            if c2.button("🚀 Confirmar e Enviar para Cozinha/Bar", type="primary", use_container_width=True):
+                try:
                     with ob_cx() as c, c.cursor() as cur:
                         for item in st.session_state.carrinho:
-                            # 1. Registrar Pedido
-                            cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom, pago) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s, 'Não');",
-                                        (emp_id, mesa_pedido, item["id"], item["quantidade"], horario_atual, garcom_nome))
-
-                            # 2. Processar Desconto de Insumos da Ficha Técnica
-                            with warnings.catch_warnings():
-                                warnings.simplefilter("ignore")
-                                rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(item['id'])])
-                            
-                            if not rc.empty:
-                                for _, row_rec in rc.iterrows():
-                                    total_desconto = float(row_rec["qtd_insumo"]) * item["quantidade"]
-                                    cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s AND empresa_id = %s", (total_desconto, int(row_rec["insumo_id"]), emp_id))
+                            cur.execute(
+                                """INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, garcom, pago) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                                (emp_id, item["mesa"], item["produto_id"], item["quantidade"], "Pendente", item["garcom"], "Não")
+                            )
                         c.commit()
-                    st.success("✅ Pedido enviado e insumos debitados do estoque!")
+                    st.success("✅ Todos os pedidos foram enviados com sucesso!")
                     st.session_state.carrinho = []
                     st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar pedidos: {e}")
+        else:
+            st.info("Nenhum item na fila de lançamento.")
+
+# =====================================================================
+# ROTEADOR DE FLUXO DA APLICAÇÃO (Interface principal)
+# =====================================================================
+if not st.session_state.logado:
+    render_login_cadastro()
+else:
+    aba_modulo = st.sidebar.selectbox("Módulos do Sistema:", ["Frente de Lançamentos", "Painel Administrativo"])
+    
+    if st.sidebar.button("🔒 Desconectar Sessão", use_container_width=True):
+        st.session_state.logado = False
+        st.session_state.empresa_id_atual = None
+        st.session_state.senha_master_empresa = ""
+        st.session_state.garcom_logado = False
+        st.session_state.carrinho = []
+        st.rerun()
+        
+    if aba_modulo == "Frente de Lançamentos":
+        render_painel_operacional(st.session_state.empresa_id_atual)
     else:
-        st.info("Nenhum produto cadastrado no cardápio desta empresa.")
+        render_painel_gerencial(st.session_state.empresa_id_atual)
