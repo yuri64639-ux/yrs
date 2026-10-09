@@ -1,3 +1,15 @@
+import os
+import sys
+import streamlit as st
+
+# Força o Python a procurar arquivos .py na mesma pasta deste script
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Agora as importações locais funcionarão com segurança
+from core_db import ob_cx, inicializar_banco
+from auth import render_login_cadastro
+from admin_panel import render_painel_gerencial
+
 import streamlit as st
 import pandas as pd
 from core_db import ob_cx
