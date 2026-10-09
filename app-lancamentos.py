@@ -338,4 +338,79 @@ if not st.session_state.garcom_logado:
                 col_del1, col_del2, col_del3 = st.columns(3)
                 with col_del1:
                     if not df_prods.empty:
-                       rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(it['produto_id'])])
+                      if lupa_produtos:
+                    df_filtrado = df_filtrado[df_filtrado['nome'].str.contains(lupa_produtos, case=False)]
+
+                st.markdown("### Selecione os Produtos:")
+                for _, prod in df_filtrado.iterrows():
+                    col_p1, col_p2, col_p3 = st.columns(3)
+                    col_p1.write(f"**{prod['nome']}** — R$ {prod['preco']:.2f}")
+                    qtd_adicionar = col_p2.number_input("Qtd:", min_value=1, max_value=50, value=1, key=f"qtd_venda_{prod['id']}")
+                    if col_p3.button("🛒 Add", key=f"btn_add_{prod['id']}", use_container_width=True):
+                        item_existente = False
+                        for idx, item in enumerate(st.session_state.carrinho):
+                            if item["id"] == prod["id"]:
+                                st.session_state.carrinho[idx]["quantidade"] += qtd_adicionar
+                                item_existente = True
+                                break
+                        if not item_existente:
+                            st.session_state.carrinho.append({"id": prod["id"], "nome": prod["nome"], "preco": prod["preco"], "quantidade": qtd_adicionar})
+                        st.toast(f"{qtd_adicionar}x {prod['nome']} adicionado!")
+
+                if st.session_state.carrinho:
+                    st.markdown("---")
+                    st.subheader(f"🛒 Carrinho — {mesa_operacao}")
+                    total_carrinho = 0.0
+                    carrinho_atualizado = []
+                    for idx, item in enumerate(st.session_state.carrinho):
+                        subtotal_item = item["quantidade"] * item["preco"]
+                        total_carrinho += subtotal_item
+                        c1, c2, c3 = st.columns(3)
+                        c1.write(f"▪ {item['quantidade']}x {item['nome']}")
+                        c2.write(f"R$ {subtotal_item:.2f}")
+                        if not c3.button("❌", key=f"del_car_{idx}"):
+                            carrinho_atualizado.append(item)
+                    st.session_state.carrinho = carrinho_atualizado
+                    st.markdown(f"**Total Parcial: R$ {total_carrinho:.2f}**")
+                    
+                    if st.button("🔥 Confirmar e Enviar Pedido", type="primary", use_container_width=True):
+                        horario_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            for item in st.session_state.carrinho:
+                                cur.execute("SELECT insumo_id, qtd_insumo FROM public.receitas WHERE empresa_id = %s AND produto_id = %s", (emp_id, int(item["id"])))
+                                for insumo_id, qtd_insumo in cur.fetchall():
+                                    cur.execute("UPDATE public.estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (((float(qtd_insumo) / 1000.0) * int(item["quantidade"])), emp_id, int(insumo_id)))
+                                cur.execute("INSERT INTO public.pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom, pago) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s, 'Não')", (emp_id, mesa_operacao.strip(), int(item["id"]), int(item["quantidade"]), horario_atual, st.session_state.usuario_atual))
+                            c.commit()
+                        st.success("Pedido gravado!")
+                        st.session_state.carrinho = []
+                        st.rerun()
+
+        elif aba_operacao == "🧾 Fechar Mesas":
+            st.subheader("🧾 Fechamento de Comandas")
+            df_comandas = pd.read_sql("SELECT p.id, p.mesa, pr.nome, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal FROM public.pedidos p JOIN public.produtos pr ON p.produto_id = pr.id WHERE p.empresa_id = %s AND p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa", conn, params=[emp_id])
+            if df_comandas.empty:
+                st.info("Nenhuma mesa aberta.")
+            else:
+                mesa_fechar = st.selectbox("Selecione a Mesa:", sorted(list(set(df_comandas['mesa'].tolist()))))
+                df_m = df_comandas[df_comandas['mesa'] == mesa_fechar]
+                st.dataframe(df_m.drop(columns=['id', 'mesa']), use_container_width=True, hide_index=True)
+                sub_m = float(df_m['subtotal'].sum())
+                pagar_taxa = st.checkbox("Incluir Taxa de Serviço (10%)", value=True)
+                val_f = (sub_m * 1.10) if pagar_taxa else sub_m
+                st.markdown(f"### **Total: R$ {val_f:.2f}**")
+                
+                b1, b2 = st.columns(2)
+                if b1.button("✅ Confirmar Pagamento", type="primary", use_container_width=True):
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s, pago = 'Sim' WHERE empresa_id = %s AND mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (1 if pagar_taxa else 0, emp_id, mesa_fechar))
+                        c.commit()
+                    st.success("Mesa fechada!"); st.rerun()
+                if b2.button("⚠️ Fechar como Perda", type="secondary", use_container_width=True):
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public; UPDATE public.pedidos SET status = 'Fechado (Não Pago)', taxa_paga = 0, pago = 'Não' WHERE empresa_id = %s AND mesa = %s AND status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)')", (emp_id, mesa_fechar))
+                        c.commit()
+                    st.warning("Registrado como perda!"); st.rerun()
+
+conn.close()
