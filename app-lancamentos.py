@@ -1,58 +1,3 @@
-import psycopg2
-import streamlit as st
-
-def ob_cx():
-    """Gerencia a conexão dinâmica com o Banco de Dados PostgreSQL baseado nos secrets do Streamlit."""
-    c = st.secrets["connections"]["postgresql"]
-    if "url" in c: 
-        return psycopg2.connect(c["url"])
-    return psycopg2.connect(
-        host=c.get("host"), 
-        port=c.get("port", 5432), 
-        database=c.get("database"), 
-        user=c.get("username"), 
-        password=c.get("password"), 
-        sslmode="require"
-    )
-
-def inicializar_banco():
-    """Executa as DDLs e garante o ecossistema relacional e multi-tenant isolado."""
-    conn = ob_cx()
-    with conn.cursor() as cur:
-        cur.execute("SET search_path TO public;")
-        cur.execute("CREATE TABLE IF NOT EXISTS empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
-        cur.execute("CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);")
-        cur.execute("CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);")
-        cur.execute("CREATE TABLE IF NOT EXISTS produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);")
-        cur.execute("CREATE TABLE IF NOT EXISTS receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);")
-        cur.execute("CREATE TABLE IF NOT EXISTS pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Não', garcom TEXT, modo_pagamento TEXT);")
-        
-        # Adição segura de colunas e chaves estrangeiras
-        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;")
-        cur.execute("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;")
-        conn.commit()
-        
-        # Remoção de constraints globais legadas
-        try: cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS produtos_nome_key CASCADE;")
-        except: conn.rollback()
-        try: cur.execute("ALTER TABLE estoque DROP CONSTRAINT IF EXISTS estoque_item_key CASCADE;")
-        except: conn.rollback()
-        try: cur.execute("ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_usuario_key CASCADE;")
-        except: conn.rollback()
-        conn.commit()
-        
-        # Criação de chaves únicas compostas por Tenant (empresa_id)
-        try: cur.execute("ALTER TABLE usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-        except: conn.rollback()
-        try: cur.execute("ALTER TABLE estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-        except: conn.rollback()
-        try: cur.execute("ALTER TABLE produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-        except: conn.rollback()
-    conn.commit()
-    conn.close()
 import streamlit as st
 import pandas as pd
 from core_db import ob_cx
@@ -81,7 +26,11 @@ def render_login_cadastro():
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
-            df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn)
+                
             dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
             if dict_empresas:
                 empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
@@ -105,6 +54,7 @@ def render_login_cadastro():
     st.stop()
 import streamlit as st
 import pandas as pd
+import warnings
 from core_db import ob_cx
 
 def render_painel_gerencial(emp_id, cats):
@@ -133,11 +83,12 @@ def render_painel_gerencial(emp_id, cats):
         st.markdown("---")
         menu_gerencial = st.selectbox("Selecione o Módulo Gerencial:", ["Painel de Vendas & Caixa", "Estoque & Insumos", "Produtos & Ficha Técnica"])
 
-        # --- MÓDULO GERENCIAL: PAINEL DE VENDAS & CAIXA ---
         if menu_gerencial == "Painel de Vendas & Caixa":
             st.subheader("📊 Relatório de Pedidos do Estabelecimento")
             with ob_cx() as c:
-                df_pedidos = pd.read_sql(f"SELECT p.id, p.mesa, prod.nome, p.quantidade, p.status, p.horario, p.garcom, p.modo_pagamento, p.pago, prod.preco FROM pedidos p JOIN produtos prod ON p.produto_id = prod.id WHERE p.empresa_id = {emp_id} ORDER BY p.id DESC", c)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    df_pedidos = pd.read_sql(f"SELECT p.id, p.mesa, prod.nome, p.quantidade, p.status, p.horario, p.garcom, p.modo_pagamento, p.pago, prod.preco FROM pedidos p JOIN produtos prod ON p.produto_id = prod.id WHERE p.empresa_id = {emp_id} ORDER BY p.id DESC", c)
             
             if not df_pedidos.empty:
                 df_pedidos["Total (R$)"] = df_pedidos["quantidade"] * df_pedidos["preco"]
@@ -175,7 +126,6 @@ def render_painel_gerencial(emp_id, cats):
             else: 
                 st.info("Nenhum pedido realizado ainda.")
 
-        # --- MÓDULO GERENCIAL: ESTOQUE ---
         elif menu_gerencial == "Estoque & Insumos":
             st.subheader("🥦 Controle de Insumos / Estoque")
             with st.form("add_estoque"):
@@ -190,11 +140,12 @@ def render_painel_gerencial(emp_id, cats):
                         st.rerun()
             
             with ob_cx() as c:
-                df_est = pd.read_sql(f"SELECT id, item, quantidade FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    df_est = pd.read_sql(f"SELECT id, item, quantidade FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
             st.subheader("Insumos Cadastrados")
             st.dataframe(df_est, use_container_width=True)
 
-        # --- MÓDULO GERENCIAL: PRODUTOS & FICHA TÉCNICA ---
         elif menu_gerencial == "Produtos & Ficha Técnica":
             st.subheader("🍔 Cadastro de Produtos para o Cardápio")
             with st.form("cad_produto"):
@@ -210,8 +161,10 @@ def render_painel_gerencial(emp_id, cats):
                         st.rerun()
             
             with ob_cx() as c:
-                df_prod_existentes = pd.read_sql(f"SELECT id, nome FROM produtos WHERE empresa_id = {emp_id} ORDER BY nome", c)
-                df_insumos_existentes = pd.read_sql(f"SELECT id, item FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    df_prod_existentes = pd.read_sql(f"SELECT id, nome FROM produtos WHERE empresa_id = {emp_id} ORDER BY nome", c)
+                    df_insumos_existentes = pd.read_sql(f"SELECT id, item FROM estoque WHERE empresa_id = {emp_id} ORDER BY item", c)
             
             if not df_prod_existentes.empty and not df_insumos_existentes.empty:
                 st.markdown("---")
@@ -228,9 +181,16 @@ def render_painel_gerencial(emp_id, cats):
                             cur.execute("INSERT INTO receitas (empresa_id, produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s, %s);", (emp_id, dict_p[p_sel], dict_i[i_sel], qtd_gasta))
                             c.commit()
                         st.success(f"Insumo vinculado com sucesso ao produto {p_sel}!")
+import os
+import sys
 import streamlit as st
 import pandas as pd
+import warnings
 from datetime import datetime
+
+# Injeta de forma segura o diretório atual no PATH do sistema para evitar erros de importação local
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from core_db import ob_cx, inicializar_banco
 from auth import render_login_cadastro
 from admin_panel import render_painel_gerencial
@@ -246,21 +206,21 @@ if "senha_master_empresa" not in st.session_state: st.session_state.senha_master
 if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
 
-# Ocultação do menu nativo do Streamlit via injeção de CSS
+# Ocultação estrutural do menu nativo do Streamlit via injeção de CSS
 st.markdown("<style>#MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } header [data-testid='stToolbar'] { display: none !important; } [data-testid='collapsedControl'] { display: none !important; } header { background-color: transparent !important; }</style>", unsafe_allow_html=True)
 
-# Sincronização estrutural das tabelas relacionais do banco
+# Sincronização e validação das tabelas do PostgreSQL
 try:
     inicializar_banco()
 except Exception as e:
-    st.error(f"Falha ao sincronizar banco de dados: {e}")
+    st.error(f"Falha ao sincronizar tabelas do banco de dados: {e}")
     st.stop()
 
 # --- FASE 1: ACESSO DO ESTABELECIMENTO ---
 if not st.session_state.logado:
     render_login_cadastro()
 
-# Carregamento do ID do Tenant pós autenticação
+# Isolamento e definição de variáveis de escopo por Tenant
 emp_id = st.session_state.empresa_id_atual
 cats = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
 
@@ -272,7 +232,6 @@ if st.session_state.garcom_logado:
 else:
     aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
 
-# Renderização do Painel de Controle Gerencial Administrador
 if not st.session_state.garcom_logado:
     with aba_master_sistema:
         render_painel_gerencial(emp_id, cats)
@@ -297,13 +256,16 @@ with aba_master_operador:
     st.subheader("🛒 Novo Pedido (Carrinho Dinâmico)")
     mesa_pedido = st.text_input("Mesa / Cliente:", "Mesa ").strip()
 
-    with ob_cx() as c:
-        df_cardapio = pd.read_sql(f"SELECT id, nome, categoria, preco FROM produtos WHERE empresa_id = {emp_id} ORDER BY categoria, nome", c)
+    with ob_cx() as conn:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # Consulta adaptada de acordo com as chaves indicadas nos logs de execução do seu servidor
+            df_pv = pd.read_sql("SELECT id, nome, categoria, preco FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
 
-    if not df_cardapio.empty:
-        categorias_ativas = df_cardapio["categoria"].unique()
+    if not df_pv.empty:
+        categorias_ativas = df_pv["categoria"].unique() if "categoria" in df_pv.columns else ["Geral"]
         cat_filtro = st.selectbox("Filtrar por Categoria:", categorias_ativas)
-        df_filtrado = df_cardapio[df_cardapio["categoria"] == cat_filtro]
+        df_filtrado = df_pv[df_pv["categoria"] == cat_filtro] if "categoria" in df_pv.columns else df_pv
 
         dict_cardapio = {f"{row['nome']} - R$ {row['preco']:.2f}": row["id"] for _, row in df_filtrado.iterrows()}
         produto_selecionado_txt = st.selectbox("Escolha o Item:", list(dict_cardapio.keys()))
@@ -321,7 +283,7 @@ with aba_master_operador:
             indices_para_remover = []
 
             for idx, item in enumerate(st.session_state.carrinho):
-                c_item, c_btn = st.columns([0.85, 0.15])
+                c_item, c_btn = st.columns([4, 1])
                 with c_item:
                     st.markdown(f"🔹 **{item['quantidade']}x** {item['nome']}")
                 with c_btn:
@@ -346,14 +308,17 @@ with aba_master_operador:
                         for item in st.session_state.carrinho:
                             # 1. Registrar Pedido
                             cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom, pago) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s, 'Não');",
-                                       (emp_id, mesa_pedido, item["id"], item["quantidade"], horario_atual, garcom_nome))
+                                        (emp_id, mesa_pedido, item["id"], item["quantidade"], horario_atual, garcom_nome))
 
                             # 2. Processar Desconto de Insumos da Ficha Técnica
-                            cur.execute("SELECT insumo_id, qtd_insumo FROM receitas WHERE produto_id = %s AND empresa_id = %s", (item["id"], emp_id))
-                            receita_itens = cur.fetchall()
-                            for insumo_id, qtd_unitaria in receita_itens:
-                                total_desconto = qtd_unitaria * item["quantidade"]
-                                cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s AND empresa_id = %s", (total_desconto, insumo_id, emp_id))
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("ignore")
+                                rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(item['id'])])
+                            
+                            if not rc.empty:
+                                for _, row_rec in rc.iterrows():
+                                    total_desconto = float(row_rec["qtd_insumo"]) * item["quantidade"]
+                                    cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE id = %s AND empresa_id = %s", (total_desconto, int(row_rec["insumo_id"]), emp_id))
                         c.commit()
                     st.success("✅ Pedido enviado e insumos debitados do estoque!")
                     st.session_state.carrinho = []
