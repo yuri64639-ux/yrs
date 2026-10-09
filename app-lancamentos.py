@@ -238,8 +238,7 @@ Heineken, Cervejas, 12.0""")
             botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
             
             if botao_gravar and texto_produtos.strip():
-                linhas = texto_produtos.strip().split("
-")
+                linhas = texto_produtos.strip().split("\n")
                 itens_gravados = 0
                 c_local = obter_conexao_segura()
                 try:
