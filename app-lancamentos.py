@@ -232,9 +232,9 @@ with aba_master_sistema:
         st.caption("Categorias aceitas: Drinks, Cervejas, Sem Álcool, Porções, Pratos Principais, Sobremesas")
         
         with st.form("f_prod_massa_texto_direto", clear_on_submit=True):
-            texto_produtos = st.text_area("Cole seus produtos aqui:", height=250, placeholder="Exemplo:
+            texto_produtos = st.text_area("Cole seus produtos aqui:", height=250, placeholder="""Exemplo:
 Caipirinha, Drinks, 15.0
-Heineken, Cervejas, 12.0")
+Heineken, Cervejas, 12.0""")
             botao_gravar = st.form_submit_button("🔥 Gravar Todos os Produtos")
             
             if botao_gravar and texto_produtos.strip():
