@@ -1,248 +1,480 @@
-import sqlite3
-import tkinter as tk
-from tkinter import messagebox, ttk
+from datetime import datetime
+import streamlit as st
+import psycopg2
+import pandas as pd
 
-class SistemaVendas:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Sistema de Automação de Vendas - Restaurante")
-        self.root.geometry("700x550")
+# ---------------------------------------------------------
+# CONFIGURAÇÃO DA PÁGINA & CONSTANTES
+# ---------------------------------------------------------
+st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-        # Inicializa a conexão com o banco de dados local
-        self.conectar_banco()
+CATEGORIAS_VALIDAS = ["Drinks", "Cervejas", "Sem Álcool", "Porções", "Pratos Principais", "Sobremesas"]
+
+st.markdown("""
+    <style>
+    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
+    header [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    header { background-color: transparent !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+if "logado" not in st.session_state: st.session_state.logado = False
+if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
+if "senha_master_empresa" not in st.session_state: st.session_state.senha_master_empresa = ""
+if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
+if "carrinho" not in st.session_state: st.session_state.carrinho = []
+
+# ---------------------------------------------------------
+# CONEXÃO COM O BANCO DE DADOS (NEON / POSTGRES)
+# ---------------------------------------------------------
+def obter_conexao():
+    c = st.secrets["connections"]["postgresql"]
+    if "url" in c: 
+        return psycopg2.connect(c["url"])
+    return psycopg2.connect(
+        host=c.get("host"), port=c.get("port", 5432), database=c.get("database"), 
+        user=c.get("username"), password=c.get("password"), sslmode="require"
+    )
+
+def executar_query(query, params=None, commit=False, retornar_dados=False):
+    resultado = None
+    try:
+        with obter_conexao() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                cur.execute(query, params)
+                if retornar_dados:
+                    resultado = cur.fetchall()
+                if commit:
+                    conn.commit()
+    except Exception as e:
+        st.error(f"Erro operacional no banco de dados: {e}")
+    return resultado
+
+# ---------------------------------------------------------
+# INICIALIZAÇÃO DO BANCO (DDL)
+# ---------------------------------------------------------
+def inicializar_banco_dados():
+    with obter_conexao() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS empresas (
+                    id SERIAL PRIMARY KEY, 
+                    nome_empresa TEXT UNIQUE NOT NULL, 
+                    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id SERIAL PRIMARY KEY, 
+                    empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                    usuario TEXT, 
+                    senha TEXT,
+                    CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario)
+                );
+                CREATE TABLE IF NOT EXISTS estoque (
+                    id SERIAL PRIMARY KEY, 
+                    empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                    item TEXT, 
+                    quantidade REAL,
+                    CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item)
+                );
+                CREATE TABLE IF NOT EXISTS produtos (
+                    id SERIAL PRIMARY KEY, 
+                    empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                    nome TEXT, 
+                    categoria TEXT, 
+                    preco REAL,
+                    CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome)
+                );
+                CREATE TABLE IF NOT EXISTS receitas (
+                    id SERIAL PRIMARY KEY, 
+                    empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                    produto_id INTEGER REFERENCES produtos(id) ON DELETE CASCADE, 
+                    insumo_id INTEGER REFERENCES estoque(id) ON DELETE CASCADE, 
+                    qtd_insumo REAL,
+                    CONSTRAINT unique_empresa_receita UNIQUE(empresa_id, produto_id, insumo_id)
+                );
+                CREATE TABLE IF NOT EXISTS pedidos (
+                    id SERIAL PRIMARY KEY, 
+                    empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                    mesa TEXT, 
+                    produto_id INTEGER REFERENCES produtos(id) ON DELETE CASCADE, 
+                    quantidade INTEGER, 
+                    status TEXT DEFAULT 'Pendente', 
+                    horario TEXT, 
+                    taxa_paga INTEGER DEFAULT 1, 
+                    pago TEXT DEFAULT 'Sim', 
+                    garcom TEXT
+                );
+            """)
+            conn.commit()
+
+inicializar_banco_dados()
+
+# ---------------------------------------------------------
+# LOGÍSTICA DE ACESSO DO ESTABELECIMENTO
+# ---------------------------------------------------------
+if not st.session_state.logado:
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+
+    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
+        with st.form("cadastro_empresa_form"):
+            st.subheader("🏢 Cadastrar Empresa no Sistema")
+            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
+            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
+            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
+            botao_cadastrar = st.form_submit_button("Criar Minha Conta", type="primary")
+            
+            if botao_cadastrar and nova_empresa and adm_usuario and adm_senha:
+                try:
+                    with obter_conexao() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
+                            id_da_empresa = cur.fetchone()[0]
+                            cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                            conn.commit()
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
+                except Exception as e: 
+                    st.error(f"Erro no cadastro: Verifique os dados inseridos. ({e})")
+    else:
+        with st.form("login_form"):
+            st.subheader("📱 Login do Estabelecimento (Empresa)")
+            
+            with obter_conexao() as conn_busca:
+                df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn_busca)
+            dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
+            
+            if dict_empresas:
+                empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
+                user_input = st.text_input("Usuário Master da Empresa:")
+                senha_input = st.text_input("Senha Master:", type="password")
+                submetido = st.form_submit_button("Liberar Terminal", type="primary")
+                
+                if submetido and user_input and senha_input:
+                    id_empresa_login = dict_empresas[empresa_selecionada]
+                    res = executar_query(
+                        "SELECT empresa_id, senha FROM usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s",
+                        (id_empresa_login, user_input.strip(), senha_input.strip()), retornar_dados=True
+                    )
+                    
+                    if res:
+                        st.session_state.logado = True
+                        st.session_state.empresa_id_atual = int(res[0][0])
+                        st.session_state.senha_master_empresa = str(res[0][1])
+                        st.rerun()
+                    else: 
+                        st.error("Credenciais da empresa incorretas!")
+            else: 
+                st.info("Nenhuma empresa cadastrada ainda.")
+    st.stop()
+
+# ---------------------------------------------------------
+# INTERFACE PRINCIPAL MULTI-TENANT
+# ---------------------------------------------------------
+emp_id = st.session_state.empresa_id_atual
+aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
+
+# --- GERENCIAL ---
+with aba_master_sistema:
+    st.subheader("🔐 Área Restrita ao Gerente")
+    senha_gerente_input = st.text_input("Digite a Senha Master para liberar o painel:", type="password", key="senha_painel_gerente")
+    
+    if senha_gerente_input == st.session_state.senha_master_empresa:
+        st.success("🔓 Acesso Gerencial Autorizado")
         
-        self.carrinho = []
-        self.total = 0.0
-
-        # Inicia pela tela de login para definir as permissões das abas
-        self.criar_tela_login()
-
-    def conectar_banco(self):
-        """Cria o arquivo de banco de dados e as tabelas se não existirem."""
-        self.conn = sqlite3.connect("vendas.db")
-        self.cursor = self.conn.cursor()
+        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", use_container_width=True):
+            st.session_state.logado = False
+            st.session_state.empresa_id_atual = None
+            st.session_state.senha_master_empresa = ""
+            st.session_state.garcom_logado = False
+            st.session_state.carrinho = []
+            st.rerun()
         
-        # Cria tabela de produtos
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS produtos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT UNIQUE NOT NULL,
-                preco REAL NOT NULL
-            )
-        """)
+        with obter_conexao() as conn_gerencial:
+            df_est = pd.read_sql("SELECT id, item, quantidade FROM estoque WHERE empresa_id = %s ORDER BY item", conn_gerencial, params=[emp_id])
+            df_prods = pd.read_sql("SELECT id, nome FROM produtos WHERE empresa_id = %s ORDER BY nome", conn_gerencial, params=[emp_id])
         
-        # Cria tabela de histórico de vendas gravadas
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS historico_vendas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                produto TEXT NOT NULL,
-                quantidade INTEGER NOT NULL,
-                total_item REAL NOT NULL,
-                data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        self.conn.commit()
+        subtabs = st.tabs(["📦 Estoque", "❌ Cancelamentos", "🛠️ Cadastro", "🔬 Receitas", "📊 Relatórios", "🗑️ Excluir"])
 
-        # Alimenta o banco com os produtos padrão se estiver vazio
-        self.cursor.execute("SELECT COUNT(*) FROM produtos")
-        if self.cursor.fetchone() == 0:
-            produtos_padrao = [
-                ("Camiseta", 49.90),
-                ("Calça Jeans", 119.90),
-                ("Tênis", 199.90),
-                ("Boné", 29.90),
-                ("Suco de Laranja", 9.90),
-                ("Almoço Comercial", 29.90),
-                ("Sobremesa da Casa", 14.90)
-            ]
-            self.cursor.executemany("INSERT INTO produtos (nome, preco) VALUES (?, ?)", produtos_padrao)
-            self.conn.commit()
+        # Estoque
+        with subtabs[0]:
+            st.subheader("📦 Estoque Atual (Exibido em Litros / Kg / Unidades)")
+            if not df_est.empty: 
+                df_est_visual = df_est.copy()
+                df_est_visual.columns = ["ID", "Insumo", "Quantidade Atual"]
+                st.dataframe(df_est_visual, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum insumo no estoque.")
+            
+            with st.expander("➕ Alimentar Estoque"):
+                with st.form("f_ins", clear_on_submit=True):
+                    n_i = st.text_input("Insumo:").strip()
+                    q_i = st.number_input("Qtd a somar:", min_value=0.0, value=1.0, step=1.0)
+                    if st.form_submit_button("Salvar Insumo") and n_i:
+                        executar_query(
+                            """INSERT INTO estoque (empresa_id, item, grandmother) VALUES (%s, %s, %s) 
+                               ON CONFLICT (empresa_id, item) DO UPDATE SET quantidade = estoque.quantidade + EXCLUDED.quantidade""",
+                            (emp_id, n_i, q_i), commit=True
+                        )
+                        st.success(f"Estoque de '{n_i}' atualizado!")
+                        st.rerun()
 
-    def criar_tela_login(self):
-        """Gera a interface de login obrigatória do sistema."""
-        self.frame_login = tk.Frame(self.root, bd=2, relief="groove", padx=25, pady=25)
-        self.frame_login.place(relx=0.5, rely=0.5, anchor="center")
+        # Cancelamentos
+        with subtabs[1]:
+            st.subheader("❌ Cancelar Itens e Devolver ao Estoque")
+            with obter_conexao() as conn_cancel:
+                p_ab = pd.read_sql("""
+                    SELECT p.id, p.mesa, pr.nome, p.quantidade, p.produto_id 
+                    FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id 
+                    WHERE p.empresa_id = %s AND p.status NOT IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.mesa
+                """, conn_cancel, params=[emp_id])
+            
+            if p_ab.empty: 
+                st.info("Nenhuma comanda aberta.")
+            else:
+                m_sel = st.selectbox("Selecione a Mesa para auditar:", sorted(list(set(p_ab['mesa'].tolist()))))
+                for _, it in p_ab[p_ab['mesa'] == m_sel].iterrows():
+                    col1, col2 = st.columns(2)
+                    col1.write(f"▪ *{it['quantidade']}x* {it['nome']}")
+                    if col2.button("Deletar Item", key=f"cn_{it['id']}"):
+                        with obter_conexao() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("SET search_path TO public;")
+                                cur.execute("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", (emp_id, int(it['produto_id'])))
+                                receitas = cur.fetchall()
+                                for r_id, r_qtd in receitas:
+                                    qtd_devolver = (float(r_qtd) / 1000.0) * int(it['quantidade'])
+                                    cur.execute("UPDATE estoque SET quantidade = quantidade + %s WHERE empresa_id = %s AND id = %s", (qtd_devolver, emp_id, int(r_id)))
+                                cur.execute("DELETE FROM pedidos WHERE id = %s AND empresa_id = %s", (int(it['id']), emp_id))
+                                conn.commit()
+                        st.success("Item removido!"); st.rerun()
 
-        lbl_log = tk.Label(self.frame_login, text="LOGIN DO OPERADOR", font=("Arial", 12, "bold"))
-        lbl_log.pack(pady=10)
+        # Cadastro em Massa
+        with subtabs[2]:
+            st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
+            with st.form("f_prod_massa_texto_direto", clear_on_submit=True):
+                texto_produtos = st.text_area("Cole seus produtos aqui (Nome, Categoria, Preço):", height=200)
+                botao_gravar = st.form_submit_button("🔥 Gravar Todos")
+                if botao_gravar and texto_produtos.strip():
+                    linhas = texto_produtos.strip().split("\n")
+                    with obter_conexao() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            for linha in linhas:
+                                if "," in linha:
+                                    partes = linha.split(",")
+                                    if len(partes) == 3:
+                                        n_p, c_p, p_p = partes[0].strip(), partes[1].strip(), partes[2].strip()
+                                        cat_valida = [c for c in CATEGORIAS_VALIDAS if c.lower() == c_p.lower()]
+                                        if n_p and cat_valida:
+                                            try:
+                                                cur.execute("""
+                                                    INSERT INTO produtos (empresa_id, nome, categoria, preco) VALUES (%s, %s, %s, %s) 
+                                                    ON CONFLICT (empresa_id, nome) DO UPDATE SET categoria = EXCLUDED.categoria, preco = EXCLUDED.preco
+                                                """, (emp_id, n_p, str(cat_valida[0]), float(p_p)))
+                                            except ValueError: pass
+                            conn.commit()
+                    st.success("Processamento em lote concluído!"); st.rerun()
 
-        tk.Label(self.frame_login, text="Usuário (admin ou garcon):", font=("Arial", 10)).pack(anchor="w")
-        self.txt_usuario = tk.Entry(self.frame_login, font=("Arial", 11), width=25)
-        self.txt_usuario.pack(pady=5)
-        self.txt_usuario.insert(0, "garcon")  # Valor padrão facilitador
+        # Ficha Técnica
+        with subtabs[3]:
+            st.subheader("🔬 Montar Ficha Técnica (Até 4 Ingreedientes)")
+            if not df_prods.empty and not df_est.empty:
+                lista_prods = [r['nome'] for _, r in df_prods.iterrows()]
+                lista_insumos = ["---"] + [r['item'] for _, r in df_est.iterrows()]
+                d_p = {r['nome']: r['id'] for _, r in df_prods.iterrows()}
+                d_i = {r['item']: r['id'] for _, r in df_est.iterrows()}
+                
+                with st.form("f_vinc_multi", clear_on_submit=True):
+                    p_sel = d_p[st.selectbox("Selecione o Produto final:", lista_prods)]
+                    col1, col2 = st.columns(2); i1 = col1.selectbox("Ingrediente 1:", lista_insumos, key="rec_i1"); q1 = col2.number_input("Qtd gasta 1:", min_value=0.0, step=5.0, key="rec_q1")
+                    col3, col4 = st.columns(2); i2 = col3.selectbox("Ingrediente 2:", lista_insumos, key="rec_i2"); q2 = col4.number_input("Qtd gasta 2:", min_value=0.0, step=5.0, key="rec_q2")
+                    col5, col6 = st.columns(2); i3 = col5.selectbox("Ingrediente 3:", lista_insumos, key="rec_i3"); q3 = col6.number_input("Qtd gasta 3:", min_value=0.0, step=5.0, key="rec_q3")
+                    col7, col8 = st.columns(2); i4 = col7.selectbox("Ingrediente 4:", lista_insumos, key="rec_i4"); q4 = col8.number_input("Qtd gasta 4:", min_value=0.0, step=5.0, key="rec_q4")
+                    
+                    if st.form_submit_button("🔥 Gravar Receita Completa"):
+                        links = [(i1, q1), (i2, q2), (i3, q3), (i4, q4)]
+                        with obter_conexao() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("SET search_path TO public;")
+                                for ing, qtd in links:
+                                    if ing != "---" and qtd > 0:
+                                        cur.execute("""INSERT INTO receitas (empresa_id, produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s, %s) 
+                                                       ON CONFLICT (empresa_id, produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo""", 
+                                                    (emp_id, p_sel, d_i[ing], qtd))
+                                conn.commit()
+                        st.success("Receita salva!"); st.rerun()
+            else: 
+                st.info("Cadastre insumos no estoque e produtos antes de montar receitas.")
 
-        btn_entrar = tk.Button(self.frame_login, text="Entrar no Sistema", command=self.autenticar, bg="#4CAF50", fg="white", font=("Arial", 11, "bold"))
-        btn_entrar.pack(pady=15, fill="x")
+        # Relatórios
+        with subtabs[4]:
+            st.subheader("📊 Resumo Financeiro Detalhado")
+            with obter_conexao() as conn_rel:
+                vendas_df = pd.read_sql("""
+                    SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.taxa_paga, p.horario 
+                    FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id 
+                    WHERE p.empresa_id = %s AND p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC
+                """, conn_rel, params=[emp_id])
+                
+            if vendas_df.empty: 
+                st.info("Nenhuma comanda paga registrada.")
+            else:
+                empresa_total = float(vendas_df[vendas_df['status']=='Finalizado (Pago)']['subtotal'].sum())
+                garcons_total = float(vendas_df[(vendas_df['status']=='Finalizado (Pago)') & (vendas_df['taxa_paga']==1)]['subtotal'].sum() * 0.10)
+                pendente_total = float(vendas_df[vendas_df['status']=='Fechado (Não Pago)']['subtotal'].sum())
+                        
+                c1, c2, c3 = st.columns(3)
+                c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}")
+                c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}")
+                c3.metric("⚠️ Perdas (Calotes)", f"R$ {pendente_total:.2f}")
+                st.dataframe(vendas_df, use_container_width=True, hide_index=True)
 
-    def autenticar(self):
-        """Valida o perfil digitado e destroi o frame de login."""
-        usuario = self.txt_usuario.get().strip().lower()
+        # Excluir
+        with subtabs[5]:
+            st.subheader("🗑️ Remover Produtos ou Insumos")
+            col_del1, col_del2 = st.columns(2)
+            with col_del1:
+                if not df_prods.empty:
+                    prod_para_excluir = st.selectbox("Produto para deletar permanentemente:", [r['nome'] for _, r in df_prods.iterrows()])
+                    if st.button("❌ Excluir Produto", use_container_width=True):
+                        executar_query("DELETE FROM produtos WHERE empresa_id = %s AND nome = %s", (emp_id, prod_para_excluir), commit=True)
+                        st.success("Removido!"); st.rerun()
+            with col_del2:
+                if not df_est.empty:
+                    insumo_para_excluir = st.selectbox("Insumo para deletar permanentemente:", [r['item'] for _, r in df_est.iterrows()])
+                    if st.button("❌ Excluir Insumo", use_container_width=True):
+                        executar_query("DELETE FROM estoque WHERE empresa_id = %s AND item = %s", (emp_id, insumo_para_excluir), commit=True)
+                        st.success("Removido!"); st.rerun()
+                        
+    elif senha_gerente_input != "":
+        st.error("❌ Senha incorreta!")
 
-        if usuario in ["admin", "gerente", "administrador"]:
-            self.frame_login.destroy()
-            self.criar_painel_principal(perfil="admin")
-        elif usuario in ["garcon", "garçom", "garco", "atendente"]:
-            self.frame_login.destroy()
-            self.criar_painel_principal(perfil="garcon")
-        else:
-            messagebox.showerror("Erro de Autenticação", "Usuário inválido! Utilize 'admin' ou 'garcon'.")
+# --- TERMINAL DO GARÇOM ---
+with aba_master_operador:
+    if not st.session_state.garcom_logado:
+        st.subheader("👤 Identificação do Garçom")
+        with st.form("login_garcom_form"):
+            garcom_input = st.text_input("Usuário/Nome do Garçom:").strip()
+            senha_garcom = st.text_input("Senha do Garçom:", type="password").strip()
+            if st.form_submit_button("Entrar no Sistema", type="primary") and garcom_input and senha_garcom:
+                res_garcom = executar_query(
+                    "SELECT usuario FROM usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s",
+                    (emp_id, garcom_input.lower(), senha_garcom), retornar_dados=True
+                )
+                if res_garcom:
+                    st.session_state.garcom_logado = True
+                    st.session_state.usuario_atual = str(res_garcom[0][0])
+                    st.rerun()
+                else: st.error("Credenciais incorretas!")
 
-    def criar_painel_principal(self, perfil):
-        """Monta o Notebook de abas preservando a lógica de restrição do Garçom."""
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True)
-
-        # 1. Aba Operacional de Vendas / Pedidos
-        self.aba_vendas = tk.Frame(self.notebook)
-        self.notebook.add(self.aba_vendas, text=" Lançamento de Vendas ")
-        self.montar_aba_vendas(self.aba_vendas)
-
-        # 2. Aba Restrita de Gerência / Relatórios
-        self.aba_gerencia = tk.Frame(self.notebook)
-        self.notebook.add(self.aba_gerencia, text=" Painel de Gerência ")
-        self.montar_aba_gerencia(self.aba_gerencia)
-
-        # REGRA CRÍTICA: Oculta completamente a aba se logado como garçom
-        if perfil == "garcon":
-            self.notebook.forget(self.aba_gerencia)
-            lbl_user = tk.Label(self.root, text="Operador: Garçom (Aba Gerência Ocultada)", fg="blue", font=("Arial", 9, "italic"))
-            lbl_user.pack(anchor="ne", padx=10, pady=2)
-        else:
-            lbl_user = tk.Label(self.root, text="Operador: Administrador (Acesso Total)", fg="red", font=("Arial", 9, "italic"))
-            lbl_user.pack(anchor="ne", padx=10, pady=2)
-
-    def montar_aba_vendas(self, container):
-        """Contém todas as lógicas e campos do caixa e carrinho de compras."""
-        lbl_titulo = tk.Label(container, text="Painel de Vendas Comercial", font=("Arial", 14, "bold"), fg="#333")
-        lbl_titulo.pack(pady=10)
-
-        # Container de Seleção de Produtos
-        frame_produto = tk.Frame(container)
-        frame_produto.pack(pady=5)
-
-        tk.Label(frame_produto, text="Produto:", font=("Arial", 11)).grid(row=0, column=0, padx=5)
-        self.cb_produto = ttk.Combobox(frame_produto, state="readonly", font=("Arial", 11), width=20)
-        self.cb_produto.grid(row=0, column=1, padx=5)
-
-        tk.Label(frame_produto, text="Qtd:", font=("Arial", 11)).grid(row=0, column=2, padx=5)
-        self.txt_qtd = tk.Entry(frame_produto, width=5, font=("Arial", 11), justify="center")
-        self.txt_qtd.insert(0, "1")
-        self.txt_qtd.grid(row=0, column=3, padx=5)
-
-        btn_adicionar = tk.Button(frame_produto, text="Adicionar Item", command=self.adicionar_produto, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), relief="groove")
-        btn_adicionar.grid(row=0, column=4, padx=10)
-
-        # Listagem do Carrinho (Treeview)
-        self.tree = ttk.Treeview(container, columns=("Produto", "Qtd", "Preço Un.", "Total"), show="headings", height=10)
-        self.tree.heading("Produto", text="Item")
-        self.tree.heading("Qtd", text="Quantidade")
-        self.tree.heading("Preço Un.", text="Preço Unitário")
-        self.tree.heading("Total", text="Subtotal")
+        st.markdown("---")
+        with st.expander("➕ Cadastrar Novo Garçom"):
+            with st.form("cadastro_garcom_form", clear_on_submit=True):
+                novo_g_user = st.text_input("Nome/Usuário do Garçom:").strip()
+                novo_g_senha = st.text_input("Senha de Acesso:", type="password").strip()
+                if st.form_submit_button("💼 Confirmar Cadastro") and novo_g_user and novo_g_senha:
+                    executar_query("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING;", (emp_id, novo_g_user, novo_g_senha), commit=True)
+                    st.success("Garçom cadastrado!")
+                    
+    if st.session_state.garcom_logado:
+        st.subheader(f"📋 Atendimento — Operador: {st.session_state.usuario_atual.upper()}")
+        if st.button("🔒 Sair / Trocar de Garçom", use_container_width=True):
+            st.session_state.garcom_logado = False
+            st.session_state.usuario_atual = ""
+            st.session_state.carrinho = []
+            st.rerun()
+            
+        aba_operacao = st.radio("Ação:", ["➕ Lançar Pedido", "🧾 Gerenciar Contas / Fechar Mesas"], horizontal=True)
         
-        self.tree.column("Produto", width=180, anchor="w")
-        self.tree.column("Qtd", width=80, anchor="center")
-        self.tree.column("Preço Un.", width=110, anchor="e")
-        self.tree.column("Total", width=110, anchor="e")
-        self.tree.pack(pady=10, padx=20, fill="x")
+        if aba_operacao == "➕ Lançar Pedido":
+            with obter_conexao() as conn_vendas:
+                df_prods_venda = pd.read_sql("SELECT id, nome, categoria, preco FROM produtos WHERE empresa_id = %s ORDER BY nome", conn_vendas, params=[emp_id])
+                
+            if df_prods_venda.empty: st.info("Nenhum produto cadastrado.")
+            else:
+                mesa_operacao = st.text_input("Mesa ou Comanda:", value="Mesa 01").strip()
+                prod_map_venda = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome']) for _, row in df_prods_venda.iterrows()}
+                
+                if prod_map_venda:
+                    produto_selecionado_string = st.selectbox("Escolha o Item:", list(prod_map_venda.keys()))
+                    qtd_solicitada = st.number_input("Quantidade:", min_value=1, value=1, step=1)
+                    if st.button("➕ Adicionar ao Carrinho", use_container_width=True):
+                        id_p_venda, nome_p_venda = prod_map_venda[produto_selecionado_string]
+                        st.session_state.carrinho.append({"id": id_p_venda, "nome": nome_p_venda, "qtd": qtd_solicitada})
+                        st.toast(f"{nome_p_venda} adicionado!")
+                
+                if st.session_state.carrinho:
+                    st.markdown("### 🛒 Carrinho")
+                    for item in st.session_state.carrinho: st.write(f"▪ *{item['qtd']}x* - {item['nome']}")
+                    confirmacao_garcom = st.checkbox("✅ Conferi os itens com o cliente.", value=False)
+                    col_limpar, col_enviar = st.columns(2)
+                    if col_limpar.button("🗑️ Limpar Carrinho", use_container_width=True): st.session_state.carrinho = []; st.rerun()
+                    if col_enviar.button("🚀 Enviar Pedido", type="primary", use_container_width=True):
+                        if not confirmacao_garcom: st.error("Marque a confirmação!")
+                        else:
+                            horario_atual = datetime.now().strftime("%H:%M:%S")
+                            with obter_conexao() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("SET search_path TO public;")
+                                    for item in st.session_state.carrinho:
+                                        cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s)", (emp_id, mesa_operacao, item['id'], item['qtd'], horario_atual, st.session_state.usuario_atual))
+                                        cur.execute("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", (emp_id, item['id']))
+                                        receitas = cur.fetchall()
+                                        for ins_id, qtd_rec in   receitas:
+                                            total_descontar = (float(qtd_rec) / 1000.0) * int(item['qtd'])
+                                            cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (total_descontar, emp_id, int(ins_id)))
+                                    conn.commit()
+                            st.success("Pedido lançado!"); st.session_state.carrinho = []; st.rerun()
 
-        # Rodapé de Fechamento de Vendas
-        frame_total = tk.Frame(container)
-        frame_total.pack(pady=10, fill="x", padx=20)
-
-        self.lbl_total = tk.Label(frame_total, text="Total: R$ 0,00", font=("Arial", 14, "bold"), fg="#D32F2F")
-        self.lbl_total.pack(side="left")
-
-        btn_finalizar = tk.Button(frame_total, text="Concluir e Salvar Venda", command=self.finalizar_venda, bg="#1976D2", fg="white", font=("Arial", 11, "bold"), relief="raised", padx=10)
-        btn_finalizar.pack(side="right")
-
-        self.carregar_produtos_do_banco()
-
-    def montar_aba_gerencia(self, container):
-        """Painel Administrativo restrito para donos e gerentes."""
-        lbl_titulo = tk.Label(container, text="Painel de Controle Gerencial", font=("Arial", 14, "bold"), fg="#D32F2F")
-        lbl_titulo.pack(pady=20)
-        
-        lbl_info = tk.Label(container, text="[ÁREA RESTRITA - CRÍTICA]
-Aqui constam relatórios de lucratividade, faturamento consolidado e edição de estoque.", font=("Arial", 11), justify="center")
-        lbl_info.pack(pady=20)
-        
-        btn_config = tk.Button(container, text="Configurar Margens de Lucro", font=("Arial", 10), state="disabled", width=30)
-        btn_config.pack(pady=5)
-        
-        btn_relat = tk.Button(container, text="Exportar Fechamento do Mês (CSV)", font=("Arial", 10), state="disabled", width=30)
-        btn_relat.pack(pady=5)
-
-    def carregar_produtos_do_banco(self):
-        """Busca os produtos salvos no banco de dados e joga na lista da tela."""
-        self.cursor.execute("SELECT nome FROM produtos")
-        nomes_produtos = [linha[0] for linha in self.cursor.fetchall()]
-        self.cb_produto["values"] = nomes_produtos
-        if nomes_produtos:
-            self.cb_produto.current(0)
-
-    def obter_preco_do_banco(self, nome_produto):
-        """Consulta o preço atual de um produto dentro do banco de dados."""
-        self.cursor.execute("SELECT preco FROM produtos WHERE nome = ?", (nome_produto,))
-        resultado = self.cursor.fetchone()
-        return resultado[0] if resultado else 0.0
-
-    def adicionar_produto(self):
-        produto = self.cb_produto.get()
-        qtd_str = self.txt_qtd.get()
-
-        if not produto:
-            messagebox.showerror("Erro", "Por favor, selecione um produto!")
-            return
-
-        if not qtd_str.isdigit() or int(qtd_str) <= 0:
-            messagebox.showerror("Erro", "Insira uma quantidade válida acima de zero!")
-            return
-
-        qtd = int(qtd_str)
-        preco_un = self.obter_preco_do_banco(produto)
-        preco_total = preco_un * qtd
-
-        self.tree.insert("", "end", values=(produto, qtd, f"R$ {preco_un:.2f}", f"R$ {preco_total:.2f}"))
-        self.carrinho.append({"produto": produto, "qtd": qtd, "total": preco_total})
-        
-        self.total += preco_total
-        self.lbl_total.config(text=f"Total: R$ {self.total:.2f}")
-        
-        self.txt_qtd.delete(0, tk.END)
-        self.txt_qtd.insert(0, "1")
-
-    def finalizar_venda(self):
-        if not self.carrinho:
-            messagebox.showwarning("Aviso", "O carrinho de compras está vazio!")
-            return
-
-        # Pergunta de confirmação com Sim ou Não antes de registrar
-        confirmar = messagebox.askyesno("Confirmação do Caixa", f"Deseja fechar e salvar esta venda no valor de R$ {self.total:.2f}?")
-        if not confirmar:
-            return
-
-        # Grava os itens salvos no banco de dados local
-        for item in self.carrinho:
-            self.cursor.execute(
-                "INSERT INTO historico_vendas (produto, quantity, total_item) VALUES (?, ?, ?)" if False else
-                "INSERT INTO historico_vendas (produto, quantidade, total_item) VALUES (?, ?, ?)",
-                (item["produto"], item["qtd"], item["total"])
-            )
-        self.conn.commit()
-        
-        # Limpa o carrinho e reseta os estados da venda
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        self.carrinho.clear()
-        self.total = 0.0
-        self.lbl_total.config(text="Total: R$ 0,00")
-        messagebox.showinfo("Sucesso", "Venda gravada com sucesso!")
-
-    def __del__(self):
-        if hasattr(self, 'conn'):
-            self.conn.close()
-
-if __name__ == "__main__":
-    window = tk.Tk()
-    app = SistemaVendas(window)
-    window.mainloop()
+        elif aba_operacao == "🧾 Gerenciar Contas / Fechar Mesas":
+            with obter_conexao() as conn_pedidos:
+                pedidos_ativos = pd.read_sql("""
+                    SELECT p.id, p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status 
+                    FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id 
+                    WHERE p.empresa_id = %s AND p.status IN ('Pendente', 'Confirmado') ORDER BY p.mesa
+                """, conn_pedidos, params=[emp_id])
+            
+            if pedidos_ativos.empty: st.info("Não há comandas abertas.")
+            else:
+                lupa_busca = st.text_input("🔍 Buscar por Mesa:").strip()
+                df_mesas_ativas = pedidos_ativos[pedidos_ativos['mesa'].str.contains(lupa_busca, case=False, na=False)] if lupa_busca else pedidos_ativos
+                
+                if not df_mesas_ativas.empty:
+                    mesas_abertas = sorted(list(set(df_mesas_ativas['mesa'].tolist())))
+                    mesa_ver = st.selectbox("Selecione a Mesa:", mesas_abertas)
+                    df_mesa_filtrada = pedidos_ativos[pedidos_ativos['mesa'] == mesa_ver]
+                    
+                    if 'Pendente' in df_mesa_filtrada['status'].tolist():
+                        if st.button("✅ Confirmar Todos os Itens Pendentes", use_container_width=True):
+                            executar_query("UPDATE pedidos SET status = 'Confirmado' WHERE empresa_id = %s AND mesa = %s AND status = 'Pendente'", (emp_id, mesa_ver), commit=True)
+                            st.success("Itens confirmados!"); st.rerun()
+                    
+                    for _, row in df_mesa_filtrada.iterrows():
+                        c_item, c_status, c_acao = st.columns(3)
+                        c_item.write(f"▪ **{row['quantidade']}x** {row['produto']} *(R$ {row['subtotal']:.2f})*")
+                        if row['status'] == 'Pendente':
+                            c_status.warning("⏳ Pendente")
+                            if c_acao.button("Confirmar", key=f"conf_ind_{row['id']}"):
+                                executar_query("UPDATE pedidos SET status = 'Confirmado' WHERE id = %s AND empresa_id = %s", (int(row['id']), emp_id), commit=True)
+                                st.rerun()
+                        else: c_status.success("🔥 Confirmado")
+                    
+                    subtotal_mesa = float(df_mesa_filtrada['subtotal'].sum())
+                    taxa_servico = subtotal_mesa * 0.10
+                    total_geral = subtotal_mesa + taxa_servico
+                    
+                    st.markdown("---")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Subtotal Consumo", f"R$ {subtotal_mesa:.2f}")
+                    c2.metric("Taxa Serviço (10%)", f"R$ {taxa_servico:.2f}")
+                    c3.metric("TOTAL DA CONTA", f"R$ {total_geral:.2f}")
+                    
+                    inclui_taxa = st.checkbox("Cliente aceitou pagar a taxa?", value=True)
+                    if st.button("💰 Finalizar e Receber Pagamento", type="primary", use_container_width=True):
+                        valor_taxa_salvar = 1 if inclui_taxa else 0
+                        executar_query("UPDATE pedidos SET status = 'Finalizado (Pago)', taxa_paga = %s WHERE empresa_id = %s AND mesa = %s AND status IN ('Pendente', 'Confirmado')", (valor_taxa_salvar, emp_id, mesa_ver), commit=True)
+                        st.success("Mesa fechada!"); st.rerun()
