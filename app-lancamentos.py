@@ -59,6 +59,7 @@ with conn.cursor() as cur:
     try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
     except Exception: conn.rollback()
 conn.commit()
+
 # --- FASE 1: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO ---
 if not st.session_state.logado:
     aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
@@ -76,7 +77,7 @@ if not st.session_state.logado:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
                         cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()
+                        id_da_empresa = cur.fetchone()[0]
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
@@ -180,6 +181,7 @@ with aba_master_sistema:
                             cur.execute("DELETE FROM public.pedidos WHERE id = %s AND empresa_id = %s", (int(it['id']), emp_id))
                             c.commit()
                         st.success("Item removido e estoque devolvido com segurança!"); st.rerun()
+
         # --- 3. CADASTRO EM MASSA ---
         with subtabs[2]:
             st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
@@ -262,6 +264,7 @@ with aba_master_sistema:
                     else: pendente_total += sub_mesa
                 c1, c2, c3 = st.columns(3); c1.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}"); c2.metric("🍹 Caixinha (10%)", f"R$ {garcons_total:.2f}"); c3.metric("⚠️ Perdas", f"R$ {pendente_total:.2f}")
                 st.dataframe(vendas_df, use_container_width=True, hide_index=True)
+                
         # --- 6. EXCLUIR ---
         with subtabs[5]:
             st.subheader("🗑️ Remover Produtos ou Insumos do Sistema")
@@ -308,7 +311,6 @@ with aba_master_operador:
                 else: st.error("Credenciais do garçom incorretas!")
 
         st.markdown("---")
-        # Layout Exigido: Cadastro posicionado exatamente embaixo do formulário de login do garçom
         with st.expander("➕ Não tem conta? Cadastrar Novo Garçom"):
             with st.form("cadastro_garcom_form", clear_on_submit=True):
                 novo_g_user = st.text_input("Defina o Nome/Usuário do Garçom:").strip()
@@ -321,7 +323,7 @@ with aba_master_operador:
                             c.commit()
                         st.success(f"Garçom '{novo_g_user}' cadastrado! Digite os dados acima para efetuar o login.")
                     except Exception as e: st.error(f"Erro ou funcionário já existente no banco: {e}")
-    # EXIBE O TERMINAL DO LANÇADOR SE O GARÇOM ESTIVER LOGADO
+                    
     if st.session_state.garcom_logado:
         emp_id = st.session_state.empresa_id_atual
         st.subheader(f"📋 Terminal de Pedidos Ativo — Operador: {st.session_state.usuario_atual.upper()}")
@@ -334,15 +336,12 @@ with aba_master_operador:
             
         aba_operacao = st.radio("Selecione a Ação:", ["➕ Lançar Pedido (Abrir/Adicionar Itens)", "🧾 Gerenciar Contas / Fechar Mesas"], horizontal=True)
         
-        # 1. LANÇAR PEDIDO E ADICIONAR ITENS AO CARRINHO NATIVO
         if aba_operacao == "➕ Lançar Pedido (Abrir/Adicionar Itens)":
             df_prods_venda = pd.read_sql("SELECT id, nome, categoria, preco FROM public.produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
             if df_prods_venda.empty: st.info("Nenhum produto cadastrado no sistema.")
             else:
                 mesa_operacao = st.text_input("Número / Nome da Mesa ou Comanda:", value="Mesa 01")
-                categoria_filtro = st.selectbox("Filtrar Categoria:", ["Todos"] + sorted(list(set(df_prods_venda['categoria'].tolist()))))
-                df_filtrado = df_prods_venda if categoria_filtro == "Todos" else df_prods_venda[df_prods_venda['categoria'] == categoria_filtro]
-                prod_map_venda = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome']) for _, row in df_filtrado.iterrows()}
+                prod_map_venda = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome']) for _, row in df_prods_venda.iterrows()}
                 
                 if prod_map_venda:
                     produto_selecionado_string = st.selectbox("Escolha o Item:", list(prod_map_venda.keys()))
@@ -373,7 +372,6 @@ with aba_master_operador:
                                 c.commit()
                             st.success("Pedido lançado!"); st.session_state.carrinho = []; st.rerun()
 
-        # 2. GERENCIAR CONTAS ATIVAS COM LUPA DE FILTRO TOTALIZADA E CONFIRMAÇÃO INDIVIDUAL ORIGINAL
         elif aba_operacao == "🧾 Gerenciar Contas / Fechar Mesas":
             pedidos_ativos = pd.read_sql("""
                 SELECT p.id, p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status 
@@ -383,7 +381,6 @@ with aba_master_operador:
             
             if pedidos_ativos.empty: st.info("Não há nenhuma comanda ou mesa ativa aberta no momento.")
             else:
-                # 🔍 LUPA DE BUSCA DIGITÁVEL ORIGINAL PRESERVADA INTACTA
                 lupa_busca = st.text_input("🔍 Lupa - Digite o nome da Comanda/Mesa para pesquisar e filtrar:").strip()
                 df_mesas_ativas = pedidos_ativos[pedidos_ativos['mesa'].str.contains(lupa_busca, case=False, na=False)] if lupa_busca else pedidos_ativos
                 
@@ -402,7 +399,6 @@ with aba_master_operador:
                                 c.commit()
                             st.success("Todos os itens pendentes foram confirmados com sucesso!"); st.rerun()
                     
-                    # RENDERIZAÇÃO DAS COLUNAS DE CONFIRMAÇÃO INDIVIDUAL INTACTAS (C_ITEM, C_STATUS, C_ACAO)
                     for _, row in df_mesa_filtrada.iterrows():
                         c_item, c_status, c_acao = st.columns(3)
                         c_item.write(f"▪ **{row['quantidade']}x** {row['produto']} *(R$ {row['subtotal']:.2f})*")
