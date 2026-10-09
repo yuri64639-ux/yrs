@@ -68,7 +68,7 @@ if not st.session_state.logado:
                 try:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public; INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()
+                        id_da_empresa = cur.fetchone()[0]
                         cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
                     st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
@@ -129,7 +129,7 @@ if not st.session_state.garcom_logado:
             permitir_render_gerencial = True
             
         if permitir_render_gerencial:
-            df_est = pd.read_sql("SELECT id, item, quantity FROM estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
+            df_est = pd.read_sql("SELECT id, item, quantidade FROM estoque WHERE empresa_id = %s ORDER BY item", conn, params=[emp_id])
             df_prods = pd.read_sql("SELECT id, nome FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=[emp_id])
             
             tab_estoque, tab_cancelamento, tab_cadastro, tab_receitas, tab_relatorios, tab_excluir = st.tabs([
@@ -219,11 +219,11 @@ if not st.session_state.garcom_logado:
                     
                     st.metric("💰 Faturamento Líquido Total", f"R$ {empresa_total:.2f}")
                     st.markdown("#### 💳 Divisão por Meio de Recebimento")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("⚡ Pix", f"R$ {pix_total:.2f}")
-                    c2.metric("💳 Crédito", f"R$ {cred_total:.2f}")
-                    c3.metric("💵 Débito", f"R$ {deb_total:.2f}")
-                    c4.metric("💰 Dinheiro", f"R$ {din_total:.2f}")
+                    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                    col_p1.metric("⚡ Pix", f"R$ {pix_total:.2f}")
+                    col_p2.metric("💳 Crédito", f"R$ {cred_total:.2f}")
+                    col_p3.metric("💵 Débito", f"R$ {deb_total:.2f}")
+                    col_p4.metric("💰 Dinheiro", f"R$ {din_total:.2f}")
                     
                     st.markdown("---")
                     st.dataframe(df_f.drop(columns=['data_somente']), use_container_width=True, hide_index=True)
@@ -297,7 +297,7 @@ with aba_master_operador:
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("SET search_path TO public;")
                             for i in st.session_state.carrinho:
-                                cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantity, status, horario, garcom) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s)", (emp_id, mesa.strip(), int(i['id']), int(i['qtd']), h, st.session_state.usuario_atual))
+                                cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom, pago) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s, 'Não')", (emp_id, mesa.strip(), int(i['id']), int(i['qtd']), h, st.session_state.usuario_atual))
                                 rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(i['id'])])
                                 for _, r in rc.iterrows(): cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(i['qtd'])), emp_id, int(r['insumo_id'])))
                             c.commit()
