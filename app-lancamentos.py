@@ -89,8 +89,8 @@ if not st.session_state.logado:
                         resultado = cur.fetchone()
                     if resultado:
                         st.session_state.logado = True
-                        st.session_state.empresa_id_atual = int(resultado[0])
-                        st.session_state.senha_master_empresa = str(resultado[1])
+                        st.session_state.empresa_id_atual = int(resultado)
+                        st.session_state.senha_master_empresa = str(resultado)
                         st.rerun()
                     else: st.error("Credenciais da empresa incorretas!")
             else: st.info("Nenhuma empresa cadastrada ainda.")
@@ -98,7 +98,6 @@ if not st.session_state.logado:
     st.stop()
 
 # --- CONTROLE DINÂMICO DE VISUALIZAÇÃO ---
-# Se o garçom estiver logado, destrói as abas superiores e remove a Gerência da memória física da tela
 if st.session_state.garcom_logado:
     st.markdown("### 📱 Ambiente do Funcionário")
     aba_master_operador = st.container()
@@ -164,13 +163,11 @@ if not st.session_state.garcom_logado:
             with subtabs:
                 st.subheader("🍔 Cadastro de Produtos Rápido (Copiar e Colar)")
                 with st.form("f_prod_massa_texto_direto", clear_on_submit=True):
-                    texto_produtos = st.text_area("Formato: Nome, Categoria, Preço", placeholder="Caipirinha, Drinks, 15.0
-Heineken, Cervejas, 12.0")
+                    texto_produtos = st.text_area("Formato: Nome, Categoria, Preço", placeholder="Caipirinha, Drinks, 15.0\nHeineken, Cervejas, 12.0")
                     if st.form_submit_button("🔥 Gravar Produtos") and texto_produtos.strip():
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("SET search_path TO public;")
-                            for linha in texto_produtos.strip().split("
-"):
+                            for linha in texto_produtos.strip().split("\n"):
                                 if "," in linha:
                                     partes = linha.split(",")
                                     if len(partes) == 3:
@@ -207,7 +204,7 @@ Heineken, Cervejas, 12.0")
                     st.metric("💰 Faturamento Líquido", f"R$ {empresa_total:.2f}")
                     st.dataframe(df_f.drop(columns=['data_somente']), use_container_width=True, hide_index=True)
             with subtabs:
-                st.subheader("🗑️ Excluir Dados")
+                st.subheader("🗑 Imprevistos e Exclusões")
                 if not df_prods.empty:
                     p_del = st.selectbox("Produto para Deletar:", [r['nome'] for _, r in df_prods.iterrows()])
                     if st.button("Remover Produto"):
@@ -265,7 +262,8 @@ with aba_master_operador:
                     p_sel = st.selectbox("Item:", list(p_map.keys()))
                     qtd = st.number_input("Qtd:", min_value=1, value=1)
                     if st.button("➕ Adicionar", use_container_width=True):
-                        st.session_state.carrinho.append({"id": p_map[p_sel][0], "nome": p_map[p_sel][1], "qtd": qtd})
+                        id_prod, nome_prod = p_map[p_sel]
+                        st.session_state.carrinho.append({"id": int(id_prod), "nome": str(nome_prod), "qtd": int(qtd)})
                 if st.session_state.carrinho:
                     for i in st.session_state.carrinho: st.write(f"▪ *{i['qtd']}x* - {i['nome']}")
                     if st.button("🚀 Enviar Pedido", type="primary", use_container_width=True):
@@ -273,7 +271,7 @@ with aba_master_operador:
                         with ob_cx() as c, c.cursor() as cur:
                             cur.execute("SET search_path TO public;")
                             for i in st.session_state.carrinho:
-                                cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s)", (emp_id, mesa.strip(), int(i['id']), int(i['qtd']), h, st.session_state.usuario_atual))
+                                cur.execute("INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, horario, garcom, pago) VALUES (%s, %s, %s, %s, 'Pendente', %s, %s, 'Não')", (emp_id, mesa.strip(), int(i['id']), int(i['qtd']), h, st.session_state.usuario_atual))
                                 rc = pd.read_sql("SELECT insumo_id, qtd_insumo FROM receitas WHERE empresa_id = %s AND produto_id = %s", c, params=[emp_id, int(i['id'])])
                                 for _, r in rc.iterrows(): cur.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE empresa_id = %s AND id = %s", (((float(r['qtd_insumo']) / 1000.0) * int(i['qtd'])), emp_id, int(r['insumo_id'])))
                             c.commit()
@@ -287,7 +285,8 @@ with aba_master_operador:
                 l_b = st.text_input("🔍 Buscar Mesa:").strip()
                 df_m = p_at[p_at['mesa'].str.contains(l_b, case=False)] if l_b else p_at
                 if not df_m.empty:
-                    m_ver = st.selectbox("Selecione a Mesa:", sorted(list(set(df_m['mesa'].tolist()))))
+                    mesas_disponiveis = sorted(list(set(df_m['mesa'].tolist())))
+                    m_ver = st.selectbox("Selecione a Mesa:", mesas_disponiveis)
                     df_mf = p_at[p_at['mesa'] == m_ver]
                     if 'Pendente' in df_mf['status'].tolist() and st.button("✅ Confirmar Todos"):
                         with ob_cx() as c, c.cursor() as cur:
@@ -297,7 +296,6 @@ with aba_master_operador:
                     sub = float(df_mf['subtotal'].sum())
                     st.metric("Total Consumo", f"R$ {sub:.2f}")
                     
-                    # Seletor de forma de pagamento adicionado para auditoria
                     f_pag = st.selectbox("Forma de Pagamento:", ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"])
                     if st.button("💰 Fechar Mesa", type="primary", use_container_width=True):
                         with ob_cx() as c, c.cursor() as cur:
