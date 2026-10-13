@@ -111,4 +111,47 @@ def f_receitas(emp_id, df_prods, df_est):
                         cur.execute("INSERT INTO receitas (empresa_id, produto_id, insumo_id, qtd_insumo) VALUES (%s, %s, %s, %s) ON CONFLICT (empresa_id, produto_id, insumo_id) DO UPDATE SET qtd_insumo = EXCLUDED.qtd_insumo", (emp_id, int(p_sel), int(d_i[i]), float(q)))
                 c.commit()
             st.rerun()
+# ==============================================================================
+# VIEWS/GERENCIA.PY - PARTE 3: RELATÓRIOS FINANCEIROS E EXCLUSÕES
+# ==============================================================================
+
+def f_relatorio(emp_id, conn):
+    st.subheader("📊 Relatórios Financeiros")
+    v_df = pd.read_sql("SELECT p.mesa, pr.nome as produto, p.quantidade, pr.preco, (p.quantidade * pr.preco) as subtotal, p.status, p.horario, p.modo_pagamento FROM pedidos p JOIN produtos pr ON p.produto_id = pr.id WHERE p.empresa_id = %s AND p.status IN ('Finalizado (Pago)', 'Fechado (Não Pago)') ORDER BY p.horario DESC", conn, params=[emp_id])
+    if v_df.empty:
+        st.info("Sem histórico de faturamento.")
+        return
+    v_df['data'] = v_df['horario'].apply(lambda x: str(x).split(" ")[0] if " " in str(x) else "Sem Data")
+    d_sel = st.selectbox("Data:", sorted(list(set(v_df['data'].tolist())), reverse=True))
+    df_f = v_df[v_df['data'] == d_sel]
+    
+    tot = df_f[df_f['status']=='Finalizado (Pago)']['subtotal'].sum()
+    st.metric("💰 Faturamento Líquido", f"R$ {tot:.2f}")
+    
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    for c, m in zip([col_p1, col_p2, col_p3, col_p4], ['Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro']):
+        v_m = df_f[(df_f['status']=='Finalizado (Pago)') & (df_f['modo_pagamento'] == m)]['subtotal'].sum()
+        c.metric(m, f"R$ {v_m:.2f}")
+    st.markdown("---")
+    st.dataframe(df_f.drop(columns=['data']), use_container_width=True, hide_index=True)
+
+def f_excluir(emp_id, df_prods, df_est):
+    st.subheader("🗑️ Excluir Registros")
+    col1, col2 = st.columns(2)
+    with col1:
+        if not df_prods.empty:
+            p_del = st.selectbox("Remover Produto:", [r['nome'] for _, r in df_prods.iterrows()])
+            if st.button("Deletar Produto", use_container_width=True):
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public; DELETE FROM receitas WHERE empresa_id = %s AND produto_id = (SELECT id FROM produtos WHERE empresa_id = %s AND nome = %s); DELETE FROM produtos WHERE empresa_id = %s AND nome = %s", (emp_id, emp_id, p_del, emp_id, p_del))
+                    c.commit()
+                st.rerun()
+    with col2:
+        if not df_est.empty:
+            i_del = st.selectbox("Remover Insumo:", [r['item'] for _, r in df_est.iterrows()])
+            if st.button("Deletar Insumo", use_container_width=True):
+                with ob_cx() as c, c.cursor() as cur:
+                    cur.execute("SET search_path TO public; DELETE FROM receitas WHERE empresa_id = %s AND insumo_id = (SELECT id FROM estoque WHERE empresa_id = %s AND item = %s); DELETE FROM estoque WHERE empresa_id = %s AND item = %s", (emp_id, emp_id, i_del, emp_id, i_del))
+                    c.commit()
+                st.rerun()
 
