@@ -1,54 +1,100 @@
-import psycopg2
+# ==============================================================================
+# APP.PY - ARQUIVO PRINCIPAL (ROTEADOR E ENTRADA DO SISTEMA)
+# ==============================================================================
 import streamlit as st
+import pandas as pd
+from core.database import ob_cx, inicializar_banco
+from views.gerencia import renderizar_painel_gerencial
+from views.garcom import renderizar_terminal_garcom
 
-def ob_cx():
-    try:
-        c = st.secrets["connections"]["postgresql"]
-        if "url" in c:
-            return psycopg2.connect(c["url"])
-        return psycopg2.connect(
-            host=c.get("host"), port=c.get("port", 5432), database=c.get("database"),
-            user=c.get("username"), password=c.get("password"), sslmode="require"
-        )
-    except Exception as e:
-        st.error(f"Erro ao conectar com as credenciais do banco: {e}")
-        return None
+st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-def inicializar_banco():
-    conn = ob_cx()
-    if conn is not None:
-        with conn.cursor() as cur:
-            cur.execute("SET search_path TO public;")
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS public.empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
-                CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
-                CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
-                CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
-                CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Não', garcom TEXT, modo_pagamento TEXT);
-            """)
-            cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
-            cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS modo_pagamento TEXT;")
-            conn.commit()
+# Ocultação estrutural de menus nativos do Streamlit para o celular
+st.markdown("""
+    <style>
+    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } 
+    header [data-testid='stToolbar'] { display: none !important; } 
+    [data-testid='collapsedControl'] { display: none !important; } 
+    header { background-color: transparent !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Inicializa as tabelas do banco automaticamente antes de carregar o app
+inicializar_banco()
+
+conn = ob_cx()
+
+# --- FLUXO DE LOGIN / CADASTRO DE ESTABELECIMENTO ---
+if not st.session_state.logado:
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+    
+    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
+        with st.form("cadastro_empresa_form"):
+            st.subheader("🏢 Cadastrar Empresa no Sistema")
+            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
+            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
+            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
             
-            try: cur.execute("ALTER TABLE public.produtos DROP CONSTRAINT IF EXISTS produtos_nome_key CASCADE;")
-            except: conn.rollback()
-            try: cur.execute("ALTER TABLE public.estoque DROP CONSTRAINT IF EXISTS estoque_item_key CASCADE;")
-            except: conn.rollback()
-            try: cur.execute("ALTER TABLE public.usuarios DROP CONSTRAINT IF EXISTS usuarios_usuario_key CASCADE;")
-            except: conn.rollback()
-            conn.commit()
-            
-            try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
-            except: conn.rollback()
-            try: cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
-            except: conn.rollback()
-            try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
-            except: conn.rollback()
-        conn.commit()
+            if st.form_submit_button("Criar Minha Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
+                try:
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public; INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
+                        id_da_empresa = cur.fetchone()[0]
+                        cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                        c.commit()
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
+                except Exception as e: 
+                    st.error(f"Erro no cadastro: {e}")
+    else:
+        with st.form("login_form"):
+            st.subheader("📱 Login do Estabelecimento (Empresa)")
+            if conn is not None:
+                df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn)
+                dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
+                
+                if dict_empresas:
+                    empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
+                    user_input = st.text_input("Usuário Master da Empresa:")
+                    senha_input = st.text_input("Senha Master:", type="password")
+                    
+                    if st.form_submit_button("Liberar Terminal", type="primary"):
+                        id_empresa_login = dict_empresas[empresa_selecionada]
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public; SELECT empresa_id, senha FROM usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (id_empresa_login, user_input.strip(), senha_input.strip()))
+                            resultado = cur.fetchone()
+                        if resultado:
+                            st.session_state.logado = True
+                            st.session_state.empresa_id_atual = int(resultado[0])
+                            st.session_state.senha_master_empresa = str(resultado[1])
+                            st.rerun()
+                        else: 
+                            st.error("Credenciais da empresa incorretas!")
+                else: 
+                    st.info("Nenhuma empresa cadastrada ainda.")
+                    
+    if conn: 
         conn.close()
+    st.stop()
 
+# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
+if st.session_state.garcom_logado:
+    st.markdown("### 📱 Ambiente do Funcionário")
+    renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+else:
+    aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
+    
+    with aba_master_sistema:
+        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", use_container_width=True):
+            st.session_state.logado = False
+            st.session_state.empresa_id_atual = None
+            st.session_state.senha_master_empresa = ""
+            st.session_state.garcom_logado = False
+            st.session_state.carrinho = []
+            st.rerun()
+        renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+        
+    with aba_master_operador:
+        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+
+if conn: 
+    conn.close()
