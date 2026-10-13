@@ -1,1 +1,54 @@
+import psycopg2
+import streamlit as st
+
+def ob_cx():
+    try:
+        c = st.secrets["connections"]["postgresql"]
+        if "url" in c:
+            return psycopg2.connect(c["url"])
+        return psycopg2.connect(
+            host=c.get("host"), port=c.get("port", 5432), database=c.get("database"),
+            user=c.get("username"), password=c.get("password"), sslmode="require"
+        )
+    except Exception as e:
+        st.error(f"Erro ao conectar com as credenciais do banco: {e}")
+        return None
+
+def inicializar_banco():
+    conn = ob_cx()
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.empresas (id SERIAL PRIMARY KEY, nome_empresa TEXT UNIQUE NOT NULL, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE IF NOT EXISTS public.usuarios (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT);
+                CREATE TABLE IF NOT EXISTS public.estoque (id SERIAL PRIMARY KEY, item TEXT, quantidade REAL);
+                CREATE TABLE IF NOT EXISTS public.produtos (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
+                CREATE TABLE IF NOT EXISTS public.receitas (id SERIAL PRIMARY KEY, produto_id INTEGER, insumo_id INTEGER, qtd_insumo REAL);
+                CREATE TABLE IF NOT EXISTS public.pedidos (id SERIAL PRIMARY KEY, mesa TEXT, produto_id INTEGER, quantidade INTEGER, status TEXT DEFAULT 'Pendente', horario TEXT, taxa_paga INTEGER DEFAULT 1, pago TEXT DEFAULT 'Não', garcom TEXT, modo_pagamento TEXT);
+            """)
+            cur.execute("ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+            cur.execute("ALTER TABLE public.estoque ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+            cur.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+            cur.execute("ALTER TABLE public.receitas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+            cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES public.empresas(id) ON DELETE CASCADE;")
+            cur.execute("ALTER TABLE public.pedidos ADD COLUMN IF NOT EXISTS modo_pagamento TEXT;")
+            conn.commit()
+            
+            try: cur.execute("ALTER TABLE public.produtos DROP CONSTRAINT IF EXISTS produtos_nome_key CASCADE;")
+            except: conn.rollback()
+            try: cur.execute("ALTER TABLE public.estoque DROP CONSTRAINT IF EXISTS estoque_item_key CASCADE;")
+            except: conn.rollback()
+            try: cur.execute("ALTER TABLE public.usuarios DROP CONSTRAINT IF EXISTS usuarios_usuario_key CASCADE;")
+            except: conn.rollback()
+            conn.commit()
+            
+            try: cur.execute("ALTER TABLE public.usuarios ADD CONSTRAINT unique_empresa_usuario UNIQUE(empresa_id, usuario);")
+            except: conn.rollback()
+            try: cur.execute("ALTER TABLE public.estoque ADD CONSTRAINT unique_empresa_item UNIQUE(empresa_id, item);")
+            except: conn.rollback()
+            try: cur.execute("ALTER TABLE public.produtos ADD CONSTRAINT unique_empresa_produto UNIQUE(empresa_id, nome);")
+            except: conn.rollback()
+        conn.commit()
+        conn.close()
 
