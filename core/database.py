@@ -19,14 +19,14 @@ def ob_cx():
         return None
 
 def inicializar_banco():
-    """Garante de forma resiliente que as tabelas base do ecossistema existam."""
+    """Garante a criação de todas as tabelas originais do ecossistema."""
     conn = ob_cx()
     if conn:
         try:
             with conn.cursor() as cur:
                 cur.execute("SET search_path TO public;")
                 
-                # Tabela de Empresas (Multi-Tenant)
+                # Tabela de Empresas
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS empresas (
                         id SERIAL PRIMARY KEY,
@@ -34,7 +34,7 @@ def inicializar_banco():
                     );
                 """)
                 
-                # Tabela de Usuários / Administradores
+                # Tabela de Usuários Administradores
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS usuarios (
                         id SERIAL PRIMARY KEY,
@@ -43,8 +43,33 @@ def inicializar_banco():
                         senha VARCHAR(255) NOT NULL
                     );
                 """)
+                
+                # Tabela de Produtos (Nova)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS produtos (
+                        id SERIAL PRIMARY KEY,
+                        empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                        nome VARCHAR(255) NOT NULL,
+                        preco NUMERIC(10, 2) NOT NULL,
+                        categoria VARCHAR(100) NOT NULL,
+                        estoque INTEGER NOT NULL DEFAULT 0
+                    );
+                """)
+                
+                # Tabela de Pedidos / Faturamento (Nova)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS pedidos (
+                        id SERIAL PRIMARY KEY,
+                        empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+                        mesa_comanda VARCHAR(50) NOT NULL,
+                        itens TEXT NOT NULL,
+                        total NUMERIC(10, 2) NOT NULL,
+                        metodo_pagamento VARCHAR(50) NOT NULL,
+                        data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
                 conn.commit()
         except Exception as e:
-            print(f"Erro crítico ao rodar DDLs de inicialização: {e}")
+            print(f"Erro crítico na inicialização das DDLs: {e}")
         finally:
             conn.close()
