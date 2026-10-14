@@ -1,6 +1,6 @@
 """
-VIEWS/GARCOM.PY - Interface Operacional para Garçons e Lançamentos
-Contém correção automática de diagnóstico para nomenclatura de colunas no banco de dados.
+VIEWS/GARCOM.PY - Terminal Operacional para Garçons e Lançamentos
+Implementa compatibilidade adaptativa para colunas variantes do PostgreSQL (mesa/mesa_comanda).
 """
 
 import streamlit as st
@@ -89,7 +89,6 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
             st.session_state.carrinho = []
             st.rerun()
             
-        # Bloco com tratamento profissional de erro de coluna
         if col_fechar.button("✅ Confirmar e Enviar Pedido", type="primary", width='stretch'):
             if not mesa_ou_comanda:
                 st.error("Por favor, preencha o número da Mesa ou Comanda antes de finalizar!")
@@ -100,29 +99,20 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                         if conn_venda:
                             with conn_venda.cursor() as cur:
                                 try:
-                                    # Tentativa padrão de inserção do pedido
+                                    # Estrutura 1: Tenta mapear o modelo 'mesa_comanda'
                                     cur.execute("""
                                         INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
                                         VALUES (%s, %s, %s, %s, %s);
                                     """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
-                                except Exception as sql_err:
-                                    # Fallback diagnóstico: busca quais colunas realmente existem na tabela 'pedidos'
-                                    try:
-                                        cur.execute("""
-                                            SELECT column_name 
-                                            FROM information_schema.columns 
-                                            WHERE table_name = 'pedidos';
-                                        """)
-                                        colunas_reais = [row[0] for row in cur.fetchall()]
-                                        linhas_colunas = ", ".join(colunas_reais)
-                                    except:
-                                        linhas_colunas = "Não foi possível ler o esquema da tabela."
-                                    
-                                    raise ValueError(
-                                        f"A coluna 'mesa_comanda' falhou. As colunas existentes na tabela 'pedidos' são: [{linhas_colunas}]"
-                                    )
+                                except psycopg2.errors.UndefinedColumn:
+                                    # Estrutura 2: Fallback automático se a coluna correta no banco for 'mesa'
+                                    conn_venda.rollback()
+                                    cur.execute("""
+                                        INSERT INTO pedidos (empresa_id, mesa, itens, total, metodo_pagamento)
+                                        VALUES (%s, %s, %s, %s, %s);
+                                    """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
                                 
-                                # Atualização sequencial do estoque dos itens baixados
+                                # Processamento sequencial de baixa de inventário
                                 for item in st.session_state.carrinho:
                                     cur.execute("""
                                         UPDATE produtos 
@@ -132,7 +122,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                                     
                                 conn_venda.commit()
                                 
-                            st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso!")
+                            st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso na Neon!")
                             st.session_state.carrinho = []
                             st.rerun()
                 except Exception as error:
