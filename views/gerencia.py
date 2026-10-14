@@ -1,9 +1,11 @@
 """
-VIEWS/GERENCIA.PY - Painel de Controle, Cadastros Individuais e Cargas em Lote
+VIEWS/GERENCIA.PY - Painel de Controle e Gestão Protegido por Senha Master
+Garante proteção de dados nas abas de inventário, cargas em massa e auditoria financeira.
 """
 
 import streamlit as st
 import pandas as pd
+import psycopg2
 from core.database import ob_cx
 from views.relatorios import renderizar_abas_financeiras
 
@@ -12,13 +14,54 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
     st.markdown(f"Estabelecimento Ativo: **ID {empresa_id}**")
     st.markdown("---")
     
-    aba_cad, aba_massa, aba_financeira = st.tabs([
+    # --- BARREIRA DE SEGURANÇA INTERNA ---
+    st.subheader("🔑 Autenticação Administrativa")
+    senha_digitada = st.text_input(
+        "Insira a Senha Master do Estabelecimento para liberar as ferramentas de gestão:", 
+        type="password", 
+        placeholder="Senha Master"
+    )
+    
+    if not senha_digitada:
+        st.info("🔒 Insira a sua senha para visualizar o estoque, cadastros e relatórios.")
+        st.stop()
+        
+    if senha_digitada != senha_master:
+        st.error("❌ Senha Master incorreta! Acesso negada às ferramentas de auditoria e inventário.")
+        st.stop()
+        
+    # --- SEÇÃO LIBERADA APENAS COM SENHA VÁLIDA ---
+    st.success("🔓 Autenticação efetuada com sucesso! Painel de controle liberado.")
+    
+    aba_est, aba_cad, aba_massa, aba_financeira = st.tabs([
+        "📦 Estoque Atual",
         "📝 Cadastro Individual", 
         "🍔 Importação em Massa", 
-        "📊 Relatórios & Zona de Perigo"
+        "📊 Relatórios & Faturamento"
     ])
     
-    # --- 1. CADASTRO INDIVIDUAL ---
+    # --- 1. VISUALIZAÇÃO DE ESTOQUE ---
+    with aba_est:
+        st.subheader("📦 Itens Cadastrados no Estoque")
+        try:
+            with ob_cx() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, nome, preco, category, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome;", 
+                    (empresa_id,)
+                )
+                dados = cur.fetchall()
+                colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
+                
+            df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
+            if not df.empty:
+                df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
+                st.dataframe(df, width='stretch', hide_index=True)
+            else: 
+                st.info("Nenhum item localizado no estoque desta empresa.")
+        except Exception as error: 
+            st.error(f"Erro ao carregar cardápio e estoque: {error}")
+    
+    # --- 2. CADASTRO INDIVIDUAL ---
     with aba_cad:
         st.subheader("🛒 Adicionar Item ao Cardápio")
         with st.form("form_cadastro_produto", clear_on_submit=True):
@@ -45,29 +88,8 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                         st.rerun()
                     except Exception as error: 
                         st.error(f"Erro ao salvar produto: {error}")
-        
-        st.markdown("---")
-        st.subheader("📦 Itens Cadastrados no Estoque")
-        try:
-            with ob_cx() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome;", 
-                    (empresa_id,)
-                )
-                dados = cur.fetchall()
-                colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
-                
-            df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
-            if not df.empty:
-                df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
-                # CORREÇÃO: Substituído use_container_width=True por width='stretch'
-                st.dataframe(df, width='stretch', hide_index=True)
-            else: 
-                st.info("Nenhum item localizado no cardápio desta empresa.")
-        except Exception as error: 
-            st.error(f"Erro ao carregar cardápio: {error}")
 
-    # --- 2. CADASTRO EM MASSA ---
+    # --- 3. CADASTRO EM MASSA ---
     with aba_massa:
         st.subheader("🍔 Cadastro de Cardápio em Lote")
         st.code("Nome do Produto, Categoria, Preço, Estoque", language="text")
@@ -77,7 +99,6 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
             placeholder="Exemplo:\nCoca-Cola Lata, Bebidas, 6.50, 50\nX-Salada Especial, Comidas / Lanches, 22.00, 30"
         )
         
-        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
         if st.button("🔥 Importar Lista Completa", type="primary", width='stretch'):
             if not texto_produtos.strip():
                 st.warning("O campo de texto está vazio.")
@@ -99,7 +120,6 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                                     )
                                     itens_gravados += 1
                                 except ValueError:
-                                    # Ignora linhas mal formatadas na conversão numérica e segue para as próximas
                                     continue
                         conn.commit()
                         
@@ -111,6 +131,6 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                 except Exception as error: 
                     st.error(f"Erro estrutural na importação em lote: {error}")
 
-    # --- 3. ABAS DE FINANCEIRO ---
+    # --- 4. RELATÓRIOS FINANCEIROS ACESSADOS COM SEGURANÇA ---
     with aba_financeira:
         renderizar_abas_financeiras(empresa_id, senha_master)
