@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO
+# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO COM SENHA
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -7,6 +7,20 @@ from core.database import ob_cx
 
 def renderizar_painel_gerencial(empresa_id, senha_master):
     st.title("⚙️ Painel de Controle Gerencial")
+    
+    # Campo de validação antes de liberar o painel
+    senha_digitada = st.text_input("🔑 Digite a Senha Master para acessar a Gerência:", type="password")
+    
+    if not senha_digitada:
+        st.info("Insira a senha master do estabelecimento para liberar as informações financeiras e de estoque.")
+        st.stop()
+        
+    if senha_digitada != senha_master:
+        st.error("❌ Senha Master incorreta! Acesso negado.")
+        st.stop()
+        
+    # Se a senha estiver correta, exibe o conteúdo original:
+    st.success("🔓 Acesso Gerencial Autorizado.")
     
     aba_cad, aba_rel = st.tabs(["📝 Cadastrar & Estoque", "📊 Faturamento e Relatórios"])
     
@@ -33,7 +47,6 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
                 else:
                     st.warning("Preencha o nome do produto.")
         
-        # Exibição do estoque corrente
         st.subheader("📦 Itens Cadastrados Atualmente")
         with ob_cx() as conn:
             if conn:
