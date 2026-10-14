@@ -1,14 +1,13 @@
 # ==============================================================================
-# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (SINTAXE CORRIGIDA)
+# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (CORREÇÃO DE COLUNAS)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
-from core.database import ob_cx  # Importa a conexão local isolada para evitar loops
+from core.database import ob_cx
 
 def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
     st.subheader("📱 Terminal Operacional (Garçom / Caixa)")
     
-    # Ativação manual simples para controle e segurança da equipe
     liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)")
     if not liberado:
         st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
@@ -23,7 +22,6 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
     st.markdown("### 🔍 Pesquisar no Cardápio")
     busca = st.text_input("Digite o nome ou categoria do item:", placeholder="Ex: Coca, Batata...").strip()
     
-    # Abrimos uma conexão isolada com gerenciamento de contexto para blindar contra erros de bloco abortado
     with ob_cx() as conn:
         if conn:
             try:
@@ -43,7 +41,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                             WHERE empresa_id = %s 
                               AND estoque > 0 
                             LIMIT 8
-                    """, (empresa_id,))
+                        """, (empresa_id,))
                     
                     dados_busca = cur.fetchall()
                     colunas = [desc for desc in cur.description] if cur.description else []
@@ -52,7 +50,8 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                 
                 if not df_busca.empty:
                     for _, row in df_busca.iterrows():
-                        col_nome, col_add = st.columns()
+                        # CORREÇÃO: Passado o número 2 de forma explícita para o st.columns
+                        col_nome, col_add = st.columns(2)
                         col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
                         if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
                             st.session_state.carrinho.append({
