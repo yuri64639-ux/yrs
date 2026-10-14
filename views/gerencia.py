@@ -32,7 +32,7 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                     with conn.cursor() as cur:
                         cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", (empresa_id,))
                         dados = cur.fetchall()
-                        # CORREÇÃO DEFINITIVA: Extrai apenas a string de texto pura do nome da coluna (desc[0])
+                        # CORREÇÃO DEFINITIVA: Extrai o primeiro elemento da tupla (desc[0]), que é o nome real da coluna em texto puro
                         colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
                     
                     df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
@@ -74,7 +74,7 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                     with conn.cursor() as cur:
                         cur.execute("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", (empresa_id,))
                         dados_pedidos = cur.fetchall()
-                        # CORREÇÃO DEFINITIVA: Extrai apenas a string de texto pura do nome da coluna (desc[0])
+                        # CORREÇÃO DEFINITIVA: Extrai o primeiro elemento da tupla (desc[0]), que é o nome real da coluna em texto puro
                         colunas_pedidos = [str(desc[0]) for desc in cur.description] if cur.description else []
                     
                     df_pedidos = pd.DataFrame(dados_pedidos, columns=colunas_pedidos) if dados_pedidos else pd.DataFrame()
@@ -105,3 +105,4 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                         st.success("🎉 Dados redefinidos!")
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
+
