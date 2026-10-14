@@ -1,14 +1,16 @@
 # ==============================================================================
-# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (SEM LOOP DE IMPORT)
+# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (TRANSAÇÕES BLINDADAS)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
+from core.database import ob_cx  # Importa a conexão local isolada para evitar loops
 
-def renderizar_terminal_garcom(empresa_id, senha_master, conn):
+def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
     st.subheader("📱 Terminal Operacional (Garçom / Caixa)")
     
+    # Ativação manual simples para controle e segurança da equipe
     liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)")
-    if not liberado:
+    if not lazy_check := liberado:
         st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
         st.stop()
         
@@ -21,47 +23,50 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn):
     st.markdown("### 🔍 Pesquisar no Cardápio")
     busca = st.text_input("Digite o nome ou categoria do item:", placeholder="Ex: Coca, Batata...").strip()
     
-    if conn:
-        try:
-            with conn.cursor() as cur:
-                if busca:
-                    cur.execute("""
-                        SELECT id, nome, preco, categoria, estoque 
-                        FROM produtos 
-                        WHERE empresa_id = %s 
-                          AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
-                          AND estoque > 0
-                    """, (empresa_id, f"%{busca}%", f"%{busca}%"))
+    # Abrimos uma conexão isolada com gerenciamento de contexto para blindar contra erros de bloco abortado
+    with ob_cx() as conn:
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    if busca:
+                        cur.execute("""
+                            SELECT id, nome, preco, categoria, estoque 
+                            FROM produtos 
+                            WHERE empresa_id = %s 
+                              AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
+                              AND estoque > 0
+                        """, (empresa_id, f"%{busca}%", f"%{busca}%"))
+                    else:
+                        cur.execute("""
+                            SELECT id, nome, preco, categoria, estoque 
+                            FROM produtos 
+                            WHERE empresa_id = %s 
+                              AND estoque > 0 
+                            LIMIT 8
+                        """, (empresa_id,))
+                    
+                    dados_busca = cur.fetchall()
+                    colunas = [desc[0] for desc in cur.description] if cur.description else []
+                    
+                df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
+                
+                if not df_busca.empty:
+                    for _, row in df_busca.iterrows():
+                        col_nome, col_add = st.columns([3, 1])
+                        col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
+                        if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
+                            st.session_state.carrinho.append({
+                                "id": int(row["id"]),
+                                "nome": str(row["nome"]),
+                                "preco": float(row["preco"])
+                            })
+                            st.toast(f"'{row['nome']}' colocado no carrinho!")
+                            st.rerun()
                 else:
-                    cur.execute("""
-                        SELECT id, nome, preco, categoria, estoque 
-                        FROM produtos 
-                        WHERE empresa_id = %s 
-                          AND estoque > 0 
-                        LIMIT 8
-                    """, (empresa_id,))
-                
-                dados_busca = cur.fetchall()
-                colunas = [desc[0] for desc in cur.description] if cur.description else []
-                
-            df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
-            
-            if not df_busca.empty:
-                for _, row in df_busca.iterrows():
-                    col_nome, col_add = st.columns()
-                    col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
-                    if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
-                        st.session_state.carrinho.append({
-                            "id": int(row["id"]),
-                            "nome": str(row["nome"]),
-                            "preco": float(row["preco"])
-                        })
-                        st.toast(f"'{row['nome']}' colocado no carrinho!")
-                        st.rerun()
-            else:
-                st.info("Nenhum produto localizado com estoque disponível.")
-        except Exception as e:
-            st.error(f"Erro ao consultar o cardápio: {e}")
+                    st.info("Nenhum produto localizado com estoque disponível.")
+            except Exception as e:
+                # Se a transação falhar, o bloco 'with' força o encerramento seguro e exibe o log sem quebrar as próximas abas
+                st.error(f"Erro temporário de sincronização de dados: {e}")
 
     st.markdown("---")
 
@@ -88,7 +93,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn):
             else:
                 try:
                     texto_itens = ", ".join([f"{qtd}x {nome}" for nome, qtd in resumo_carrinho.items()])
-                    with conn.cursor() as cur:
+                    with ob_cx() as conn_venda, conn_venda.cursor() as cur:
                         cur.execute("""
                             INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
                             VALUES (%s, %s, %s, %s, %s);
@@ -96,7 +101,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn):
                         
                         for item in st.session_state.carrinho:
                             cur.execute("UPDATE produtos SET estoque = estoque - 1 WHERE id = %s", (item["id"],))
-                        conn.commit()
+                        conn_venda.commit()
                         
                     st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso na Neon!")
                     st.session_state.carrinho = []
