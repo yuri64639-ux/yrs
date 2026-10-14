@@ -1,117 +1,108 @@
 # ==============================================================================
-# APP.PY - ARQUIVO PRINCIPAL (ROTEADOR E ENTRADA DO SISTEMA)
+# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (VERSÃO ESTÁVEL CONCORRENTE)
 # ==============================================================================
-import sys
-import os
-
-# Garante que as subpastas consigam se enxergar no Streamlit Cloud
-raiz_projeto = os.path.abspath(os.path.dirname(__file__))
-if raiz_projeto not in sys.path:
-    sys.path.insert(0, raiz_projeto)
-
 import streamlit as st
 import pandas as pd
-from core.database import ob_cx, inicializar_banco
-from views.gerencia import renderizar_painel_gerencial
-from views.garcom import renderizar_terminal_garcom
 
-st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
-
-# Inicializa estados de sessão essenciais
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "garcom_logado" not in st.session_state:
-    st.session_state.garcom_logado = False
-if "empresa_id_atual" not in st.session_state:
-    st.session_state.empresa_id_atual = None
-if "senha_master_empresa" not in st.session_state:
-    st.session_state.senha_master_empresa = ""
-
-# Ocultação estrutural de menus nativos do Streamlit para o celular
-st.markdown("""
-    <style>
-    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } 
-    header [data-testid='stToolbar'] { display: none !important; } 
-    [data-testid='collapsedControl'] { display: none !important; } 
-    header { background-color: transparent !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Inicializa as tabelas do banco automaticamente antes de carregar o app
-inicializar_banco()
-
-conn = ob_cx()
-
-# --- FLUXO DE LOGIN / CADASTRO DE ESTABELECIMENTO ---
-if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+def renderizar_terminal_garcom(empresa_id, senha_master, conn):
+    st.subheader("📱 Terminal Operacional (Garçom / Caixa)")
     
-    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
-        with st.form("cadastro_empresa_form"):
-            st.subheader("🏢 Cadastrar Empresa no Sistema")
-            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
-            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
-            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
-            
-            if st.form_submit_button("Criar Minha Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
-                try:
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public; INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()[0]
-                        cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
-                        c.commit()
-                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
-                except Exception as e: 
-                    st.error(f"Erro no cadastro: {e}")
-    else:
-        with st.form("login_form"):
-            st.subheader("📱 Login do Estabelecimento (Empresa)")
-            if conn is not None:
-                df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa", conn)
-                dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
+    # Ativação manual simples para controle e segurança da equipe
+    liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)")
+    if not liberado:
+        st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
+        st.stop()
+        
+    if "carrinho" not in st.session_state:
+        st.session_state.carrinho = []
+        
+    mesa_ou_comanda = st.text_input("📍 Identificação (Nº da Mesa ou Comanda):", placeholder="Ex: Mesa 04").strip()
+    st.markdown("---")
+    
+    st.markdown("### 🔍 Pesquisar no Cardápio")
+    busca = st.text_input("Digite o nome ou categoria do item:", placeholder="Ex: Coca, Batata...").strip()
+    
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                if busca:
+                    cur.execute("""
+                        SELECT id, nome, preco, categoria, estoque 
+                        FROM produtos 
+                        WHERE empresa_id = %s 
+                          AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
+                          AND estoque > 0
+                    """, (empresa_id, f"%{busca}%", f"%{busca}%"))
+                else:
+                    cur.execute("""
+                        SELECT id, nome, preco, categoria, estoque 
+                        FROM produtos 
+                        WHERE empresa_id = %s 
+                          AND estoque > 0 
+                        LIMIT 8
+                    """, (empresa_id,))
                 
-                if dict_empresas:
-                    empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
-                    user_input = st.text_input("Usuário Master da Empresa:")
-                    senha_input = st.text_input("Senha Master:", type="password")
-                    
-                    if st.form_submit_button("Liberar Terminal", type="primary"):
-                        id_empresa_login = dict_empresas[empresa_selecionada]
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public; SELECT empresa_id, senha FROM usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (id_empresa_login, user_input.strip(), senha_input.strip()))
-                            resultado = cur.fetchone()
-                        if resultado:
-                            st.session_state.logado = True
-                            st.session_state.empresa_id_atual = int(resultado[0])
-                            st.session_state.senha_master_empresa = str(resultado[1])
-                            st.rerun()
-                        else: 
-                            st.error("Credenciais da empresa incorretas!")
-                else: 
-                    st.info("Nenhuma empresa cadastrada ainda.")
-                    
-    if conn: 
-        conn.close()
-    st.stop()
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
-if st.session_state.garcom_logado:
-    st.markdown("### 📱 Ambiente do Funcionário")
-    renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
-else:
-    aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
-    
-    with aba_master_sistema:
-        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", use_container_width=True):
-            st.session_state.logado = False
-            st.session_state.empresa_id_atual = None
-            st.session_state.senha_master_empresa = ""
-            st.session_state.garcom_logado = False
+                dados_busca = cur.fetchall()
+                colunas = [desc[0] for desc in cur.description] if cur.description else []
+                
+            df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
+            
+            if not df_busca.empty:
+                for _, row in df_busca.iterrows():
+                    col_nome, col_add = st.columns([3, 1])
+                    col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
+                    if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
+                        st.session_state.carrinho.append({
+                            "id": int(row["id"]),
+                            "nome": str(row["nome"]),
+                            "preco": float(row["preco"])
+                        })
+                        st.toast(f"'{row['nome']}' colocado no carrinho!")
+                        st.rerun()
+            else:
+                st.info("Nenhum produto localizado com estoque disponível.")
+        except Exception as e:
+            st.error(f"Erro ao consultar o cardápio: {e}")
+
+    st.markdown("---")
+
+    st.markdown("### 🛒 Sacola / Carrinho Corrente")
+    if st.session_state.carrinho:
+        df_carrinho = pd.DataFrame(st.session_state.carrinho)
+        total_conta = df_carrinho["preco"].sum()
+        
+        resumo_carrinho = df_carrinho["nome"].value_counts()
+        for item_nome, qtd in resumo_carrinho.items():
+            st.write(f"• **{qtd}x** {item_nome}")
+            
+        st.markdown(f"## **Total Geral: R$ {total_conta:.2f}**")
+        metodo_pag = st.selectbox("Forma de Liquidação / Pagamento:", ["PIX", "Crédito", "Débito", "Dinheiro"])
+        
+        col_cancelar, col_fechar = st.columns(2)
+        if col_cancelar.button("🗑️ Limpar Sacola", use_container_width=True):
             st.session_state.carrinho = []
             st.rerun()
-        renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
-        
-    with aba_master_operador:
-        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
-
-if conn: 
-    conn.close()
+            
+        if col_fechar.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
+            if not mesa_ou_comanda:
+                st.error("Por favor, preencha o número da Mesa ou Comanda antes de fechar!")
+            else:
+                try:
+                    texto_itens = ", ".join([f"{qtd}x {nome}" for nome, qtd in resumo_carrinho.items()])
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
+                            VALUES (%s, %s, %s, %s, %s);
+                        """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
+                        
+                        for item in st.session_state.carrinho:
+                            cur.execute("UPDATE produtos SET estoque = estoque - 1 WHERE id = %s", (item["id"],))
+                        conn.commit()
+                        
+                    st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso na Neon!")
+                    st.session_state.carrinho = []
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao processar baixa de pedido: {e}")
+    else:
+        st.info("O carrinho está vazio.")
