@@ -1,10 +1,11 @@
 """
-VIEWS/GARCOM.PY - Terminal Operacional para Garçons e Lançamentos
+VIEWS/GARCOM.PY - Interface Operacional para Garçons e Lançamentos
 Implementa compatibilidade adaptativa para colunas variantes do PostgreSQL (mesa/mesa_comanda).
 """
 
 import streamlit as st
 import pandas as pd
+import psycopg2  # CORREÇÃO: Importação adicionada para evitar o erro de NameError
 from core.database import ob_cx
 
 def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
