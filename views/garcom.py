@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (TRANSAÇÕES BLINDADAS)
+# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (SINTAXE CORRIGIDA)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -10,7 +10,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
     
     # Ativação manual simples para controle e segurança da equipe
     liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)")
-    if not lazy_check := liberado:
+    if not liberado:
         st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
         st.stop()
         
@@ -43,16 +43,16 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                             WHERE empresa_id = %s 
                               AND estoque > 0 
                             LIMIT 8
-                        """, (empresa_id,))
+                    """, (empresa_id,))
                     
                     dados_busca = cur.fetchall()
-                    colunas = [desc[0] for desc in cur.description] if cur.description else []
+                    colunas = [desc for desc in cur.description] if cur.description else []
                     
                 df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
                 
                 if not df_busca.empty:
                     for _, row in df_busca.iterrows():
-                        col_nome, col_add = st.columns([3, 1])
+                        col_nome, col_add = st.columns()
                         col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
                         if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
                             st.session_state.carrinho.append({
@@ -65,7 +65,6 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                 else:
                     st.info("Nenhum produto localizado com estoque disponível.")
             except Exception as e:
-                # Se a transação falhar, o bloco 'with' força o encerramento seguro e exibe o log sem quebrar as próximas abas
                 st.error(f"Erro temporário de sincronização de dados: {e}")
 
     st.markdown("---")
