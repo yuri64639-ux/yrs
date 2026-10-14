@@ -1,6 +1,7 @@
-# ==============================================================================
-# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (CORREÇÃO DE COLUNAS)
-# ==============================================================================
+"""
+VIEWS/GARCOM.PY - Interface Operacional para Garçons e Lançamentos
+"""
+
 import streamlit as st
 import pandas as pd
 from core.database import ob_cx
@@ -33,6 +34,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                             WHERE empresa_id = %s 
                               AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
                               AND estoque > 0
+                            ORDER BY nome;
                         """, (empresa_id, f"%{busca}%", f"%{busca}%"))
                     else:
                         cur.execute("""
@@ -40,17 +42,18 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                             FROM produtos 
                             WHERE empresa_id = %s 
                               AND estoque > 0 
-                            LIMIT 8
+                            ORDER BY nome
+                            LIMIT 8;
                         """, (empresa_id,))
                     
                     dados_busca = cur.fetchall()
-                    colunas = [desc for desc in cur.description] if cur.description else []
+                    # CORREÇÃO PROFISSIONAL: Extração limpa e segura dos nomes das colunas
+                    colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
                     
                 df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
                 
                 if not df_busca.empty:
                     for _, row in df_busca.iterrows():
-                        # CORREÇÃO: Passado o número 2 de forma explícita para o st.columns
                         col_nome, col_add = st.columns(2)
                         col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
                         if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
@@ -63,8 +66,8 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                             st.rerun()
                 else:
                     st.info("Nenhum produto localizado com estoque disponível.")
-            except Exception as e:
-                st.error(f"Erro temporário de sincronização de dados: {e}")
+            except Exception as error:
+                st.error(f"Erro temporário de sincronização de dados: {error}")
 
     st.markdown("---")
 
@@ -81,30 +84,40 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
         metodo_pag = st.selectbox("Forma de Liquidação / Pagamento:", ["PIX", "Crédito", "Débito", "Dinheiro"])
         
         col_cancelar, col_fechar = st.columns(2)
-        if col_cancelar.button("🗑️ Limpar Sacola", use_container_width=True):
+        
+        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+        if col_cancelar.button("🗑️ Limpar Sacola", width='stretch'):
             st.session_state.carrinho = []
             st.rerun()
             
-        if col_fechar.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
+        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+        if col_fechar.button("✅ Confirmar e Enviar Pedido", type="primary", width='stretch'):
             if not mesa_ou_comanda:
-                st.error("Por favor, preencha o número da Mesa ou Comanda antes de fechar!")
+                st.error("Por favor, preencha o número da Mesa ou Comanda antes de finalizar!")
             else:
                 try:
                     texto_itens = ", ".join([f"{qtd}x {nome}" for nome, qtd in resumo_carrinho.items()])
-                    with ob_cx() as conn_venda, conn_venda.cursor() as cur:
-                        cur.execute("""
-                            INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
-                            VALUES (%s, %s, %s, %s, %s);
-                        """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
-                        
-                        for item in st.session_state.carrinho:
-                            cur.execute("UPDATE produtos SET estoque = estoque - 1 WHERE id = %s", (item["id"],))
-                        conn_venda.commit()
-                        
-                    st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso na Neon!")
-                    st.session_state.carrinho = []
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao processar baixa de pedido: {e}")
+                    with ob_cx() as conn_venda:
+                        if conn_venda:
+                            with conn_venda.cursor() as cur:
+                                # Insere registro do pedido de forma parametrizada
+                                cur.execute("""
+                                    INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
+                                    VALUES (%s, %s, %s, %s, %s);
+                                """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
+                                
+                                # Realiza a baixa correspondente em lote no estoque do banco
+                                for item in st.session_state.carrinho:
+                                    cur.execute(
+                                        "UPDATE produtos SET estoque = estoque - 1 WHERE id = %s AND empresa_id = %s;", 
+                                        (item["id"], empresa_id)
+                                    )
+                                conn_venda.commit()
+                                
+                            st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso!")
+                            st.session_state.carrinho = []
+                            st.rerun()
+                except Exception as error:
+                    st.error(f"Erro ao processar baixa de pedido: {error}")
     else:
         st.info("O carrinho está vazio.")
