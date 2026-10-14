@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO (CORRIGIDA)
+# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO (CORREÇÃO PANDAS)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -36,39 +36,56 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
                     st.warning("Preencha o nome do produto.")
         
         st.subheader("📦 Itens Cadastrados Atualmente")
-        with ob_cx() as conn:
-            if conn:
-                try:
-                    df = pd.read_sql("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=(empresa_id,))
-                    if not df.empty:
-                        df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Nenhum item cadastrado no cardápio ainda.")
-                except Exception as e:
-                    st.error(f"Aguardando a atualização da tabela no banco Neon. Rode o comando SQL no painel da Neon.")
+        conn = ob_cx()
+        if conn:
+            try:
+                # Correção nativa abrindo o cursor de forma explícita para evitar o travamento do pandas
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", (empresa_id,))
+                    dados = cur.fetchall()
+                    colunas = [desc[0] for _desc in cur.description for desc in [cur.description]] # Resgata os nomes das colunas
+                    
+                df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
+                
+                if not df.empty:
+                    df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum item cadastrado no cardápio ainda.")
+            except Exception as e:
+                st.error(f"Erro ao carregar cardápio: {e}")
+            finally:
+                conn.close()
 
     with aba_rel:
         st.subheader("📈 Controle Financeiro e Vendas")
-        with ob_cx() as conn:
-            if conn:
-                try:
-                    df_pedidos = pd.read_sql("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", conn, params=(empresa_id,))
-                    if not df_pedidos.empty:
-                        faturamento_total = df_pedidos["total"].sum()
-                        
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("💵 Faturamento Bruto", f"R$ {faturamento_total:,.2f}")
-                        
-                        pix_total = df_pedidos[df_pedidos["metodo_pagamento"] == "PIX"]["total"].sum()
-                        cartao_total = df_pedidos[df_pedidos["metodo_pagamento"].isin(["Crédito", "Débito"])]["total"].sum()
-                        
-                        c2.metric("⚡ Total via PIX", f"R$ {pix_total:,.2f}")
-                        c3.metric("💳 Total via Cartão", f"R$ {cartao_total:,.2f}")
-                        
-                        st.markdown("### Histórico Recente de Caixa")
-                        st.dataframe(df_pedidos, use_container_width=True)
-                    else:
-                        st.info("Nenhuma venda computada neste turno até o momento.")
-                except Exception as e:
-                    st.info("Nenhum histórico encontrado ou tabela sendo atualizada.")
+        conn = ob_cx()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", (empresa_id,))
+                    dados_pedidos = cur.fetchall()
+                    colunas_pedidos = [desc[0] for _desc in cur.description for desc in [cur.description]]
+                    
+                df_pedidos = pd.DataFrame(dados_pedidos, columns=colunas_pedidos) if dados_pedidos else pd.DataFrame()
+                
+                if not df_pedidos.empty:
+                    faturamento_total = df_pedidos["total"].sum()
+                    
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("💵 Faturamento Bruto", f"R$ {faturamento_total:,.2f}")
+                    
+                    pix_total = df_pedidos[df_pedidos["metodo_pagamento"] == "PIX"]["total"].sum()
+                    cartao_total = df_pedidos[df_pedidos["metodo_pagamento"].isin(["Crédito", "Débito"])]["total"].sum()
+                    
+                    c2.metric("⚡ Total via PIX", f"R$ {pix_total:,.2f}")
+                    c3.metric("💳 Total via Cartão", f"R$ {cartao_total:,.2f}")
+                    
+                    st.markdown("### Histórico Recente de Caixa")
+                    st.dataframe(df_pedidos, use_container_width=True)
+                else:
+                    st.info("Nenhuma venda computada neste turno até o momento.")
+            except Exception as e:
+                st.error(f"Erro ao carregar relatórios: {e}")
+            finally:
+                conn.close()
