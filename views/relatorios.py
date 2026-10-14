@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/RELATORIOS.PY - PARTE 2: FINANCEIRO E RESET SEGURO
+# VIEWS/RELATORIOS.PY - PARTE 2: FINANCEIRO (CORREÇÃO DE TEXTO DAS COLUNAS)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,8 @@ def renderizar_abas_financeiras(empresa_id, senha_master):
         with ob_cx() as conn, conn.cursor() as cur:
             cur.execute("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC;", (empresa_id,))
             dados_pedidos = cur.fetchall()
-            colunas_pedidos = [desc[0] for desc in cur.description] if cur.description else []
+            # CORREÇÃO DEFINITIVA: Extrai estritamente o elemento [0] de texto puro da tupla
+            colunas_pedidos = [str(desc[0]) for desc in cur.description] if cur.description else []
         
         df_pedidos = pd.DataFrame(dados_pedidos, columns=colunas_pedidos) if dados_pedidos else pd.DataFrame()
         
