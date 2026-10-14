@@ -1,10 +1,10 @@
 # ==============================================================================
-# VIEWS/GERENCIA.PY - PARTE 1: CADASTROS (PRODUTOS E EM MASSA)
+# VIEWS/GERENCIA.PY - PARTE 1: CADASTROS (CORREÇÃO DE TEXTO DAS COLUNAS)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
 from core.database import ob_cx
-from views.relatorios import renderizar_abas_financeiras  # Importa a parte 2
+from views.relatorios import renderizar_abas_financeiras
 
 def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
     st.title("⚙️ Painel de Controle Gerencial")
@@ -41,7 +41,8 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
             with ob_cx() as conn, conn.cursor() as cur:
                 cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome;", (empresa_id,))
                 dados = cur.fetchall()
-                colunas = [desc[0] for desc in cur.description] if cur.description else []
+                # CORREÇÃO DEFINITIVA: Extrai estritamente o elemento [0] de texto puro da tupla
+                colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
             df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
             if not df.empty:
                 df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
@@ -72,6 +73,6 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                     st.rerun()
             except Exception as e: st.error(f"Erro na importação: {e}")
 
-    # --- 3. ACESSA A SEGUNDA PARTE (FINANCEIRO E RESET) ---
+    # --- 3. ACESSA A SEGUNDA PARTE ---
     with aba_financeira:
         renderizar_abas_financeiras(empresa_id, senha_master)
