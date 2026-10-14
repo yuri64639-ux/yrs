@@ -44,7 +44,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
 # --- FLUXO DE LOGIN / CADASTRO DE ESTABELECIMENTO ---
 if not st.session_state.logado:
     aba_acesso = st.radio(
@@ -131,8 +130,7 @@ if not st.session_state.logado:
                         st.error(f"Falha de conexão ao ler registros: {error}")
     st.stop()
 
-
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO PÓS LOGIN ---
+# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
 with ob_cx() as conn_global:
     if st.session_state.garcom_logado:
         st.markdown("### 📱 Ambiente do Funcionário")
@@ -141,7 +139,6 @@ with ob_cx() as conn_global:
         aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
         
         with aba_master_sistema:
-            # CORREÇÃO: Substituído use_container_width=True por width='stretch'
             if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch'):
                 st.session_state.logado = False
                 st.session_state.empresa_id_atual = None
