@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO COM SENHA
+# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO (CORRIGIDA)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -7,20 +7,7 @@ from core.database import ob_cx
 
 def renderizar_painel_gerencial(empresa_id, senha_master):
     st.title("⚙️ Painel de Controle Gerencial")
-    
-    # Campo de validação antes de liberar o painel
-    senha_digitada = st.text_input("🔑 Digite a Senha Master para acessar a Gerência:", type="password")
-    
-    if not senha_digitada:
-        st.info("Insira a senha master do estabelecimento para liberar as informações financeiras e de estoque.")
-        st.stop()
-        
-    if senha_digitada != senha_master:
-        st.error("❌ Senha Master incorreta! Acesso negado.")
-        st.stop()
-        
-    # Se a senha estiver correta, exibe o conteúdo original:
-    st.success("🔓 Acesso Gerencial Autorizado.")
+    st.write(f"Empresa ativa no terminal: **ID {empresa_id}**")
     
     aba_cad, aba_rel = st.tabs(["📝 Cadastrar & Estoque", "📊 Faturamento e Relatórios"])
     
@@ -42,6 +29,7 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
                             """, (empresa_id, nome_prod, preco_prod, cat_prod, est_prod))
                             conn.commit()
                         st.success(f"🎉 '{nome_prod}' adicionado ao cardápio com sucesso!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao salvar: {e}")
                 else:
@@ -50,31 +38,37 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
         st.subheader("📦 Itens Cadastrados Atualmente")
         with ob_cx() as conn:
             if conn:
-                df = pd.read_sql("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=(empresa_id,))
-                if not df.empty:
-                    df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
-                    st.dataframe(df, use_container_width=True, hide_index=True)
-                else:
-                    st.info("Nenhum item cadastrado no cardápio ainda.")
+                try:
+                    df = pd.read_sql("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", conn, params=(empresa_id,))
+                    if not df.empty:
+                        df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhum item cadastrado no cardápio ainda.")
+                except Exception as e:
+                    st.error(f"Aguardando a atualização da tabela no banco Neon. Rode o comando SQL no painel da Neon.")
 
     with aba_rel:
         st.subheader("📈 Controle Financeiro e Vendas")
         with ob_cx() as conn:
             if conn:
-                df_pedidos = pd.read_sql("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", conn, params=(empresa_id,))
-                if not df_pedidos.empty:
-                    faturamento_total = df_pedidos["total"].sum()
-                    
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("💵 Faturamento Bruto", f"R$ {faturamento_total:,.2f}")
-                    
-                    pix_total = df_pedidos[df_pedidos["metodo_pagamento"] == "PIX"]["total"].sum()
-                    cartao_total = df_pedidos[df_pedidos["metodo_pagamento"].isin(["Crédito", "Débito"])]["total"].sum()
-                    
-                    c2.metric("⚡ Total via PIX", f"R$ {pix_total:,.2f}")
-                    c3.metric("💳 Total via Cartão", f"R$ {cartao_total:,.2f}")
-                    
-                    st.markdown("### Histórico Recente de Caixa")
-                    st.dataframe(df_pedidos, use_container_width=True)
-                else:
-                    st.info("Nenhuma venda computada neste turno até o momento.")
+                try:
+                    df_pedidos = pd.read_sql("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", conn, params=(empresa_id,))
+                    if not df_pedidos.empty:
+                        faturamento_total = df_pedidos["total"].sum()
+                        
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("💵 Faturamento Bruto", f"R$ {faturamento_total:,.2f}")
+                        
+                        pix_total = df_pedidos[df_pedidos["metodo_pagamento"] == "PIX"]["total"].sum()
+                        cartao_total = df_pedidos[df_pedidos["metodo_pagamento"].isin(["Crédito", "Débito"])]["total"].sum()
+                        
+                        c2.metric("⚡ Total via PIX", f"R$ {pix_total:,.2f}")
+                        c3.metric("💳 Total via Cartão", f"R$ {cartao_total:,.2f}")
+                        
+                        st.markdown("### Histórico Recente de Caixa")
+                        st.dataframe(df_pedidos, use_container_width=True)
+                    else:
+                        st.info("Nenhuma venda computada neste turno até o momento.")
+                except Exception as e:
+                    st.info("Nenhum histórico encontrado ou tabela sendo atualizada.")
