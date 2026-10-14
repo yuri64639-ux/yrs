@@ -1,5 +1,5 @@
 # ==============================================================================
-# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO (CORREÇÃO PANDAS)
+# VIEWS/GERENCIA.PY - INTERFACE DO PAINEL ADMINISTRATIVO (CORREÇÃO DE CURSOR)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
@@ -39,11 +39,11 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
         conn = ob_cx()
         if conn:
             try:
-                # Correção nativa abrindo o cursor de forma explícita para evitar o travamento do pandas
                 with conn.cursor() as cur:
                     cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", (empresa_id,))
                     dados = cur.fetchall()
-                    colunas = [desc[0] for _desc in cur.description for desc in [cur.description]] # Resgata os nomes das colunas
+                    # Resgata corretamente os cabeçalhos das colunas retornadas pelo banco
+                    colunas = [desc[0] for desc in cur.description] if cur.description else []
                     
                 df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
                 
@@ -65,11 +65,13 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
                 with conn.cursor() as cur:
                     cur.execute("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", (empresa_id,))
                     dados_pedidos = cur.fetchall()
-                    colunas_pedidos = [desc[0] for _desc in cur.description for desc in [cur.description]]
+                    colunas_pedidos = [desc[0] for desc in cur.description] if cur.description else []
                     
                 df_pedidos = pd.DataFrame(dados_pedidos, columns=colunas_pedidos) if dados_pedidos else pd.DataFrame()
                 
                 if not df_pedidos.empty:
+                    # Garante conversão numérica correta antes de realizar a somatória
+                    df_pedidos["total"] = pd.to_numeric(df_pedidos["total"])
                     faturamento_total = df_pedidos["total"].sum()
                     
                     c1, c2, c3 = st.columns(3)
@@ -82,7 +84,7 @@ def renderizar_painel_gerencial(empresa_id, senha_master):
                     c3.metric("💳 Total via Cartão", f"R$ {cartao_total:,.2f}")
                     
                     st.markdown("### Histórico Recente de Caixa")
-                    st.dataframe(df_pedidos, use_container_width=True)
+                    st.dataframe(df_pedidos, use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhuma venda computada neste turno até o momento.")
             except Exception as e:
