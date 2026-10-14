@@ -1,6 +1,7 @@
-# ==============================================================================
-# VIEWS/GERENCIA.PY - PARTE 1: CADASTROS (CORREÇÃO DE TEXTO DAS COLUNAS)
-# ==============================================================================
+"""
+VIEWS/GERENCIA.PY - Painel de Controle, Cadastros Individuais e Cargas em Lote
+"""
+
 import streamlit as st
 import pandas as pd
 from core.database import ob_cx
@@ -26,53 +27,90 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
             cat_prod = st.selectbox("Categoria:", ["Bebidas", "Comidas / Lanches", "Sobremesas", "Ingredientes / Adicionais"])
             est_prod = st.number_input("Estoque Inicial (Unidades):", min_value=0, value=10, step=1)
             
-            if st.form_submit_button("Salvar no Cardápio", type="primary") and nome_prod:
-                try:
-                    with ob_cx() as conn, conn.cursor() as cur:
-                        cur.execute("INSERT INTO produtos (empresa_id, nome, preco, categoria, estoque) VALUES (%s,%s,%s,%s,%s);", (empresa_id, nome_prod, preco_prod, cat_prod, est_prod))
-                        conn.commit()
-                    st.success(f"🎉 '{nome_prod}' adicionado!")
-                    st.rerun()
-                except Exception as e: st.error(f"Erro ao salvar: {e}")
+            if st.form_submit_button("Salvar no Cardápio", type="primary"):
+                if not nome_prod:
+                    st.error("Insira um nome válido para o produto.")
+                else:
+                    try:
+                        with ob_cx() as conn, conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO produtos (empresa_id, nome, preco, categoria, estoque) 
+                                VALUES (%s, %s, %s, %s, %s);
+                                """, 
+                                (empresa_id, nome_prod, preco_prod, cat_prod, est_prod)
+                            )
+                            conn.commit()
+                        st.success(f"🎉 '{nome_prod}' adicionado com sucesso!")
+                        st.rerun()
+                    except Exception as error: 
+                        st.error(f"Erro ao salvar produto: {error}")
         
         st.markdown("---")
         st.subheader("📦 Itens Cadastrados no Estoque")
         try:
             with ob_cx() as conn, conn.cursor() as cur:
-                cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome;", (empresa_id,))
+                cur.execute(
+                    "SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome;", 
+                    (empresa_id,)
+                )
                 dados = cur.fetchall()
-                # CORREÇÃO DEFINITIVA: Extrai estritamente o elemento [0] de texto puro da tupla
                 colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
+                
             df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
             if not df.empty:
                 df.columns = ["ID", "Nome do Item", "Preço (R$)", "Categoria", "Estoque Atual"]
-                st.dataframe(df, use_container_width=True, hide_index=True)
-            else: st.info("Nenhum item localizado no cardápio.")
-        except Exception as e: st.error(f"Erro ao carregar cardápio: {e}")
+                # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+                st.dataframe(df, width='stretch', hide_index=True)
+            else: 
+                st.info("Nenhum item localizado no cardápio desta empresa.")
+        except Exception as error: 
+            st.error(f"Erro ao carregar cardápio: {error}")
 
     # --- 2. CADASTRO EM MASSA ---
     with aba_massa:
         st.subheader("🍔 Cadastro de Cardápio em Lote")
         st.code("Nome do Produto, Categoria, Preço, Estoque", language="text")
-        texto_produtos = st.text_area("Cole os itens aqui (um por linha):", height=150, placeholder="Exemplo:\nCoca-Cola Lata, Bebidas, 6.50, 50\nX-Salada Especial, Comidas / Lanches, 22.00, 30")
+        texto_produtos = st.text_area(
+            "Cole os itens aqui (um por linha):", 
+            height=150, 
+            placeholder="Exemplo:\nCoca-Cola Lata, Bebidas, 6.50, 50\nX-Salada Especial, Comidas / Lanches, 22.00, 30"
+        )
         
-        if st.button("🔥 Importar Lista Completa", type="primary", use_container_width=True) and texto_produtos.strip():
-            linhas = texto_produtos.strip().split("\n")
-            itens_gravados = 0
-            try:
-                with ob_cx() as conn, conn.cursor() as cur:
-                    for linha in linhas:
-                        if "," in linha and len(partes := [p.strip() for p in linha.split(",")]) == 4:
-                            try:
-                                cur.execute("INSERT INTO produtos (empresa_id, nome, categoria, preco, estoque) VALUES (%s,%s,%s,%s,%s);", (empresa_id, partes[0], partes[1], float(partes[2]), int(partes[3])))
-                                itens_gravados += 1
-                            except: continue
-                    conn.commit()
-                if itens_gravados > 0:
-                    st.success(f"🚀 Sucesso! {itens_gravados} produtos vinculados!")
-                    st.rerun()
-            except Exception as e: st.error(f"Erro na importação: {e}")
+        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+        if st.button("🔥 Importar Lista Completa", type="primary", width='stretch'):
+            if not texto_produtos.strip():
+                st.warning("O campo de texto está vazio.")
+            else:
+                linhas = texto_produtos.strip().split("\n")
+                itens_gravados = 0
+                try:
+                    with ob_cx() as conn, conn.cursor() as cur:
+                        for linha in linhas:
+                            partes = [p.strip() for p in linha.split(",")]
+                            if len(partes) == 4:
+                                try:
+                                    cur.execute(
+                                        """
+                                        INSERT INTO produtos (empresa_id, nome, categoria, preco, estoque) 
+                                        VALUES (%s, %s, %s, %s, %s);
+                                        """, 
+                                        (empresa_id, partes[0], partes[1], float(partes[2]), int(partes[3]))
+                                    )
+                                    itens_gravados += 1
+                                except ValueError:
+                                    # Ignora linhas mal formatadas na conversão numérica e segue para as próximas
+                                    continue
+                        conn.commit()
+                        
+                    if itens_gravados > 0:
+                        st.success(f"🚀 Sucesso! {itens_gravados} produtos importados e vinculados!")
+                        st.rerun()
+                    else:
+                        st.error("Nenhuma linha estava no formato correto solicitado.")
+                except Exception as error: 
+                    st.error(f"Erro estrutural na importação em lote: {error}")
 
-    # --- 3. ACESSA A SEGUNDA PARTE ---
+    # --- 3. ABAS DE FINANCEIRO ---
     with aba_financeira:
         renderizar_abas_financeiras(empresa_id, senha_master)
