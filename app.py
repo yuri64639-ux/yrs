@@ -1,153 +1,184 @@
 """
-APP.PY - Ponto de Entrada Principal e Roteador Multi-Tenant
-Gerencia o estado da sessão, estilização de segurança e controle de acessos.
+VIEWS/GARCOM.PY - Interface Isolada de Lançamentos de Pedidos e Fechamento de Caixa
 """
 
-import os
-import sys
-
-# Garante o alinhamento de caminhos do projeto para importações relativas
-raiz_projeto = os.path.dirname(os.path.abspath(__file__))
-if raiz_projeto not in sys.path:
-    sys.path.insert(0, raiz_projeto)
-
-import pandas as pd
 import streamlit as st
-from core.database import inicializar_banco, ob_cx
-from views.garcom import renderizar_terminal_garcom
-from views.gerencia import renderizar_painel_gerencial
+import pandas as pd
+import psycopg2
+from core.database import ob_cx
 
-# Configuração da página e inicialização de banco
-st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
-inicializar_banco()
-
-# --- INICIALIZAÇÃO DE ESTADOS DE SESSÃO (SESSION STATE) ---
-estados_obrigatorios = {
-    "logado": False,
-    "garcom_logado": False,
-    "empresa_id_atual": None,
-    "senha_master_empresa": "",
-    "carrinho": []
-}
-
-for chave, valor_padrao in estados_obrigatorios.items():
-    if chave not in st.session_state:
-        st.session_state[chave] = valor_padrao
-
-# --- SEGURANÇA VISUAL (INJEÇÃO CSS PARA SISTEMAS OPERACIONAIS) ---
-st.markdown("""
-    <style>
-    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } 
-    header [data-testid='stToolbar'] { display: none !important; } 
-    [data-testid='collapsedControl'] { display: none !important; } 
-    header { background-color: transparent !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- FLUXO DE LOGIN / CADASTRO DE ESTABELECIMENTO ---
-if not st.session_state.logado:
-    aba_acesso = st.radio(
-        "Selecione uma opção:", 
-        ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], 
-        horizontal=True
-    )
+def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
+    """Focada estritamente no lançamento rápido de itens no balcão ou mesas."""
+    st.subheader("🚀 Lançamento Rápido de Pedidos")
     
-    # Contexto de Cadastro
-    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
-        with st.form("cadastro_empresa_form"):
-            st.subheader("🏢 Cadastrar Empresa no Sistema")
-            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
-            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
-            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
-            
-            if st.form_submit_button("Criar Minha Conta", type="primary"):
-                if not (nova_empresa and adm_usuario and adm_senha):
-                    st.error("Todos os campos do formulário são obrigatórios.")
-                else:
-                    try:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            
-                            # Registra Empresa
-                            cur.execute(
-                                "INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", 
-                                (nova_empresa,)
-                            )
-                            id_da_empresa = cur.fetchone()[0]
-                            
-                            # Registra Usuário Administrativo vinculado à Empresa
-                            cur.execute(
-                                "INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", 
-                                (id_da_empresa, adm_usuario, adm_senha)
-                            )
-                            c.commit()
-                        st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
-                    except Exception as error: 
-                        st.error(f"Erro crítico durante o processo de cadastro: {error}")
-                        
-    # Contexto de Login
-    else:
-        with st.form("login_form"):
-            st.subheader("📱 Login do Estabelecimento (Empresa)")
-            with ob_cx() as conn:
-                if conn is not None:
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa;")
-                            dados_empresas = cur.fetchall()
-                        
-                        dict_empresas = {row[1]: row[0] for row in dados_empresas} if dados_empresas else {}
-                        
-                        if dict_empresas:
-                            empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
-                            user_input = st.text_input("Usuário Master da Empresa:")
-                            senha_input = st.text_input("Senha Master:", type="password")
-                            
-                            if st.form_submit_button("Liberar Terminal", type="primary"):
-                                id_empresa_login = dict_empresas[empresa_selecionada]
-                                
-                                with ob_cx() as c, c.cursor() as cur:
-                                    cur.execute("SET search_path TO public;")
-                                    cur.execute(
-                                        """
-                                        SELECT empresa_id, senha FROM usuarios 
-                                        WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s;
-                                        """, 
-                                        (id_empresa_login, user_input.strip(), senha_input.strip())
-                                    )
-                                    resultado = cur.fetchone()
-                                    
-                                if resultado:
-                                    st.session_state.logado = True
-                                    st.session_state.empresa_id_atual = int(resultado[0])
-                                    st.session_state.senha_master_empresa = str(resultado[1])
-                                    st.rerun()
-                                else: 
-                                    st.error("Credenciais da empresa incorretas ou inexistentes.")
-                        else: 
-                            st.info("Nenhuma empresa cadastrada no sistema até o momento.")
-                    except Exception as error:
-                        st.error(f"Falha de conexão ao ler registros: {error}")
-    st.stop()
-
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
-with ob_cx() as conn_global:
-    if st.session_state.garcom_logado:
-        st.markdown("### 📱 Ambiente do Funcionário")
-        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
-    else:
-        aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
-        
-        with aba_master_sistema:
-            if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch'):
-                st.session_state.logado = False
-                st.session_state.empresa_id_atual = None
-                st.session_state.senha_master_empresa = ""
-                st.session_state.garcom_logado = False
-                st.session_state.carrinho = []
-                st.rerun()
+    mesa_ou_comanda = st.text_input("📍 Identificação (Nº da Mesa ou Comanda):", placeholder="Ex: Mesa 04", key="input_mesa_lancamento").strip()
+    st.markdown("---")
+    
+    st.markdown("### 🔍 Pesquisar no Cardápio")
+    busca = st.text_input("Digite o nome ou categoria do item:", placeholder="Ex: Coca, Batata...", key="input_busca_cardapio").strip()
+    
+    with ob_cx() as conn:
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    if busca:
+                        cur.execute("""
+                            SELECT id, nome, preco, categoria, estoque 
+                            FROM produtos 
+                            WHERE empresa_id = %s 
+                              AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
+                              AND estoque > 0
+                            ORDER BY nome;
+                        """, (empresa_id, f"%{busca}%", f"%{busca}%"))
+                    else:
+                        cur.execute("""
+                            SELECT id, nome, preco, categoria, estoque 
+                            FROM produtos 
+                            WHERE empresa_id = %s 
+                              AND estoque > 0 
+                            ORDER BY nome
+                            LIMIT 8;
+                        """, (empresa_id,))
+                    
+                    dados_busca = cur.fetchall()
+                    colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
+                    
+                df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
                 
-            renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+                if not df_busca.empty:
+                    for _, row in df_busca.iterrows():
+                        col_nome, col_add = st.columns(2)
+                        col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
+                        if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
+                            st.session_state.carrinho.append({
+                                "id": int(row["id"]),
+                                "nome": str(row["nome"]),
+                                "preco": float(row["preco"])
+                            })
+                            st.toast(f"'{row['nome']}' colocado no carrinho!")
+                            st.rerun()
+                else:
+                    st.info("Nenhum produto localizado com estoque disponível.")
+            except Exception as error:
+                st.error(f"Erro temporário de sincronização de dados: {error}")
+
+    st.markdown("---")
+
+    st.markdown("### 🛒 Sacola / Itens Pendentes")
+    if st.session_state.carrinho:
+        df_carrinho = pd.DataFrame(st.session_state.carrinho)
+        total_conta = df_carrinho["preco"].sum()
+        
+        resumo_carrinho = df_carrinho["nome"].value_counts()
+        for item_nome, qtd in resumo_carrinho.items():
+            st.write(f"• **{qtd}x** {item_nome}")
             
-        with aba_master_operador:
-            renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+        st.markdown(f"## **Subtotal: R$ {total_conta:.2f}**")
+        
+        col_cancelar, col_enviar = st.columns(2)
+        if col_cancelar.button("🗑️ Limpar Sacola", width='stretch', key="btn_limpar_sacola"):
+            st.session_state.carrinho = []
+            st.rerun()
+            
+        if col_enviar.button("🚀 Confirmar e Lançar Pedido", type="primary", width='stretch', key="btn_enviar_pedido"):
+            if not mesa_ou_comanda:
+                st.error("Por favor, preencha o número da Mesa ou Comanda antes de lançar!")
+            else:
+                try:
+                    texto_itens = ", ".join([f"{qtd}x {nome}" for nome, qtd in resumo_carrinho.items()])
+                    with ob_cx() as conn_venda:
+                        if conn_venda:
+                            with conn_venda.cursor() as cur:
+                                try:
+                                    cur.execute("""
+                                        INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
+                                        VALUES (%s, %s, %s, %s, 'Pendente');
+                                    """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta))
+                                except psycopg2.errors.UndefinedColumn:
+                                    conn_venda.rollback()
+                                    cur.execute("""
+                                        INSERT INTO pedidos (empresa_id, mesa, itens, total, metodo_pagamento)
+                                        VALUES (%s, %s, %s, %s, 'Pendente');
+                                    """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta))
+                                
+                                for item in st.session_state.carrinho:
+                                    cur.execute("UPDATE produtos SET estoque = estoque - 1 WHERE id = %s AND empresa_id = %s;", (item["id"], empresa_id))
+                                conn_venda.commit()
+                                
+                            st.success(f"🚀 Pedido da {mesa_ou_comanda} enviado para a cozinha!")
+                            st.session_state.carrinho = []
+                            st.rerun()
+                except Exception as error:
+                    st.error(f"Erro ao salvar pedido: {error}")
+    else:
+        st.info("Nenhum item na sacola.")
+
+def renderizar_fechamento_caixa(empresa_id, senha_master, conn_principal):
+    """Módulo exclusivo para fechamento, consulta de consumo e recebimento financeiro."""
+    st.subheader("🧾 Balcão de Atendimento e Caixa")
+    
+    with ob_cx() as conn:
+        if conn:
+            try:
+                # Carrega comandas em aberto
+                cur = conn.cursor()
+                try:
+                    cur.execute("SELECT DISTINCT mesa_comanda FROM pedidos WHERE empresa_id = %s AND metodo_pagamento = 'Pendente' ORDER BY mesa_comanda;", (empresa_id,))
+                except:
+                    conn.rollback()
+                    cur.execute("SELECT DISTINCT mesa FROM pedidos WHERE empresa_id = %s AND metodo_pagamento = 'Pendente' ORDER BY mesa;", (empresa_id,))
+                
+                lista_mesas = [r[0] for row in cur.fetchall()]
+            except Exception as e:
+                st.error(f"Erro ao ler comandas: {e}")
+                return
+
+    if not lista_mesas:
+        st.info("Não há nenhuma mesa ou comanda com consumo em aberto no momento.")
+        return
+        
+    mesa_selecionada = st.selectbox("Selecione a Mesa para calcular o fechamento:", lista_mesas)
+    
+    with ob_cx() as conn:
+        try:
+            # Puxa o extrato analítico do consumo da comanda ativa selecionada
+            df_comanda = pd.read_sql("""
+                SELECT id, itens, total FROM pedidos 
+                WHERE empresa_id = %s AND (mesa_comanda = %s OR mesa = %s) AND metodo_pagamento = 'Pendente';
+            """, conn, params=[empresa_id, mesa_selecionada, mesa_selecionada])
+        except:
+            df_comanda = pd.DataFrame()
+
+    if not df_comanda.empty:
+        st.markdown(f"#### 📝 Extrato de Consumo: **{mesa_selecionada}**")
+        total_comanda = df_comanda["total"].sum()
+        
+        for _, row in df_comanda.iterrows():
+            st.write(f"• {row['itens']} (Subtotal: R$ {row['total']:.2f})")
+            
+        st.markdown(f"## **Total da Conta: R$ {total_comanda:.2f}**")
+        
+        metodo_pag = st.selectbox("Forma de Liquidação / Recebimento:", ["PIX", "Crédito", "Débito", "Dinheiro"], key="caixa_forma_pagamento")
+        
+        if st.button("💰 Finalizar e Receber Pagamento", type="primary", width='stretch'):
+            try:
+                with ob_cx() as conn_caixa, conn_caixa.cursor() as cur:
+                    try:
+                        cur.execute("""
+                            UPDATE pedidos 
+                            SET metodo_pagamento = %s 
+                            WHERE empresa_id = %s AND mesa_comanda = %s AND metodo_pagamento = 'Pendente';
+                        """, (metodo_pag, empresa_id, mesa_selecionada))
+                    except psycopg2.errors.UndefinedColumn:
+                        conn_caixa.rollback()
+                        cur.execute("""
+                            UPDATE pedidos 
+                            SET metodo_pagamento = %s 
+                            WHERE empresa_id = %s AND mesa = %s AND metodo_pagamento = 'Pendente';
+                        """, (metodo_pag, empresa_id, mesa_selecionada))
+                        
+                    conn_caixa.commit()
+                st.success(f"✅ Conta da {mesa_selecionada} encerrada com sucesso via {metodo_pag}!")
+                st.rerun()
+            except Exception as error:
+                st.error(f"Erro ao dar baixa no caixa: {error}")
