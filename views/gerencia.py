@@ -32,7 +32,9 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                     with conn.cursor() as cur:
                         cur.execute("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s ORDER BY nome", (empresa_id,))
                         dados = cur.fetchall()
+                        # CORREÇÃO: Pega apenas o primeiro elemento de texto de cada coluna (o nome real dela)
                         colunas = [desc[0] for desc in cur.description] if cur.description else []
+                    
                     df = pd.DataFrame(dados, columns=colunas) if dados else pd.DataFrame()
                     if not df.empty:
                         df.columns = ["ID", "Nome", "Preço", "Categoria", "Estoque"]
@@ -72,7 +74,9 @@ def renderizar_painel_gerencial(empresa_id, senha_master, conn_principal):
                     with conn.cursor() as cur:
                         cur.execute("SELECT total, metodo_pagamento, data_pedido FROM pedidos WHERE empresa_id = %s ORDER BY data_pedido DESC", (empresa_id,))
                         dados_pedidos = cur.fetchall()
+                        # CORREÇÃO: Aplica a mesma correção de mapeamento de texto na tabela de faturamento
                         colunas_pedidos = [desc[0] for desc in cur.description] if cur.description else []
+                    
                     df_pedidos = pd.DataFrame(dados_pedidos, columns=colunas_pedidos) if dados_pedidos else pd.DataFrame()
                     
                     if not df_pedidos.empty:
