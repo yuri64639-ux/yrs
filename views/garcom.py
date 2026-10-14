@@ -1,14 +1,12 @@
 # ==============================================================================
-# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS COM TRAVA
+# VIEWS/GARCOM.PY - INTERFACE DO TERMINAL DE PEDIDOS (SEM LOOP DE IMPORT)
 # ==============================================================================
 import streamlit as st
 import pandas as pd
-from core.database import ob_cx
 
-def renderizar_terminal_garcom(empresa_id, senha_master):
+def renderizar_terminal_garcom(empresa_id, senha_master, conn):
     st.subheader("📱 Terminal Operacional (Garçom / Caixa)")
     
-    # Validação simples para liberar o uso do terminal operacional
     liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)")
     if not liberado:
         st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
@@ -23,12 +21,30 @@ def renderizar_terminal_garcom(empresa_id, senha_master):
     st.markdown("### 🔍 Pesquisar no Cardápio")
     busca = st.text_input("Digite o nome ou categoria do item:", placeholder="Ex: Coca, Batata...").strip()
     
-    with ob_cx() as conn:
-        if conn:
-            if busca:
-                df_busca = pd.read_sql("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) AND estoque > 0", conn, params=(empresa_id, f"%{busca}%", f"%{busca}%"))
-            else:
-                df_busca = pd.read_sql("SELECT id, nome, preco, categoria, estoque FROM produtos WHERE empresa_id = %s AND estoque > 0 LIMIT 8", conn, params=(empresa_id,))
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                if busca:
+                    cur.execute("""
+                        SELECT id, nome, preco, categoria, estoque 
+                        FROM produtos 
+                        WHERE empresa_id = %s 
+                          AND (LOWER(nome) LIKE LOWER(%s) OR LOWER(categoria) LIKE LOWER(%s)) 
+                          AND estoque > 0
+                    """, (empresa_id, f"%{busca}%", f"%{busca}%"))
+                else:
+                    cur.execute("""
+                        SELECT id, nome, preco, categoria, estoque 
+                        FROM produtos 
+                        WHERE empresa_id = %s 
+                          AND estoque > 0 
+                        LIMIT 8
+                    """, (empresa_id,))
+                
+                dados_busca = cur.fetchall()
+                colunas = [desc[0] for desc in cur.description] if cur.description else []
+                
+            df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
             
             if not df_busca.empty:
                 for _, row in df_busca.iterrows():
@@ -36,14 +52,16 @@ def renderizar_terminal_garcom(empresa_id, senha_master):
                     col_nome.write(f"**{row['nome']}** - R$ {row['preco']:.2f} *(Estoque: {row['estoque']} un)*")
                     if col_add.button(f"➕ Adicionar", key=f"add_{row['id']}"):
                         st.session_state.carrinho.append({
-                            "id": row["id"],
-                            "nome": row["nome"],
+                            "id": int(row["id"]),
+                            "nome": str(row["nome"]),
                             "preco": float(row["preco"])
                         })
                         st.toast(f"'{row['nome']}' colocado no carrinho!")
                         st.rerun()
             else:
-                st.info("Nenhum produto localizado ou estoque zerado.")
+                st.info("Nenhum produto localizado com estoque disponível.")
+        except Exception as e:
+            st.error(f"Erro ao consultar o cardápio: {e}")
 
     st.markdown("---")
 
@@ -70,7 +88,7 @@ def renderizar_terminal_garcom(empresa_id, senha_master):
             else:
                 try:
                     texto_itens = ", ".join([f"{qtd}x {nome}" for nome, qtd in resumo_carrinho.items()])
-                    with ob_cx() as conn, conn.cursor() as cur:
+                    with conn.cursor() as cur:
                         cur.execute("""
                             INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
                             VALUES (%s, %s, %s, %s, %s);
@@ -86,4 +104,4 @@ def renderizar_terminal_garcom(empresa_id, senha_master):
                 except Exception as e:
                     st.error(f"Erro ao processar baixa de pedido: {e}")
     else:
-        st.info("O carrinho está vazio. Adicione itens acima.")
+        st.info("O carrinho está vazio.")
