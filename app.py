@@ -93,11 +93,10 @@ if not st.session_state.logado:
     if conn: 
         conn.close()
     st.stop()
-
 # --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
 if st.session_state.garcom_logado:
     st.markdown("### 📱 Ambiente do Funcionário")
-    renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+    renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
 else:
     aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
     
@@ -107,11 +106,12 @@ else:
             st.session_state.empresa_id_atual = None
             st.session_state.senha_master_empresa = ""
             st.session_state.garcom_logado = False
+            st.session_state.carrinho = []
             st.rerun()
-        renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+        renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
         
     with aba_master_operador:
-        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa)
+        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn)
 
 if conn: 
     conn.close()
