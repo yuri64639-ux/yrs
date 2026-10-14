@@ -1,30 +1,40 @@
-# ==============================================================================
-# APP.PY - ARQUIVO PRINCIPAL (ROTEADOR COM TRANSAÇÕES PROTEGIDAS)
-# ==============================================================================
-import sys
-import os
+"""
+APP.PY - Ponto de Entrada Principal e Roteador Multi-Tenant
+Gerencia o estado da sessão, estilização de segurança e controle de acessos.
+"""
 
+import os
+import sys
+
+# Garante o alinhamento de caminhos do projeto para importações relativas
 raiz_projeto = os.path.dirname(os.path.abspath(__file__))
 if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
 
-import streamlit as st
 import pandas as pd
-from core.database import ob_cx, inicializar_banco
-from views.gerencia import renderizar_painel_gerencial
+import streamlit as st
+from core.database import inicializar_banco, ob_cx
 from views.garcom import renderizar_terminal_garcom
+from views.gerencia import renderizar_painel_gerencial
 
+# Configuração da página e inicialização de banco
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
+inicializar_banco()
 
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "garcom_logado" not in st.session_state:
-    st.session_state.garcom_logado = False
-if "empresa_id_atual" not in st.session_state:
-    st.session_state.empresa_id_atual = None
-if "senha_master_empresa" not in st.session_state:
-    st.session_state.senha_master_empresa = ""
+# --- INICIALIZAÇÃO DE ESTADOS DE SESSÃO (SESSION STATE) ---
+estados_obrigatorios = {
+    "logado": False,
+    "garcom_logado": False,
+    "empresa_id_atual": None,
+    "senha_master_empresa": "",
+    "carrinho": []
+}
 
+for chave, valor_padrao in estados_obrigatorios.items():
+    if chave not in st.session_state:
+        st.session_state[chave] = valor_padrao
+
+# --- SEGURANÇA VISUAL (INJEÇÃO CSS PARA SISTEMAS OPERACIONAIS) ---
 st.markdown("""
     <style>
     #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } 
@@ -34,12 +44,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-inicializar_banco()
 
 # --- FLUXO DE LOGIN / CADASTRO DE ESTABELECIMENTO ---
 if not st.session_state.logado:
-    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+    aba_acesso = st.radio(
+        "Selecione uma opção:", 
+        ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], 
+        horizontal=True
+    )
     
+    # Contexto de Cadastro
     if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
         with st.form("cadastro_empresa_form"):
             st.subheader("🏢 Cadastrar Empresa no Sistema")
@@ -47,16 +61,32 @@ if not st.session_state.logado:
             adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
             adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
             
-            if st.form_submit_button("Criar Minha Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
-                try:
-                    with ob_cx() as c, c.cursor() as cur:
-                        cur.execute("SET search_path TO public; INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                        id_da_empresa = cur.fetchone()[0]
-                        cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
-                        c.commit()
-                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
-                except Exception as e: 
-                    st.error(f"Erro no cadastro: {e}")
+            if st.form_submit_button("Criar Minha Conta", type="primary"):
+                if not (nova_empresa and adm_usuario and adm_senha):
+                    st.error("Todos os campos do formulário são obrigatórios.")
+                else:
+                    try:
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            
+                            # Registra Empresa
+                            cur.execute(
+                                "INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", 
+                                (nova_empresa,)
+                            )
+                            id_da_empresa = cur.fetchone()[0]
+                            
+                            # Registra Usuário Administrativo vinculado à Empresa
+                            cur.execute(
+                                "INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", 
+                                (id_da_empresa, adm_usuario, adm_senha)
+                            )
+                            c.commit()
+                        st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
+                    except Exception as error: 
+                        st.error(f"Erro crítico durante o processo de cadastro: {error}")
+                        
+    # Contexto de Login
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
@@ -64,7 +94,7 @@ if not st.session_state.logado:
                 if conn is not None:
                     try:
                         with conn.cursor() as cur:
-                            cur.execute("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa")
+                            cur.execute("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa;")
                             dados_empresas = cur.fetchall()
                         
                         dict_empresas = {row[1]: row[0] for row in dados_empresas} if dados_empresas else {}
@@ -76,24 +106,33 @@ if not st.session_state.logado:
                             
                             if st.form_submit_button("Liberar Terminal", type="primary"):
                                 id_empresa_login = dict_empresas[empresa_selecionada]
+                                
                                 with ob_cx() as c, c.cursor() as cur:
-                                    cur.execute("SET search_path TO public; SELECT empresa_id, senha FROM usuarios WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s", (id_empresa_login, user_input.strip(), senha_input.strip()))
+                                    cur.execute("SET search_path TO public;")
+                                    cur.execute(
+                                        """
+                                        SELECT empresa_id, senha FROM usuarios 
+                                        WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s;
+                                        """, 
+                                        (id_empresa_login, user_input.strip(), senha_input.strip())
+                                    )
                                     resultado = cur.fetchone()
+                                    
                                 if resultado:
                                     st.session_state.logado = True
                                     st.session_state.empresa_id_atual = int(resultado[0])
                                     st.session_state.senha_master_empresa = str(resultado[1])
                                     st.rerun()
                                 else: 
-                                    st.error("Credenciais da empresa incorretas!")
+                                    st.error("Credenciais da empresa incorretas ou inexistentes.")
                         else: 
-                            st.info("Nenhuma empresa cadastrada ainda.")
-                    except Exception as e:
-                        st.error(f"Erro ao ler empresas: {e}")
+                            st.info("Nenhuma empresa cadastrada no sistema até o momento.")
+                    except Exception as error:
+                        st.error(f"Falha de conexão ao ler registros: {error}")
     st.stop()
 
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO APÓS LOGIN ---
-# Abrimos uma conexão limpa padrão para o ciclo do app que passa de parâmetro
+
+# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO PÓS LOGIN ---
 with ob_cx() as conn_global:
     if st.session_state.garcom_logado:
         st.markdown("### 📱 Ambiente do Funcionário")
@@ -102,13 +141,15 @@ with ob_cx() as conn_global:
         aba_master_sistema, aba_master_operador = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal do Garçom"])
         
         with aba_master_sistema:
-            if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", use_container_width=True):
+            # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+            if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch'):
                 st.session_state.logado = False
                 st.session_state.empresa_id_atual = None
                 st.session_state.senha_master_empresa = ""
                 st.session_state.garcom_logado = False
                 st.session_state.carrinho = []
                 st.rerun()
+                
             renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
             
         with aba_master_operador:
