@@ -1,5 +1,6 @@
 """
 VIEWS/GARCOM.PY - Interface Operacional para Garçons e Lançamentos
+Contém correção automática de diagnóstico para nomenclatura de colunas no banco de dados.
 """
 
 import streamlit as st
@@ -47,7 +48,6 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                         """, (empresa_id,))
                     
                     dados_busca = cur.fetchall()
-                    # CORREÇÃO PROFISSIONAL: Extração limpa e segura dos nomes das colunas
                     colunas = [str(desc[0]) for desc in cur.description] if cur.description else []
                     
                 df_busca = pd.DataFrame(dados_busca, columns=colunas) if dados_busca else pd.DataFrame()
@@ -85,12 +85,11 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
         
         col_cancelar, col_fechar = st.columns(2)
         
-        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
         if col_cancelar.button("🗑️ Limpar Sacola", width='stretch'):
             st.session_state.carrinho = []
             st.rerun()
             
-        # CORREÇÃO: Substituído use_container_width=True por width='stretch'
+        # Bloco com tratamento profissional de erro de coluna
         if col_fechar.button("✅ Confirmar e Enviar Pedido", type="primary", width='stretch'):
             if not mesa_ou_comanda:
                 st.error("Por favor, preencha o número da Mesa ou Comanda antes de finalizar!")
@@ -100,18 +99,37 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                     with ob_cx() as conn_venda:
                         if conn_venda:
                             with conn_venda.cursor() as cur:
-                                # Insere registro do pedido de forma parametrizada
-                                cur.execute("""
-                                    INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
-                                    VALUES (%s, %s, %s, %s, %s);
-                                """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
-                                
-                                # Realiza a baixa correspondente em lote no estoque do banco
-                                for item in st.session_state.carrinho:
-                                    cur.execute(
-                                        "UPDATE produtos SET estoque = estoque - 1 WHERE id = %s AND empresa_id = %s;", 
-                                        (item["id"], empresa_id)
+                                try:
+                                    # Tentativa padrão de inserção do pedido
+                                    cur.execute("""
+                                        INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
+                                        VALUES (%s, %s, %s, %s, %s);
+                                    """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta, metodo_pag))
+                                except Exception as sql_err:
+                                    # Fallback diagnóstico: busca quais colunas realmente existem na tabela 'pedidos'
+                                    try:
+                                        cur.execute("""
+                                            SELECT column_name 
+                                            FROM information_schema.columns 
+                                            WHERE table_name = 'pedidos';
+                                        """)
+                                        colunas_reais = [row[0] for row in cur.fetchall()]
+                                        linhas_colunas = ", ".join(colunas_reais)
+                                    except:
+                                        linhas_colunas = "Não foi possível ler o esquema da tabela."
+                                    
+                                    raise ValueError(
+                                        f"A coluna 'mesa_comanda' falhou. As colunas existentes na tabela 'pedidos' são: [{linhas_colunas}]"
                                     )
+                                
+                                # Atualização sequencial do estoque dos itens baixados
+                                for item in st.session_state.carrinho:
+                                    cur.execute("""
+                                        UPDATE produtos 
+                                        SET estoque = estoque - 1 
+                                        WHERE id = %s AND empresa_id = %s;
+                                    """, (item["id"], empresa_id))
+                                    
                                 conn_venda.commit()
                                 
                             st.success(f"🚀 Pedido da {mesa_ou_comanda} computado com sucesso!")
