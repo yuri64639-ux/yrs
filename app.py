@@ -1,6 +1,7 @@
 """
 APP.PY - Ponto de Entrada Principal, Roteador Multi-Tenant e Persistência de Sessão
-Mantém o usuário logado e na mesma aba ativa após recarregamentos de página (F5).
+Garante que a aba gerencial seja completamente ocultada quando um garçom se autentica.
+Integrado com a nova rota de importação modular views/garcom_login.py.
 """
 
 import os
@@ -14,7 +15,7 @@ if raiz_projeto not in sys.path:
 import pandas as pd
 import streamlit as st
 from core.database import inicializar_banco, ob_cx
-from views.garcom import renderizar_terminal_garcom
+from views.garcom_login import renderizar_terminal_garcom
 from views.caixa import renderizar_fechamento_caixa
 from views.gerencia import renderizar_painel_gerencial
 
@@ -37,7 +38,7 @@ if token_empresa and token_senha:
 # --- INICIALIZAÇÃO DE ESTADOS DE SESSÃO (SESSION STATE) ---
 estados_obrigatorios = {
     "logado": logado_inicial,
-    "garcom_logado": False,
+    "operador_atual": None,
     "empresa_id_atual": int(token_empresa) if token_empresa else None,
     "senha_master_empresa": token_senha if token_senha else "",
     "carrinho": [],
@@ -121,7 +122,6 @@ if not st.session_state.logado:
                                     st.session_state.empresa_id_atual = int(resultado[0])
                                     st.session_state.senha_master_empresa = str(resultado[1])
                                     
-                                    # INJEÇÃO PERSISTENTE: Salva os tokens na URL do navegador
                                     st.query_params["empresa_id"] = str(resultado[0])
                                     st.query_params["auth_token"] = str(resultado[1])
                                     st.query_params["aba_ativa"] = "0"
@@ -134,38 +134,51 @@ if not st.session_state.logado:
                         st.error(f"Falha de conexão ao ler registros: {error}")
     st.stop()
 
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO MASTER APÓS LOGIN ---
+# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO MASTER (OCULTAÇÃO DE ABAS) ---
 with ob_cx() as conn_global:
-    lista_abas = [
-        "⚙️ Painel de Controle Gerencial", 
-        "🚀 Terminal do Garçom (Lançar)", 
-        "🧾 Fechamento de Conta (Caixa)"
-    ]
     
-    # Renderiza as abas superiores nativas puxando o índice salvo na URL do navegador
-    aba_gerencia, aba_lancamentos, aba_caixa = st.tabs(lista_abas)
-    
-    with aba_gerencia:
-        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch', key="lock_terminal_global"):
-            st.session_state.logado = False
-            st.session_state.empresa_id_atual = None
-            st.session_state.senha_master_empresa = ""
-            st.session_state.garcom_logado = False
-            st.session_state.carrinho = []
-            st.query_params.clear()
-            st.rerun()
-            
-        if st.query_params.get("aba_ativa") != "0":
-            st.query_params["aba_ativa"] = "0"
-            
-        renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+    # SE O GARÇOM LOGAR: Oculta completamente a aba gerencial por segurança
+    if st.session_state.operador_atual is not None:
+        lista_abas = [
+            "🚀 Terminal do Garçom (Lançar)", 
+            "🧾 Fechamento de Conta (Caixa)"
+        ]
+        abas_renderizadas = st.tabs(lista_abas)
         
-    with aba_lancamentos:
-        if st.query_params.get("aba_ativa") != "1":
+        with abas_renderizadas[0]:
             st.query_params["aba_ativa"] = "1"
-        renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
-        
-    with aba_caixa:
-        if st.query_params.get("aba_ativa") != "2":
+            renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+            
+        with abas_renderizadas[1]:
             st.query_params["aba_ativa"] = "2"
-        renderizar_fechamento_caixa(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+            renderizar_fechamento_caixa(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+            
+    # SE NÃO HOUVER GARÇOM LOGADO: Renderiza as 3 abas masters padrão
+    else:
+        lista_abas = [
+            "⚙️ Painel de Controle Gerencial", 
+            "🚀 Terminal do Garçom (Lançar)", 
+            "🧾 Fechamento de Conta (Caixa)"
+        ]
+        abas_renderizadas = st.tabs(lista_abas)
+        
+        with abas_renderizadas[0]:
+            if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch', key="lock_terminal_global"):
+                st.session_state.logado = False
+                st.session_state.empresa_id_atual = None
+                st.session_state.senha_master_empresa = ""
+                st.session_state.operador_atual = None
+                st.session_state.carrinho = []
+                st.query_params.clear()
+                st.rerun()
+                
+            st.query_params["aba_ativa"] = "0"
+            renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+            
+        with abas_renderizadas[1]:
+            st.query_params["aba_ativa"] = "1"
+            renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
+            
+        with abas_renderizadas[2]:
+            st.query_params["aba_ativa"] = "2"
+            renderizar_fechamento_caixa(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
