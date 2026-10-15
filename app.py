@@ -1,13 +1,12 @@
 """
 APP.PY - Ponto de Entrada Principal, Roteador Multi-Tenant e Persistência de Sessão
-Garante que a aba gerencial seja completamente ocultada quando um garçom se autentica.
-Integrado com a nova rota de importação modular views/garcom_login.py.
+Mantém o usuário logado e oculta dinamicamente a gerência se houver garçom ativo.
 """
 
 import os
 import sys
 
-# Garante o alinhamento de caminhos do projeto para importações relativas
+# Alinhamento estrito de caminhos do projeto para evitar erros de importação na nuvem
 raiz_projeto = os.path.dirname(os.path.abspath(__file__))
 if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
@@ -15,25 +14,20 @@ if raiz_projeto not in sys.path:
 import pandas as pd
 import streamlit as st
 from core.database import inicializar_banco, ob_cx
-from views.garcom_login import renderizar_terminal_garcom
-from views.caixa import renderizar_fechamento_caixa
+from views.garcom import renderizar_terminal_garcom, renderizar_fechamento_caixa
 from views.gerencia import renderizar_painel_gerencial
 
-# Configuração da página e inicialização de banco de dados
+# Inicialização global do layout e banco de dados
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 inicializar_banco()
 
 # --- RECUPERAÇÃO AUTOMÁTICA DE SESSÃO VIA URL (ANTI-RELOAD) ---
 params = st.query_params
-
 token_empresa = params.get("empresa_id", None)
 token_senha = params.get("auth_token", None)
 aba_salva = params.get("aba_ativa", "0")
 
-# Define os estados padrão baseados na presença dos parâmetros na URL
-logado_inicial = False
-if token_empresa and token_senha:
-    logado_inicial = True
+logado_inicial = True if (token_empresa and token_senha) else False
 
 # --- INICIALIZAÇÃO DE ESTADOS DE SESSÃO (SESSION STATE) ---
 estados_obrigatorios = {
@@ -49,7 +43,7 @@ for chave, valor_padrao in estados_obrigatorios.items():
     if chave not in st.session_state:
         st.session_state[chave] = valor_padrao
 
-# --- SEGURANÇA VISUAL (INJEÇÃO CSS PARA OCULTAÇÃO DE MENUS NATIVOS) ---
+# --- INJEÇÃO CSS PARA ELIMINAR MENUS NATIVOS DO STREAMLIT ---
 st.markdown("""
     <style>
     #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; } 
@@ -61,11 +55,7 @@ st.markdown("""
 
 # --- FLUXO DE AUTENTICAÇÃO DO ESTABELECIMENTO ---
 if not st.session_state.logado:
-    aba_acesso = st.radio(
-        "Selecione uma opção:", 
-        ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], 
-        horizontal=True
-    )
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
     
     if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
         with st.form("cadastro_empresa_form"):
@@ -74,21 +64,17 @@ if not st.session_state.logado:
             adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
             adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
             
-            if st.form_submit_button("Criar Minha Conta", type="primary"):
-                if not (nova_empresa and adm_usuario and adm_senha):
-                    st.error("Todos os campos do formulário são obrigatórios.")
-                else:
-                    try:
-                        with ob_cx() as c, c.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
-                            id_da_empresa = cur.fetchone()[0]
-                            cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
-                            c.commit()
-                        st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
-                    except Exception as error: 
-                        st.error(f"Erro crítico durante o processo de cadastro: {error}")
-                        
+            if st.form_submit_button("Criar Minha Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
+                try:
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("INSERT INTO empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
+                        id_da_empresa = cur.fetchone()[0]
+                        cur.execute("INSERT INTO usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                        c.commit()
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login.")
+                except Exception as error: 
+                    st.error(f"Erro no cadastro: {error}")
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
@@ -98,7 +84,6 @@ if not st.session_state.logado:
                         with conn.cursor() as cur:
                             cur.execute("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa;")
                             dados_empresas = cur.fetchall()
-                        
                         dict_empresas = {row[1]: row[0] for row in dados_empresas} if dados_empresas else {}
                         
                         if dict_empresas:
@@ -108,7 +93,6 @@ if not st.session_state.logado:
                             
                             if st.form_submit_button("Liberar Terminal", type="primary"):
                                 id_empresa_login = dict_empresas[empresa_selecionada]
-                                
                                 with ob_cx() as c, c.cursor() as cur:
                                     cur.execute("SET search_path TO public;")
                                     cur.execute(
@@ -127,22 +111,17 @@ if not st.session_state.logado:
                                     st.query_params["aba_ativa"] = "0"
                                     st.rerun()
                                 else: 
-                                    st.error("Credenciais da empresa incorretas ou inexistentes.")
+                                    st.error("Credenciais da empresa incorretas!")
                         else: 
-                            st.info("Nenhuma empresa cadastrada no sistema até o momento.")
+                            st.info("Nenhuma empresa cadastrada no sistema ainda.")
                     except Exception as error:
-                        st.error(f"Falha de conexão ao ler registros: {error}")
+                        st.error(f"Falha ao ler registros: {error}")
     st.stop()
 
-# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO MASTER (OCULTAÇÃO DE ABAS) ---
+# --- CONTROLE DINÂMICO DE VISUALIZAÇÃO MASTER DE ABAS ---
 with ob_cx() as conn_global:
-    
-    # SE O GARÇOM LOGAR: Oculta completamente a aba gerencial por segurança
     if st.session_state.operador_atual is not None:
-        lista_abas = [
-            "🚀 Terminal do Garçom (Lançar)", 
-            "🧾 Fechamento de Conta (Caixa)"
-        ]
+        lista_abas = ["🚀 Terminal do Garçom (Lançar)", "🧾 Fechamento de Conta (Caixa)"]
         abas_renderizadas = st.tabs(lista_abas)
         
         with abas_renderizadas[0]:
@@ -152,14 +131,8 @@ with ob_cx() as conn_global:
         with abas_renderizadas[1]:
             st.query_params["aba_ativa"] = "2"
             renderizar_fechamento_caixa(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
-            
-    # SE NÃO HOUVER GARÇOM LOGADO: Renderiza as 3 abas masters padrão
     else:
-        lista_abas = [
-            "⚙️ Painel de Controle Gerencial", 
-            "🚀 Terminal do Garçom (Lançar)", 
-            "🧾 Fechamento de Conta (Caixa)"
-        ]
+        lista_abas = ["⚙️ Painel de Controle Gerencial", "🚀 Terminal do Garçom (Lançar)", "🧾 Fechamento de Conta (Caixa)"]
         abas_renderizadas = st.tabs(lista_abas)
         
         with abas_renderizadas[0]:
@@ -171,7 +144,6 @@ with ob_cx() as conn_global:
                 st.session_state.carrinho = []
                 st.query_params.clear()
                 st.rerun()
-                
             st.query_params["aba_ativa"] = "0"
             renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
             
