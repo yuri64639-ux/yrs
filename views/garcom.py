@@ -1,6 +1,6 @@
 """
-VIEWS/GARCOM_LOGIN.PY - Gerenciamento de Login e Identificação da Equipe
-Controla o acesso de múltiplos garçons e gerencia o estado da sessão individual.
+VIEWS/GARCOM.PY - Módulo de Identificação e Controle de Acesso da Equipe
+Gerencia os logins individuais de múltiplos garçons e delega o sistema de vendas.
 """
 
 import streamlit as st
@@ -55,11 +55,10 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                         conn.commit()
                     st.success(f"🎉 Garçom '{user_garcom}' cadastrado! Digite os dados novamente para Entrar.")
                 except Exception as e:
-                    st.error(f"Erro: Esse nome de usuário já está em uso na empresa ou o banco falhou.")
-        
+                    st.error("Erro: Esse nome de usuário já está em uso na empresa ou o banco falhou.")
         st.stop()
 
-    # --- RENDERIZAÇÃO DA INTERFACE OPERACIONAL QUANDO LOGADO ---
+    # --- SEÇÃO LIBERADA APENAS PARA GARÇONS AUTENTICADOS ---
     col_user_info, col_btn_logout = st.columns(2)
     col_user_info.markdown(f"👤 Atendente Ativo: **{st.session_state.operador_atual}**")
     if col_btn_logout.button("🔒 Sair / Trocar Atendente", width="stretch"):
@@ -69,7 +68,79 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
 
     st.markdown("---")
     
-    # Chama a Parte 2 passando os dados de controle estáveis
+    # Executa a renderização da interface de lançamentos vinda do segundo arquivo
+    renderizar_sistema_pedidos(empresa_id, senha_master, conn_principal)
+"""
+VIEWS/GARCOM.PY - Módulo de Identificação e Controle de Acesso da Equipe
+Gerencia os logins individuais de múltiplos garçons e delega o sistema de vendas.
+"""
+
+import streamlit as st
+from core.database import ob_cx
+from views.garcom_pedidos import renderizar_sistema_pedidos
+
+def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
+    st.subheader("📱 Terminal de Lançamentos do Garçom")
+    
+    # --- SISTEMA DE LOGIN INDIVIDUAL PARA MÚLTIPLOS GARÇONS ---
+    if "operador_atual" not in st.session_state:
+        st.session_state.operador_atual = None
+
+    if st.session_state.operador_atual is None:
+        st.info("🔒 Identificação Obrigatória: Efetue o login para liberar as comandas.")
+        
+        with st.form("form_login_operador_garcom", clear_on_submit=True):
+            user_garcom = st.text_input("Usuário / Nome do Garçom:").strip()
+            senha_garcom = st.text_input("Senha de Acesso:", type="password").strip()
+            
+            col_cad, col_ent = st.columns(2)
+            botao_entrar = col_ent.form_submit_button("Entrar no Sistema", type="primary", width="stretch")
+            botao_cadastrar = col_cad.form_submit_button("💼 Cadastrar Minha Conta", type="secondary", width="stretch")
+            
+            if botao_entrar and user_garcom and senha_garcom:
+                try:
+                    with ob_cx() as conn, conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("""
+                            SELECT usuario FROM usuarios 
+                            WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s;
+                        """, (empresa_id, user_garcom, senha_garcom))
+                        res_login = cur.fetchone()
+                        
+                    if res_login:
+                        st.session_state.operador_atual = str(res_login[0]).upper()
+                        st.success(f"Bem-vindo, {st.session_state.operador_atual}!")
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha de garçom incorretos!")
+                except Exception as e:
+                    st.error(f"Erro de conexão com o banco de dados: {e}")
+                    
+            elif botao_cadastrar and user_garcom and senha_garcom:
+                try:
+                    with ob_cx() as conn, conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("""
+                            INSERT INTO usuarios (empresa_id, usuario, senha) 
+                            VALUES (%s, %s, %s);
+                        """, (empresa_id, user_garcom, senha_garcom))
+                        conn.commit()
+                    st.success(f"🎉 Garçom '{user_garcom}' cadastrado! Digite os dados novamente para Entrar.")
+                except Exception as e:
+                    st.error("Erro: Esse nome de usuário já está em uso na empresa ou o banco falhou.")
+        st.stop()
+
+    # --- SEÇÃO LIBERADA APENAS PARA GARÇONS AUTENTICADOS ---
+    col_user_info, col_btn_logout = st.columns(2)
+    col_user_info.markdown(f"👤 Atendente Ativo: **{st.session_state.operador_atual}**")
+    if col_btn_logout.button("🔒 Sair / Trocar Atendente", width="stretch"):
+        st.session_state.operador_atual = None
+        st.session_state.carrinho = []
+        st.rerun()
+
+    st.markdown("---")
+    
+    # Executa a renderização da interface de lançamentos vinda do segundo arquivo
     renderizar_sistema_pedidos(empresa_id, senha_master, conn_principal)
 """
 VIEWS/GARCOM_PEDIDOS.PY - Interface de Vendas e Baixa por Ficha Técnica
@@ -178,7 +249,7 @@ def renderizar_sistema_pedidos(empresa_id, senha_master, conn_principal):
                                 for item in st.session_state.carrinho:
                                     try:
                                         cur.execute("""
-                                            INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status, garcom)
+                                            INSERT INTO pedidos (empresa_id, mesa, produto_id, quantity, status, garcom)
                                             VALUES (%s, %s, %s, 1, 'Pendente', %s);
                                         """, (empresa_id, mesa_ou_comanda, item["id"], st.session_state.operador_atual))
                                     except:
