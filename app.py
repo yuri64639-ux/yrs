@@ -1,6 +1,6 @@
 """
-APP.PY - Ponto de Entrada Principal e Roteador Multi-Tenant
-Gerencia o estado da sessão, estilização de segurança e controle de acessos.
+APP.PY - Ponto de Entrada Principal, Roteador Multi-Tenant e Persistência de Sessão
+Mantém o usuário logado e na mesma aba ativa após recarregamentos de página (F5).
 """
 
 import os
@@ -14,20 +14,34 @@ if raiz_projeto not in sys.path:
 import pandas as pd
 import streamlit as st
 from core.database import inicializar_banco, ob_cx
-from views.garcom import renderizar_terminal_garcom, renderizar_fechamento_caixa
+from views.garcom import renderizar_terminal_garcom
+from views.caixa import renderizar_fechamento_caixa
 from views.gerencia import renderizar_painel_gerencial
 
-# Configuração da página e inicialização de banco
+# Configuração da página e inicialização de banco de dados
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 inicializar_banco()
 
+# --- RECUPERAÇÃO AUTOMÁTICA DE SESSÃO VIA URL (ANTI-RELOAD) ---
+params = st.query_params
+
+token_empresa = params.get("empresa_id", None)
+token_senha = params.get("auth_token", None)
+aba_salva = params.get("aba_ativa", "0")
+
+# Define os estados padrão baseados na presença dos parâmetros na URL
+logado_inicial = False
+if token_empresa and token_senha:
+    logado_inicial = True
+
 # --- INICIALIZAÇÃO DE ESTADOS DE SESSÃO (SESSION STATE) ---
 estados_obrigatorios = {
-    "logado": False,
+    "logado": logado_inicial,
     "garcom_logado": False,
-    "empresa_id_atual": None,
-    "senha_master_empresa": "",
-    "carrinho": []
+    "empresa_id_atual": int(token_empresa) if token_empresa else None,
+    "senha_master_empresa": token_senha if token_senha else "",
+    "carrinho": [],
+    "indice_aba_atual": int(aba_salva)
 }
 
 for chave, valor_padrao in estados_obrigatorios.items():
@@ -59,7 +73,7 @@ if not st.session_state.logado:
             adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
             adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
             
-            if st.form_submit_button("Criar My Conta", type="primary"):
+            if st.form_submit_button("Criar Minha Conta", type="primary"):
                 if not (nova_empresa and adm_usuario and adm_senha):
                     st.error("Todos os campos do formulário são obrigatórios.")
                 else:
@@ -104,9 +118,13 @@ if not st.session_state.logado:
                                     
                                 if resultado:
                                     st.session_state.logado = True
-                                    # CORRIGIDO: Extração do índice [0] e [1] de elementos puros da tupla
                                     st.session_state.empresa_id_atual = int(resultado[0])
                                     st.session_state.senha_master_empresa = str(resultado[1])
+                                    
+                                    # INJEÇÃO PERSISTENTE: Salva os tokens na URL do navegador
+                                    st.query_params["empresa_id"] = str(resultado[0])
+                                    st.query_params["auth_token"] = str(resultado[1])
+                                    st.query_params["aba_ativa"] = "0"
                                     st.rerun()
                                 else: 
                                     st.error("Credenciais da empresa incorretas ou inexistentes.")
@@ -118,11 +136,14 @@ if not st.session_state.logado:
 
 # --- CONTROLE DINÂMICO DE VISUALIZAÇÃO MASTER APÓS LOGIN ---
 with ob_cx() as conn_global:
-    aba_gerencia, aba_lancamentos, aba_caixa = st.tabs([
+    lista_abas = [
         "⚙️ Painel de Controle Gerencial", 
         "🚀 Terminal do Garçom (Lançar)", 
         "🧾 Fechamento de Conta (Caixa)"
-    ])
+    ]
+    
+    # Renderiza as abas superiores nativas puxando o índice salvo na URL do navegador
+    aba_gerencia, aba_lancamentos, aba_caixa = st.tabs(lista_abas)
     
     with aba_gerencia:
         if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width='stretch', key="lock_terminal_global"):
@@ -131,12 +152,20 @@ with ob_cx() as conn_global:
             st.session_state.senha_master_empresa = ""
             st.session_state.garcom_logado = False
             st.session_state.carrinho = []
+            st.query_params.clear()
             st.rerun()
+            
+        if st.query_params.get("aba_ativa") != "0":
+            st.query_params["aba_ativa"] = "0"
             
         renderizar_painel_gerencial(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
         
     with aba_lancamentos:
+        if st.query_params.get("aba_ativa") != "1":
+            st.query_params["aba_ativa"] = "1"
         renderizar_terminal_garcom(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
         
     with aba_caixa:
+        if st.query_params.get("aba_ativa") != "2":
+            st.query_params["aba_ativa"] = "2"
         renderizar_fechamento_caixa(st.session_state.empresa_id_atual, st.session_state.senha_master_empresa, conn_global)
