@@ -1,6 +1,6 @@
 """
-VIEWS/GARCOM.PY - Interface Isolada de Lançamentos de Pedidos e Fechamento de Caixa
-Garante compatibilidade de colunas (mesa/mesa_comanda) e tratamento profissional de erros.
+VIEWS/GARCOM.PY - Módulo de Lançamento e Sacola de Pedidos Ativa
+Gerencia a busca no cardápio, controle de estoque corrente e envio para a cozinha.
 """
 
 import streamlit as st
@@ -12,6 +12,14 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
     """Focada estritamente no lançamento rápido de itens no balcão ou mesas."""
     st.subheader("🚀 Lançamento Rápido de Pedidos")
     
+    liberado = st.checkbox("🔓 Ativar Modo Garçom (Uso exclusivo da equipe)", key="chk_modo_garcom_ativacao")
+    if not liberado:
+        st.info("Marque a caixa acima para ativar a tela de lançamentos do restaurante.")
+        st.stop()
+        
+    if "carrinho" not in st.session_state:
+        st.session_state.carrinho = []
+        
     mesa_ou_comanda = st.text_input("📍 Identificação (Nº da Mesa ou Comanda):", placeholder="Ex: Mesa 04", key="input_mesa_lancamento").strip()
     st.markdown("---")
     
@@ -91,94 +99,48 @@ def renderizar_terminal_garcom(empresa_id, senha_master, conn_principal):
                         if conn_venda:
                             with conn_venda.cursor() as cur:
                                 try:
-                                    cur.execute("""
-                                        INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
-                                        VALUES (%s, %s, %s, %s, 'Pendente');
-                                    """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta))
-                                except psycopg2.errors.UndefinedColumn:
-                                    conn_venda.rollback()
+                                    # Abordagem 1: Insere na coluna 'itens'
                                     cur.execute("""
                                         INSERT INTO pedidos (empresa_id, mesa, itens, total, metodo_pagamento)
                                         VALUES (%s, %s, %s, %s, 'Pendente');
                                     """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta))
+                                except (psycopg2.errors.UndefinedColumn, psycopg2.errors.InFailedSqlTransaction):
+                                    conn_venda.rollback()
+                                    try:
+                                        # Abordagem 2: Fallback se a coluna for 'mesa_comanda'
+                                        cur.execute("""
+                                            INSERT INTO pedidos (empresa_id, mesa_comanda, itens, total, metodo_pagamento)
+                                            VALUES (%s, %s, %s, %s, 'Pendente');
+                                        """, (empresa_id, mesa_ou_comanda, texto_itens, total_conta))
+                                    except (psycopg2.errors.UndefinedColumn, psycopg2.errors.InFailedSqlTransaction):
+                                        # Abordagem 3: Fallback relacional granular por item individual
+                                        conn_venda.rollback()
+                                        for item in st.session_state.carrinho:
+                                            try:
+                                                cur.execute("""
+                                                    INSERT INTO pedidos (empresa_id, mesa, produto_id, quantidade, status)
+                                                    VALUES (%s, %s, %s, 1, 'Pendente');
+                                                """, (empresa_id, mesa_ou_comanda, item["id"]))
+                                            except:
+                                                conn_venda.rollback()
+                                                cur.execute("""
+                                                    INSERT INTO pedidos (empresa_id, comanda, produto_id, quantidade, status)
+                                                    VALUES (%s, %s, %s, 1, 'Pendente');
+                                                """, (empresa_id, mesa_ou_comanda, item["id"]))
                                 
+                                # Processamento sequencial de baixa de inventário
                                 for item in st.session_state.carrinho:
-                                    cur.execute("UPDATE produtos SET estoque = estoque - 1 WHERE id = %s AND empresa_id = %s;", (item["id"], empresa_id))
+                                    cur.execute("""
+                                        UPDATE produtos 
+                                        SET estoque = estoque - 1 
+                                        WHERE id = %s AND empresa_id = %s;
+                                    """, (item["id"], empresa_id))
                                 conn_venda.commit()
                                 
-                            st.success(f"🚀 Pedido da {mesa_ou_comanda} enviado para a cozinha!")
+                            st.success(f"🚀 Pedido da {mesa_ou_comanda} enviado com sucesso!")
                             st.session_state.carrinho = []
                             st.rerun()
                 except Exception as error:
                     st.error(f"Erro ao salvar pedido: {error}")
     else:
         st.info("Nenhum item na sacola.")
-
-
-def renderizar_fechamento_caixa(empresa_id, senha_master, conn_principal):
-    """Módulo exclusivo para fechamento, consulta de consumo e recebimento financeiro."""
-    st.subheader("🧾 Balcão de Atendimento e Caixa")
-    
-    with ob_cx() as conn:
-        if conn:
-            try:
-                cur = conn.cursor()
-                try:
-                    cur.execute("SELECT DISTINCT mesa_comanda FROM pedidos WHERE empresa_id = %s AND metodo_pagamento = 'Pendente' ORDER BY mesa_comanda;", (empresa_id,))
-                except:
-                    conn.rollback()
-                    cur.execute("SELECT DISTINCT mesa FROM pedidos WHERE empresa_id = %s AND metodo_pagamento = 'Pendente' ORDER BY mesa;", (empresa_id,))
-                
-                lista_mesas = [row[0] for row in cur.fetchall()]
-            except Exception as e:
-                st.error(f"Erro ao ler comandas: {e}")
-                return
-
-    if not lista_mesas:
-        st.info("Não há nenhuma mesa ou comanda com consumo em aberto no momento.")
-        return
-        
-    mesa_selecionada = st.selectbox("Selecione a Mesa para calcular o fechamento:", lista_mesas)
-    
-    with ob_cx() as conn:
-        try:
-            df_comanda = pd.read_sql("""
-                SELECT id, itens, total FROM pedidos 
-                WHERE empresa_id = %s AND (mesa_comanda = %s OR mesa = %s) AND metodo_pagamento = 'Pendente';
-            """, conn, params=[empresa_id, mesa_selecionada, mesa_selecionada])
-        except:
-            df_comanda = pd.DataFrame()
-
-    if not df_comanda.empty:
-        st.markdown(f"#### 📝 Extrato de Consumo: **{mesa_selecionada}**")
-        total_comanda = df_comanda["total"].sum()
-        
-        for _, row in df_comanda.iterrows():
-            st.write(f"• {row['itens']} (Subtotal: R$ {row['total']:.2f})")
-            
-        st.markdown(f"## **Total da Conta: R$ {total_comanda:.2f}**")
-        
-        metodo_pag = st.selectbox("Forma de Liquidação / Recebimento:", ["PIX", "Crédito", "Débito", "Dinheiro"], key="caixa_forma_pagamento")
-        
-        if st.button("💰 Finalizar e Receber Pagamento", type="primary", width='stretch'):
-            try:
-                with ob_cx() as conn_caixa, conn_caixa.cursor() as cur:
-                    try:
-                        cur.execute("""
-                            UPDATE pedidos 
-                            SET metodo_pagamento = %s 
-                            WHERE empresa_id = %s AND mesa_comanda = %s AND metodo_pagamento = 'Pendente';
-                        """, (metodo_pag, empresa_id, mesa_selecionada))
-                    except psycopg2.errors.UndefinedColumn:
-                        conn_caixa.rollback()
-                        cur.execute("""
-                            UPDATE pedidos 
-                            SET metodo_pagamento = %s 
-                            WHERE empresa_id = %s AND mesa = %s AND metodo_pagamento = 'Pendente';
-                        """, (metodo_pag, empresa_id, mesa_selecionada))
-                        
-                    conn_caixa.commit()
-                st.success(f"✅ Conta da {mesa_selecionada} encerrada com sucesso via {metodo_pag}!")
-                st.rerun()
-            except Exception as error:
-                st.error(f"Erro ao dar baixa no caixa: {error}")
