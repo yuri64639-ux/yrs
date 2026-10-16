@@ -1,28 +1,188 @@
+# ==============================================================================
+# PARTE 1 DE 3: SISTEMA DE ROTAS ROBUSTO, IMPORTS E CONEXÃO POSTGRESQL
+# ==============================================================================
 import os
 import sys
-import pandas as pd
-import streamlit as st
 from datetime import datetime
+import pandas as pd
+import psycopg2
+import streamlit as st
 
-# =====================================================================
-# SISTEMA DE CAMINHOS ROBUSTO PARA RESOLVER O MODULENOTFOUNDERROR
-# =====================================================================
-# Captura o diretório onde o arquivo app.py está fisicamente localizado
+# Configuração de Identidade Visual na Aba do Navegador (Executada antes de qualquer elemento visual)
+st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
+
+# --- FORÇAR MAPEAMENTO DE ROTAS NO STREAMLIT CLOUD (CORREÇÃO DO MODULENOTFOUNDERROR) ---
 raiz_projeto = os.path.dirname(os.path.abspath(__file__))
-
-# Força o Python a priorizar a raiz do projeto na busca por módulos locais
 if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
 
-# =====================================================================
-# IMPORTS DO SEU SISTEMA (Agora o Python localizará os caminhos corretamente)
-# =====================================================================
-from core.database import inicializar_banco, ob_cx                      
-from views.garcom_login import renderizar_terminal_garcom               
-from views.caixa import renderizar_fechamento_caixa                     
-from views.gerencia import renderizar_painel_gerencial                  
+# Adiciona explicitamente o diretório padrão do Streamlit Cloud como backup de rota
+caminho_cloud = "/mount/src/yrs"
+if caminho_cloud not in sys.path:
+    sys.path.insert(0, caminho_cloud)
 
-# ---------------------------------------------------------------------
-# O restante do seu código (configurações da página, tabelas, etc.)
-# continua idêntico abaixo, sem alterações...
-# ---------------------------------------------------------------------
+# --- IMPORTAÇÃO INTEGRAL E SEGURA DAS VIEWS DO ECOSSISTEMA ---
+try:
+    from core.database import inicializar_banco, ob_cx                      
+    from views.garcom_login import renderizar_terminal_garcom               
+    from views.caixa import renderizar_fechamento_caixa                     
+    from views.gerencia import renderizar_painel_gerencial                  
+except ModuleNotFoundError as erro_modulo:
+    st.error(f"🚨 Erro Crítico de Mapeamento: {erro_modulo}")
+    st.info("💡 Certifique-se de que os nomes das pastas e arquivos no GitHub estão 100% em letras minúsculas (ex: views/garcom_login.py) e que o arquivo '__init__.py' existe na pasta.")
+    st.stop()
+
+# --- INICIALIZAÇÃO DE TODAS AS VARIÁVEIS DE SESSÃO DO ECOSSISTEMA ---
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "usuario_atual" not in st.session_state:
+    st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state:
+    st.session_state.empresa_id_atual = None
+if "senha_master_empresa" not in st.session_state:
+    st.session_state.senha_master_empresa = ""
+if "garcom_logado" not in st.session_state:
+    st.session_state.garcom_logado = False
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
+
+# Ocultação estética profissional do menu nativo e barras superiores do Streamlit via CSS
+st.markdown("""
+    <style>
+    #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
+    header [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    header { background-color: transparent !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Inicialização e checagem preventiva do banco de dados relacional multi-tenant
+try:
+    conn = ob_cx()
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public;")
+            # Executa a função estrutural interna do core/database
+            inicializar_banco(cur)
+        conn.commit()
+        conn.close()
+except Exception as e:
+    st.error(f"Erro ao conectar com as credenciais do banco de dados: {e}")
+
+# ==============================================================================
+# PARTE 2 DE 3: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO (AUTENTICAÇÃO DE EMPRESA)
+# ==============================================================================
+if not st.session_state.logado:
+    aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
+    
+    # --- SUB-FLUXO: CADASTRAR ESTABELECIMENTO ---
+    if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
+        with st.form("cadastro_empresa_form"):
+            st.subheader("🏢 Cadastrar Empresa no Sistema")
+            nova_empresa = st.text_input("Nome do seu Estabelecimento / Empresa:").strip()
+            adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
+            adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
+            
+            if st.form_submit_button("Criar My Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
+                try:
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("INSERT INTO public.empresas (nome_empresa) VALUES (%s) RETURNING id;", (nova_empresa,))
+                        id_da_empresa = cur.fetchone()[0]
+                        cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
+                        c.commit()
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login para acessar.")
+                except Exception as e:
+                    st.error(f"Erro no cadastro da empresa: {e}")
+                    
+    # --- SUB-FLUXO: LOGIN DO ESTABELECIMENTO ---
+    else:
+        with st.form("login_form"):
+            st.subheader("📱 Login do Estabelecimento (Empresa)")
+            try:
+                with ob_cx() as c:
+                    df_lista_empresas = pd.read_sql("SELECT id, nome_empresa FROM public.empresas ORDER BY nome_empresa", c)
+                dict_empresas = {row["nome_empresa"]: row["id"] for _, row in df_lista_empresas.iterrows()} if not df_lista_empresas.empty else {}
+            except Exception:
+                dict_empresas = {}
+                
+            if dict_empresas:
+                empresa_selecionada = st.selectbox("Selecione sua Empresa:", list(dict_empresas.keys()))
+                user_input = st.text_input("Usuário Master da Empresa:")
+                senha_input = st.text_input("Senha Master:", type="password")
+                
+                if st.form_submit_button("Liberar Terminal", type="primary"):
+                    id_empresa_login = dict_empresas[empresa_selecionada]
+                    try:
+                        with ob_cx() as c, c.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("""
+                                SELECT empresa_id, senha FROM public.usuarios 
+                                WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s
+                            """, (id_empresa_login, user_input.strip(), senha_input.strip()))
+                            resultado = cur.fetchone()
+                            
+                        if resultado:
+                            st.session_state.logado = True
+                            st.session_state.empresa_id_atual = int(resultado[0])
+                            st.session_state.senha_master_empresa = str(resultado[1])
+                            st.rerun()
+                        else:
+                            st.error("Credenciais da empresa incorretas!")
+                    except Exception as e:
+                        st.error(f"Erro ao autenticar: {e}")
+            else:
+                st.info("Nenhuma empresa cadastrada ainda no ecossistema cloud.")
+                
+    st.stop()
+
+# ==============================================================================
+# PARTE 3 DE 3: CONTROLE DINÂMICO E RENDERIZAÇÃO DAS TELAS DOS MÓDULOS (VIEWS)
+# ==============================================================================
+# Layout Estrutural Demandado: Controle dinâmico se o garçom estiver logado no mobile
+if st.session_state.garcom_logado:
+    st.markdown(f"### 📱 Ambiente de Trabalho — Operador Ativo: {st.session_state.usuario_atual.upper()}")
+    
+    # Botão de escape rápido para troca de turno/funcionário
+    if st.button("🔒 Sair do Terminal / Trocar Garçom", width="stretch"):
+        st.session_state.garcom_logado = False
+        st.session_state.usuario_atual = ""
+        st.session_state.carrinho = []
+        st.rerun()
+        
+    # Renderiza diretamente as opções do garçom se ele já tiver se identificado
+    aba_operacao_garcom = st.radio("Selecione a Ação Ativa:", ["➕ Lançar Pedido", "🧾 Fechar Mesas / Gerenciar Contas"], horizontal=True)
+    
+    if aba_operacao_garcom == "➕ Lançar Pedido":
+        renderizar_terminal_garcom()
+    else:
+        renderizar_fechamento_caixa()
+
+else:
+    # Se o terminal da empresa foi aberto mas nenhum garçom logou, renderiza as Abas Masters Superiores
+    aba_master_gerencia, aba_master_atendimento = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal de Identificação do Garçom"])
+    
+    # --- INTERFACE EXCLUSIVA DO PAINEL ADMIN (RESTREITA POR SENHA MASTER) ---
+    with aba_master_gerencia:
+        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width="stretch", key="master_lock_emp_btn"):
+            st.session_state.logado = False
+            st.session_state.empresa_id_atual = None
+            st.session_state.senha_master_empresa = ""
+            st.session_state.garcom_logado = False
+            st.session_state.carrinho = []
+            st.rerun()
+            
+        st.markdown("---")
+        st.subheader("🔑 Autenticação Gerencial Requerida")
+        senha_gerencial_digitada = st.text_input("Digite a Senha Master da Empresa para liberar as ferramentas:", type="password", key="senha_painel_gerencial_input")
+        
+        if senha_gerencial_digitada != st.session_state.senha_master_empresa:
+            st.warning("🔒 Conteúdo restrito. Insira a senha master válida do estabelecimento para liberar o painel.")
+        else:
+            # Chama o módulo administrativo completo importado do views/gerencia.py
+            renderizar_painel_gerencial()
+            
+    # --- INTERFACE DE ENTRADA DO CORPO DE GARÇONS ---
+    with aba_master_atendimento:
+        # Chama a função de identificação/cadastro do garçom importada de views/garcom_login.py
+        renderizar_terminal_garcom()
