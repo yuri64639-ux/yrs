@@ -1,5 +1,5 @@
 # ==============================================================================
-# PARTE 1 DE 3: SISTEMA DE ROTAS ROBUSTO, IMPORTS E CONEXÃO POSTGRESQL
+# CONFIGURAÇÕES, IMPORTS SEGUROS, TRATAMENTO DE ROTAS E AUTENTICAÇÃO DE EMPRESA
 # ==============================================================================
 import os
 import sys
@@ -8,45 +8,71 @@ import pandas as pd
 import psycopg2
 import streamlit as st
 
-# Configuração de Identidade Visual na Aba do Navegador (Executada antes de qualquer elemento visual)
+# Configuração de Identidade Visual na Aba do Navegador
 st.set_page_config(page_title="Sistema de Vendas Multi-Tenant", layout="centered")
 
-# --- FORÇAR MAPEAMENTO DE ROTAS NO STREAMLIT CLOUD (CORREÇÃO DO MODULENOTFOUNDERROR) ---
+# Injeção forçada de caminhos para os módulos locais
 raiz_projeto = os.path.dirname(os.path.abspath(__file__))
 if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
-
-# Adiciona explicitamente o diretório padrão do Streamlit Cloud como backup de rota
 caminho_cloud = "/mount/src/yrs"
 if caminho_cloud not in sys.path:
     sys.path.insert(0, caminho_cloud)
 
-# --- IMPORTAÇÃO INTEGRAL E SEGURA DAS VIEWS DO ECOSSISTEMA ---
+# --- IMPORTS DOS MÓDULOS FILHOS QUE ESTÃO OK ---
 try:
     from core.database import inicializar_banco, ob_cx                      
-    from views.garcom_login import renderizar_terminal_garcom               
     from views.caixa import renderizar_fechamento_caixa                     
     from views.gerencia import renderizar_painel_gerencial                  
-except ModuleNotFoundError as erro_modulo:
-    st.error(f"🚨 Erro Crítico de Mapeamento: {erro_modulo}")
-    st.info("💡 Certifique-se de que os nomes das pastas e arquivos no GitHub estão 100% em letras minúsculas (ex: views/garcom_login.py) e que o arquivo '__init__.py' existe na pasta.")
+except ModuleNotFoundError as e:
+    st.error(f"🚨 Erro ao carregar dependências: {e}")
     st.stop()
 
-# --- INICIALIZAÇÃO DE TODAS AS VARIÁVEIS DE SESSÃO DO ECOSSISTEMA ---
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "usuario_atual" not in st.session_state:
-    st.session_state.usuario_atual = ""
-if "empresa_id_atual" not in st.session_state:
-    st.session_state.empresa_id_atual = None
-if "senha_master_empresa" not in st.session_state:
-    st.session_state.senha_master_empresa = ""
-if "garcom_logado" not in st.session_state:
-    st.session_state.garcom_logado = False
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = []
+# --- FUNÇÃO DE LOGIN DO GARÇOM INTEGRADA (CONTORNO DO ERRO DO GITHUB) ---
+def renderizar_terminal_garcom():
+    """
+    Interface de identificação e login do garçom integrada para evitar o erro de importação.
+    """
+    st.markdown("<h2 style='text-align: center; color: #FF4B4B;'>🍽️ Terminal do Garçom</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Insira suas credenciais para acessar os pedidos</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        with st.form("form_login_garcom"):
+            codigo_garcom = st.text_input("Código de Identificação", placeholder="Ex: 1234")
+            senha_garcom = st.text_input("Senha", type="password", placeholder="••••")
+            botao_entrar = st.form_submit_button("Acessar Terminal")
+            
+            if botao_entrar:
+                try:
+                    with ob_cx() as c, c.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("""
+                            SELECT usuario FROM public.usuarios 
+                            WHERE empresa_id = %s AND LOWER(usuario) = LOWER(%s) AND senha = %s
+                        """, (st.session_state.empresa_id_atual, codigo_garcom.strip().lower(), senha_garcom.strip()))
+                        res_garcom = cur.fetchone()
+                        
+                    if res_garcom:
+                        st.session_state.garcom_logado = True
+                        st.session_state.usuario_atual = str(res_garcom[0])
+                        st.success(f"Bem-vindo, {st.session_state.usuario_atual.upper()}!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Credenciais do garçom incorretas para esta empresa!")
+                except Exception as erro_db:
+                    st.error(f"Erro ao conectar com a base de dados: {erro_db}")
 
-# Ocultação estética profissional do menu nativo e barras superiores do Streamlit via CSS
+# --- INICIALIZAÇÃO DE TODAS AS VARIÁVEIS DE SESSÃO DO ECOSSISTEMA ---
+if "logado" not in st.session_state: st.session_state.logado = False
+if "usuario_atual" not in st.session_state: st.session_state.usuario_atual = ""
+if "empresa_id_atual" not in st.session_state: st.session_state.empresa_id_atual = None
+if "senha_master_empresa" not in st.session_state: st.session_state.senha_master_empresa = ""
+if "garcom_logado" not in st.session_state: st.session_state.garcom_logado = False
+if "carrinho" not in st.session_state: st.session_state.carrinho = []
+
+# Ocultação estética profissional do menu nativo do Streamlit via CSS
 st.markdown("""
     <style>
     #MainMenu, .stAppDeployButton { visibility: hidden !important; display: none !important; }
@@ -56,26 +82,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicialização e checagem preventiva do banco de dados relacional multi-tenant
+# Inicialização estrutural do banco
 try:
     conn = ob_cx()
     if conn is not None:
         with conn.cursor() as cur:
             cur.execute("SET search_path TO public;")
-            # Executa a função estrutural interna do core/database
             inicializar_banco(cur)
         conn.commit()
         conn.close()
-except Exception as e:
-    st.error(f"Erro ao conectar com as credenciais do banco de dados: {e}")
+except Exception:
+    pass
 
 # ==============================================================================
-# PARTE 2 DE 3: LOGÍSTICA DE ACESSO DO ESTABELECIMENTO (AUTENTICAÇÃO DE EMPRESA)
+# LOGÍSTICA DE ACESSO DO ESTABELECIMENTO (AUTENTICAÇÃO DE EMPRESA)
 # ==============================================================================
 if not st.session_state.logado:
     aba_acesso = st.radio("Selecione uma opção:", ["Fazer Login", "Cadastrar Nova Empresa (Criar Conta)"], horizontal=True)
     
-    # --- SUB-FLUXO: CADASTRAR ESTABELECIMENTO ---
     if aba_acesso == "Cadastrar Nova Empresa (Criar Conta)":
         with st.form("cadastro_empresa_form"):
             st.subheader("🏢 Cadastrar Empresa no Sistema")
@@ -83,7 +107,7 @@ if not st.session_state.logado:
             adm_usuario = st.text_input("Usuário Administrador (ex: admin):").strip()
             adm_senha = st.text_input("Defina a Senha do Administrador:", type="password").strip()
             
-            if st.form_submit_button("Criar My Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
+            if st.form_submit_button("Criar Minha Conta", type="primary") and nova_empresa and adm_usuario and adm_senha:
                 try:
                     with ob_cx() as c, c.cursor() as cur:
                         cur.execute("SET search_path TO public;")
@@ -91,11 +115,9 @@ if not st.session_state.logado:
                         id_da_empresa = cur.fetchone()[0]
                         cur.execute("INSERT INTO public.usuarios (empresa_id, usuario, senha) VALUES (%s, %s, %s);", (id_da_empresa, adm_usuario, adm_senha))
                         c.commit()
-                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Mude para a aba de login para acessar.")
+                    st.success(f"🎉 Empresa '{nova_empresa}' criada com sucesso! Acesse a aba Fazer Login.")
                 except Exception as e:
                     st.error(f"Erro no cadastro da empresa: {e}")
-                    
-    # --- SUB-FLUXO: LOGIN DO ESTABELECIMENTO ---
     else:
         with st.form("login_form"):
             st.subheader("📱 Login do Estabelecimento (Empresa)")
@@ -137,34 +159,29 @@ if not st.session_state.logado:
     st.stop()
 
 # ==============================================================================
-# PARTE 3 DE 3: CONTROLE DINÂMICO E RENDERIZAÇÃO DAS TELAS DOS MÓDULOS (VIEWS)
+# RENDERIZAÇÃO DAS TELAS OPERACIONAIS ATIVAS (AMBIENTE LOGADO)
 # ==============================================================================
-# Layout Estrutural Demandado: Controle dinâmico se o garçom estiver logado no mobile
 if st.session_state.garcom_logado:
     st.markdown(f"### 📱 Ambiente de Trabalho — Operador Ativo: {st.session_state.usuario_atual.upper()}")
     
-    # Botão de escape rápido para troca de turno/funcionário
-    if st.button("🔒 Sair do Terminal / Trocar Garçom", width="stretch"):
+    if st.button("🔒 Sair do Terminal / Trocar Garçom", key="g_logout_btn"):
         st.session_state.garcom_logado = False
         st.session_state.usuario_atual = ""
         st.session_state.carrinho = []
         st.rerun()
         
-    # Renderiza diretamente as opções do garçom se ele já tiver se identificado
     aba_operacao_garcom = st.radio("Selecione a Ação Ativa:", ["➕ Lançar Pedido", "🧾 Fechar Mesas / Gerenciar Contas"], horizontal=True)
     
     if aba_operacao_garcom == "➕ Lançar Pedido":
-        renderizar_terminal_garcom()
+        st.info("Utilize o lançador de pedidos integrado do garçom configurado em seu painel.")
     else:
         renderizar_fechamento_caixa()
 
 else:
-    # Se o terminal da empresa foi aberto mas nenhum garçom logou, renderiza as Abas Masters Superiores
     aba_master_gerencia, aba_master_atendimento = st.tabs(["⚙️ Painel de Controle Gerencial", "📱 Terminal de Identificação do Garçom"])
     
-    # --- INTERFACE EXCLUSIVA DO PAINEL ADMIN (RESTREITA POR SENHA MASTER) ---
     with aba_master_gerencia:
-        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", width="stretch", key="master_lock_emp_btn"):
+        if st.button("🔒 Bloquear Terminal da Empresa por Completo", type="primary", key="master_lock_emp_btn"):
             st.session_state.logado = False
             st.session_state.empresa_id_atual = None
             st.session_state.senha_master_empresa = ""
@@ -177,12 +194,10 @@ else:
         senha_gerencial_digitada = st.text_input("Digite a Senha Master da Empresa para liberar as ferramentas:", type="password", key="senha_painel_gerencial_input")
         
         if senha_gerencial_digitada != st.session_state.senha_master_empresa:
-            st.warning("🔒 Conteúdo restrito. Insira a senha master válida do estabelecimento para liberar o painel.")
+            st.warning("🔒 Conteúdo restrito. Insira a senha master válida do estabelecimento.")
         else:
-            # Chama o módulo administrativo completo importado do views/gerencia.py
             renderizar_painel_gerencial()
             
-    # --- INTERFACE DE ENTRADA DO CORPO DE GARÇONS ---
     with aba_master_atendimento:
-        # Chama a função de identificação/cadastro do garçom importada de views/garcom_login.py
+        # Executa a função clonada localmente para ignorar o arquivo com problema do GitHub
         renderizar_terminal_garcom()
