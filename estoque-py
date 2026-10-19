@@ -1,4 +1,4 @@
-import tkinter_tool as tk
+import tkinter as tk
 from tkinter import ttk, messagebox
 
 class CardapioApp:
@@ -143,7 +143,7 @@ class CardapioApp:
                 
             # Cálculo de Equivalência: Exibe o equivalente do consumo da receita convertida para o Estoque Geral (Kg/L)
             qtd_estoque_equivalente = qtd_num / 1000.0
-            unidade_estoque = "kg" if unidad_sel == "g" else "L"
+            unidade_estoque = "kg" if unidade_sel == "g" else "L"
             
             insumos_associados.append({
                 "insumo": insumo_sel, 
