@@ -41,7 +41,7 @@ class DatabaseManager:
                         id SERIAL PRIMARY KEY,
                         nome VARCHAR(255) UNIQUE NOT NULL,
                         preco NUMERIC(10, 2) NOT NULL
-                    );
+                );
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS ficha_tecnica (
@@ -99,7 +99,7 @@ st.markdown("---")
 menu_tabs = st.tabs(["📥 Entrada de Insumos (Lote)", "🏗️ Engenharia de Fichas Técnicas", "📋 Auditoria e Controle de Cardápio"])
 
 # ABA 1: INGESTÃO DE MATÉRIA-PRIMA EM MASSA
-with menu_tabs:
+with menu_tabs[0]:
     st.header("📥 Ingestão de Matéria-Prima em Lote")
     st.markdown("Utilize esta interface para cadastrar novos insumos comerciais por linha. O estoque base é parametrizado em **Quilos (Kg)** ou **Litros (L)**.")
     
@@ -133,7 +133,7 @@ with menu_tabs:
         else:
             st.warning("Validação Recusada: O campo de entrada de dados textual está vazio.")
 # ABA 2: ENGENHARIA DE PRODUTOS E MATRIZ DE COMPOSIÇÃO (FICHAS TÉCNICAS)
-with menu_tabs:
+with menu_tabs[1]:
     st.header("🏗️ Engenharia de Fichas Técnicas")
     
     db_conn = DatabaseManager.get_connection()
@@ -227,7 +227,7 @@ with menu_tabs:
                     db_conn.close()
 
 # ABA 3: AUDITORIA E EXCLUSÃO SELETIVA EM LOTE DO CARDÁPIO
-with menu_tabs:
+with menu_tabs[2]:
     st.header("📋 Auditoria e Controle de Cardápio")
     st.markdown("Abaixo estão listados todos os SKUs comercializados. Selecione múltiplos itens para exclusão imediata em lote do servidor central.")
     
