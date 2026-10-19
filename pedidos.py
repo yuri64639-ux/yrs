@@ -65,23 +65,58 @@ else:
     if "garcao_atual" not in st.session_state:
         st.session_state.garcao_atual = ""
 
+# --- LOGIN DINÂMICO VIA BANCO DE DADOS NEON ---
 if not st.session_state.usuario_autenticado:
+    # Puxa a lista de garçons ativos cadastrados no outro app
+    lista_garcons_db = ["Gerente"]
+    conn = init_connection()
+    if conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
+            except:
+                pass
+        conn.close()
+
     st.container()
     col_l1, col_l2, col_l3 = st.columns([0.1, 0.8, 0.1])
     with col_l2:
         st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
-        nome_input = st.selectbox("Usuário:", ["Garçom 01", "Garçom 02", "Garçom 03", "Gerente"])
-        senha_input = st.text_input("Senha Operacional:", type="password")
+        nome_input = st.selectbox("Selecione seu Nome:", options=lista_garcons_db)
+        senha_input = st.text_input("Sua Senha / Código Operacional:", type="password")
+        
         if st.button("Entrar no Sistema", type="primary", use_container_width=True):
-            if (nome_input in ["Garçom 01", "Garçom 02", "Garçom 03"] and senha_input == "1234") or (nome_input == "Gerente" and senha_input == "admin"):
+            if nome_input == "Gerente" and senha_input == "admin":
                 st.session_state.usuario_autenticado = True
                 st.session_state.garcao_atual = nome_input
                 st.query_params["garcao"] = nome_input
-                st.success(f"Conectado: {nome_input}")
+                st.success("Acesso Gerencial Autorizado!")
                 time.sleep(0.3)
                 st.rerun()
             else:
-                st.error("Credenciais Inválidas!")
+                # Consulta e valida se a senha bate com a cadastrada na tabela de funcionários
+                conn = init_connection()
+                autenticado_db = False
+                if conn:
+                    with conn.cursor() as cur:
+                        try:
+                            cur.execute("SELECT nome FROM cadastros_garcons WHERE nome = %s AND codigo_operacional = %s;", (nome_input, senha_input.strip()))
+                            if cur.fetchone():
+                                autenticado_db = True
+                        except:
+                            pass
+                    conn.close()
+                
+                if autenticado_db:
+                    st.session_state.usuario_autenticado = True
+                    st.session_state.garcao_atual = nome_input
+                    st.query_params["garcao"] = nome_input
+                    st.success(f"Bem-vindo, {nome_input}!")
+                    time.sleep(0.3)
+                    st.rerun()
+                else:
+                    st.error("Senha Incorreta para o garçom selecionado!")
     st.stop()
 
 tempo_atual = time.time()
@@ -108,9 +143,8 @@ with col_logout:
         st.rerun()
 
 st.markdown("---")
-tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência Master"])
-# ABA 1: OPERAÇÃO DE LANÇAMENTO (ÍNDICE 0)
-with tabs[0]:
+tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
+with tabs:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
@@ -125,7 +159,7 @@ with tabs[0]:
     produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()] if busca_termo else st.session_state.produtos_cache
 
     if not produtos_filtrados:
-        st.warning("Nenhum produto encontrado no cardápio.")
+        st.warning("Nenhum produto encontrado.")
     else:
         for prod in produtos_filtrados:
             col_n, col_p, col_q, col_b = st.columns([0.4, 0.2, 0.2, 0.2])
@@ -137,7 +171,7 @@ with tabs[0]:
             with col_q:
                 qtd_p = st.number_input("Quantidade", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
             with col_b:
-                if st.button("➕ Selecionar Item", key=f"add_cart_{prod['id']}", use_container_width=True):
+                if st.button("➕ Adicionar", key=f"add_cart_{prod['id']}", use_container_width=True):
                     p_id = str(prod['id'])
                     if p_id in st.session_state.carrinho:
                         st.session_state.carrinho[p_id]["qtd"] += qtd_p
@@ -146,15 +180,13 @@ with tabs[0]:
                     st.toast(f"Adicionado: {qtd_p}x {prod['nome']}")
 
     st.markdown("---")
-    st.subheader("📋 Conferir Seleção Atual (Carrinho)")
+    st.subheader("📋 Conferir Seleção (Carrinho)")
 
     if not st.session_state.carrinho:
-        st.info("Nenhum item selecionado na bandeja temporária.")
+        st.info("Nenhum item selecionado.")
     else:
-        st.markdown(f"**Destino:** {input_mesa.strip()} | **Comanda:** {input_comanda.strip()}")
         total_geral_carrinho = 0.0
         itens_remover = []
-        
         for k, item in st.session_state.carrinho.items():
             col_c_nome, col_c_qtd, col_c_sub, col_c_del = st.columns([0.4, 0.2, 0.2, 0.2])
             sub_total_item = item["preco"] * item["qtd"]
@@ -173,14 +205,14 @@ with tabs[0]:
             del st.session_state.carrinho[k]
             st.rerun()
             
-        st.markdown(f"### Total Acumulado do Pedido: R\$ {total_geral_carrinho:.2f}")
+        st.markdown(f"### Total: R\$ {total_geral_carrinho:.2f}")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if st.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
                 if not input_mesa.strip() or input_mesa.strip().lower() in ["balcão", ""]:
-                    st.error("🚨 LANÇAMENTO RECUSADO: Você deve informar o número da Mesa.")
+                    st.error("🚨 Informe uma Mesa válida.")
                 elif not input_comanda.strip() or input_comanda.strip().lower() in ["não informado", ""]:
-                    st.error("🚨 LANÇAMENTO RECUSADO: O código da Comanda é obrigatório.")
+                    st.error("🚨 O código da Comanda é obrigatório.")
                 else:
                     conn = init_connection()
                     if conn:
@@ -226,40 +258,35 @@ with tabs[0]:
                                     
                                     conn.commit()
                                     st.session_state.carrinho = {}
-                                    st.success("Comanda enviada com sucesso!")
+                                    st.success("Pedido enviado com sucesso!")
                                     time.sleep(0.4)
                                     st.rerun()
                         except Exception as err:
-                            st.error(f"Erro de transação no banco: {err}")
+                            st.error(f"Erro no banco: {err}")
                         finally:
                             conn.close()
         with col_c2:
-            if st.button("🗑️ Limpar Toda a Bandeja", use_container_width=True):
+            if st.button("🗑️ Limpar Tudo", use_container_width=True):
                 st.session_state.carrinho = {}
                 st.rerun()
 
-# ABA 2: CONSULTA DE CONSUMO INDIVIDUAL CARREGADO APENAS SOB DEMANDA (ÍNDICE 1)
-with tabs[1]:
-    st.subheader("🗂️ Painel de Acompanhamento de Mesas Ativas")
+with tabs:
+    st.subheader("🗂️ Consumo Atual do Salão")
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Lista apenas os nomes das mesas abertas (Consulta leve de string única)
             cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
             mesas_abertas = cur.fetchall()
-            
             if not mesas_abertas:
-                st.info("Nenhuma mesa com consumo aberto no momento.")
+                st.info("Nenhuma mesa aberta no momento.")
             else:
                 for m in mesas_abertas:
-                    # O segredo do desempenho: o Streamlit só busca a comanda pesada se o usuário clicar no expander
                     with st.expander(f"🪑 {m['mesa_numero']} (Toque para Carregar Conta)"):
                         cur.execute("""
                             SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro
                             FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' GROUP BY produto_nome, comanda_codigo, garcao_nome ORDER BY produto_nome;
                         """, (m['mesa_numero'],))
                         itens_mesa = cur.fetchall()
-                        
                         if itens_mesa:
                             subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
                             st.markdown(f"**Identificador Comanda:** `{itens_mesa[0]['comanda_codigo']}` | **Total: R\$ {subtotal_mesa:.2f}**")
@@ -267,26 +294,25 @@ with tabs[1]:
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
-# ABA 3: DIRETORIA E FECHAMENTO MASTER RESTREITO (ÍNDICE 2)
-with tabs[2]:
+with tabs:
     if not st.session_state.gerente_autenticado:
-        st.subheader("🔐 Módulo de Gestão Restrito ao Administrador")
-        senha_gerencia = st.text_input("Insira a credencial master:", type="password", key="senha_master_gerencia")
-        if st.button("Liberar Painel", type="primary", use_container_width=True):
+        st.subheader("🔐 Área Restrita ao Gerente")
+        senha_gerencia = st.text_input("Insira a senha master de gerência:", type="password", key="senha_master_gerencia")
+        if st.button("Liberar Módulo Admin", type="primary"):
             if senha_gerencia == "admin":
                 st.session_state.gerente_autenticado = True
-                st.success("Módulo de Auditoria Liberado!")
+                st.success("Módulo Administrativo Liberado!")
                 time.sleep(0.3)
                 st.rerun()
             else:
-                st.error("Acesso Recusado: Senha Incorreta!")
+                st.error("Senha de Gerência Incorreta!")
     else:
-        st.subheader("🚀 Operações Especiais de Caixa")
-        if st.button("🔒 Trancar Painel Administrativo", use_container_width=True):
+        st.subheader("🚀 Painel de Controle de Contas e Ajustes")
+        if st.button("🔒 Blquear Painel Admin"):
             st.session_state.gerente_autenticado = False
             st.rerun()
             
-        g_tab1, g_tab2, g_tab3 = st.tabs(["💰 Fechar Conta", "❌ Cancelar Lançamento", "🔄 Transferir de Mesa"])
+        g_tab1, g_tab2, g_tab3 = st.tabs(["💰 Fechar Conta", "❌ Cancelar Item", "🔄 Transferir Produto"])
         
         conn = init_connection()
         if conn:
@@ -296,49 +322,53 @@ with tabs[2]:
                 
                 with g_tab1:
                     if not lista_mesas_gerencia:
-                        st.info("Não há comandas abertas para faturamento no salão.")
+                        st.info("Nenhuma mesa ativa para fechamento.")
                     else:
-                        mesa_fechar = st.selectbox("Selecione a Mesa para Encerrar:", options=lista_mesas_gerencia, key="sel_fechar_m")
-                        cur.execute("SELECT id, produto_nome, quantity_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_fechar,))
+                        mesa_fechar = st.selectbox("Selecione a Mesa para Fechar:", options=lista_mesas_gerencia, key="sel_fechar_m")
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
                         itens_f = cur.fetchall()
                         
                         sub_f = sum(float(i['valor_total']) for i in itens_f)
-                        st.write(f"**Consumo dos Produtos:** R\$ {sub_f:.2f}")
+                        st.write(f"**Subtotal dos Consumos:** R\$ {sub_f:.2f}")
                         
-                        aplicar_10 = st.checkbox("Incluir Taxa de Serviço Opcional (10%)", value=True, key="chk_taxa_10_gerencia")
-                        forma_p = st.selectbox("Método de Recebimento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
+                        aplicar_10 = st.checkbox("Aplicar 10% de taxa de serviço", value=True, key="chk_taxa_10_gerencia")
+                        forma_p = st.selectbox("Forma de Pagamento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
                         
                         valor_final_f = sub_f * 1.10 if aplicar_10 else sub_f
-                        st.markdown(f"### Total Final do Caixa: R\$ {valor_final_f:.2f}")
+                        st.markdown(f"### Total Final a Cobrar: R\$ {valor_final_f:.2f}")
                         
-                        if st.button("𖨰 Encerrar Conta e Emitir Baixa", type="primary", use_container_width=True):
+                        if st.button("𖨰 Baixar e Concluir Conta", type="primary"):
                             ids_fechar = [item['id'] for item in itens_f]
                             cur.execute("""
                                 UPDATE pedidos_realizados 
-                                SET status_conta = 'Fechada', forma_pagamento = %s, valor_total = valor_total * %s, total = valor_total * %s, taxa_inclusa = %s
+                                SET status_conta = 'Fechada', 
+                                    forma_pagamento = %s, 
+                                    valor_total = valor_total * %s, 
+                                    total = valor_total * %s, 
+                                    taxa_inclusa = %s
                                 WHERE id = ANY(%s);
                             """, (forma_p, 1.10 if aplicar_10 else 1.0, 1.10 if aplicar_10 else 1.0, aplicar_10, ids_fechar))
                             conn.commit()
-                            st.success(f"Conta fechada e registrada sob o método: {forma_p}!")
+                            st.success(f"Conta da {mesa_fechar} fechada com sucesso em {forma_p}!")
                             time.sleep(0.4)
                             st.rerun()
 
                 with g_tab2:
                     if not lista_mesas_gerencia:
-                        st.info("Nenhum ativo disponível para estorno.")
+                        st.info("Nenhuma mesa ativa para estornos.")
                     else:
-                        mesa_estorno = st.selectbox("Selecione a Mesa:", options=lista_mesas_gerencia, key="sel_estorno_m")
-                        cur.execute("SELECT id, produto_nome, quantity_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_estorno,))
+                        mesa_estorno = st.selectbox("Selecione a Mesa do item errado:", options=lista_mesas_gerencia, key="sel_estorno_m")
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_estorno,))
                         itens_estornar = cur.fetchall()
                         
-                        opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']} (ID Ref: {i['id']})": i for i in itens_estornar}
+                        opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']} (Ref ID: {i['id']})": i for i in itens_estornar}
                         if not opcoes_estorno:
-                            st.info("Nenhum item em aberto nesta comanda.")
+                            st.info("Nenhum item encontrado.")
                         else:
-                            item_sel_estorno = st.selectbox("Escolha o Lançamento Incorreto:", options=list(opcoes_estorno.keys()))
+                            item_sel_estorno = st.selectbox("Selecione o Item para Cancelar:", options=list(opcoes_estorno.keys()))
                             obj_estorno = opcoes_estorno[item_sel_estorno]
                             
-                            if st.button("❌ Estornar Item e Reabastecer Estoque", type="primary", use_container_width=True):
+                            if st.button("❌ Cancelar Item e Devolver ao Estoque", type="primary"):
                                 cur.execute("""
                                     SELECT f.insumo_id, f.quantidade 
                                     FROM ficha_tecnica f 
@@ -353,30 +383,29 @@ with tabs[2]:
                                 
                                 cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno['id'],))
                                 conn.commit()
-                                st.success("Transação desfeita e inventário estornado!")
+                                st.success("Item estornado!")
                                 time.sleep(0.4)
-                                cur.execute("SELECT 1;") # Reset de cursor fictício de velocidade
                                 st.rerun()
 
                 with g_tab3:
                     if not lista_mesas_gerencia:
-                        st.info("Nenhum ativo disponível para transferência.")
+                        st.info("Nenhuma mesa ativa para transferências.")
                     else:
                         mesa_origem = st.selectbox("Mesa de Origem:", options=lista_mesas_gerencia, key="sel_trans_origem")
-                        cur.execute("SELECT id, produto_nome, quantity_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_origem,))
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_origem,))
                         itens_trans = cur.fetchall()
                         
-                        opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']} (ID Ref: {i['id']})": i for i in itens_trans}
+                        opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']} (Ref ID: {i['id']})": i for i in itens_trans}
                         if not opcoes_trans:
-                            st.info("Nenhum item ativo nesta comanda.")
+                            st.info("Nenhum item nesta mesa.")
                         else:
-                            item_sel_trans = st.selectbox("Item a transferir:", options=list(opcoes_trans.keys()))
+                            item_sel_trans = st.selectbox("Item a ser Transferido:", options=list(opcoes_trans.keys()))
                             obj_trans = opcoes_trans[item_sel_trans]
-                            mesa_destino = st.text_input("Número da Nova Mesa de Destino:")
+                            mesa_destino = st.text_input("Número da Mesa de Destino:")
                             
-                            if st.button("🔄 Confirmar Transferência", type="primary", use_container_width=True):
+                            if st.button("🔄 Executar Transferência", type="primary"):
                                 if not mesa_destino.strip():
-                                    st.error("Erro: Identifique o destino.")
+                                    st.error("Informe a mesa de destino.")
                                 else:
                                     cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans['id']))
                                     conn.commit()
