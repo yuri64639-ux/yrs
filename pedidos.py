@@ -3,10 +3,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 
-# Configuração da página do Streamlit para o Caixa/Pedidos
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# Conexão segura e direta com o Banco de Dados Neon na nuvem
 def init_connection():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -14,7 +12,6 @@ def init_connection():
         st.error(f"Erro ao conectar ao banco Neon: {e}")
         return None
 
-# MIGRAÇÃO SILENCIOSA: Executa as correções estruturais sem exibir nenhum texto na interface
 def upgrade_db_silencioso():
     conn = init_connection()
     if conn:
@@ -48,12 +45,14 @@ def upgrade_db_silencioso():
 
 upgrade_db_silencioso()
 
-# Inicializa as variáveis de controle do carrinho
+# Inicialização de memória de alto desempenho
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
+if "produtos_cache" not in st.session_state:
+    st.session_state.produtos_cache = []
+if "ultimo_carregamento_produtos" not in st.session_state:
+    st.session_state.ultimo_carregamento_produtos = 0.0
 
-# --- PERSISTÊNCIA VIA URL (ANTI-F5) ---
-# Se o usuário já tiver os dados na URL do navegador, recupera automaticamente
 if "garcao" in st.query_params:
     st.session_state.usuario_autenticado = True
     st.session_state.garcao_atual = st.query_params["garcao"]
@@ -63,101 +62,75 @@ else:
     if "garcao_atual" not in st.session_state:
         st.session_state.garcao_atual = ""
 
-# Define qual aba deve abrir com base na URL (padrão é a aba 0)
-default_tab = int(st.query_params.get("aba", 0))
-
-# --- TELA DE LOGIN OPERACIONAL ---
 if not st.session_state.usuario_autenticado:
     st.container()
-    col_l1, col_l2, col_l3 = st.columns([0.3, 0.4, 0.3])
+    col_l1, col_l2, col_l3 = st.columns([0.1, 0.8, 0.1])
     with col_l2:
-        st.markdown("<h2 style='text-align: center;'>🔐 Autenticação de Operador</h2>", unsafe_allow_html=True)
-        nome_input = st.selectbox("Selecione seu Nome de Usuário:", ["Garçom 01", "Garçom 02", "Garçom 03", "Gerente"])
-        senha_input = st.text_input("Insira sua Senha Operacional:", type="password")
-        
+        st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
+        nome_input = st.selectbox("Usuário:", ["Garçom 01", "Garçom 02", "Garçom 03", "Gerente"])
+        senha_input = st.text_input("Senha:", type="password")
         if st.button("Entrar no Sistema", type="primary", use_container_width=True):
             if (nome_input in ["Garçom 01", "Garçom 02", "Garçom 03"] and senha_input == "1234") or (nome_input == "Gerente" and senha_input == "admin"):
                 st.session_state.usuario_autenticado = True
                 st.session_state.garcao_atual = nome_input
-                # Salva o login diretamente nos parâmetros da URL do navegador
                 st.query_params["garcao"] = nome_input
-                st.query_params["aba"] = 0
                 st.success(f"Bem-vindo, {nome_input}!")
-                time.sleep(0.5)
+                time.sleep(0.3)
                 st.rerun()
             else:
                 st.error("Credenciais Inválidas!")
     st.stop()
 
-# --- INTERFACE DO GARÇOM ---
-@st.fragment(run_every="1s")
-def checar_alertas_estoque_oculto():
+# CARREGAMENTO INTELIGENTE (Puxa do banco uma vez e guarda na memória local do app)
+tempo_atual = time.time()
+if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT nome, quantidade_atual FROM insumos WHERE quantidade_atual <= 2.000 ORDER BY nome;")
-            itens_criticos = cur.fetchall()
+            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
+            st.session_state.produtos_cache = cur.fetchall()
         conn.close()
-        if itens_criticos:
-            for item in itens_criticos:
-                st.error(f"⚠️ **ATENÇÃO GARÇOM:** O insumo **{item['nome']}** está acabando no estoque! (Restam apenas {float(item['quantidade_atual']):.3f} Kg/L)")
+        st.session_state.ultimo_carregamento_produtos = tempo_atual
 
-col_titulo, col_logout = st.columns([0.8, 0.2])
+col_titulo, col_logout = st.columns([0.7, 0.3])
 with col_titulo:
-    st.title("🛒 Frente de Caixa & Gerenciamento de Salão")
+    st.title("🛒 Caixa & Salão")
 with col_logout:
     st.markdown(f"👤 **{st.session_state.garcao_atual}**")
-    if st.button("🚪 Sair / Logoff", use_container_width=True):
+    if st.button("🚪 Sair", use_container_width=True):
         st.session_state.usuario_autenticado = False
         st.session_state.garcao_atual = ""
         st.session_state.carrinho = {}
-        st.query_params.clear()  # Limpa o link do navegador no logoff
+        st.query_params.clear()
         st.rerun()
 
-checar_alertas_estoque_oculto()
 st.markdown("---")
-
-# Renderiza as abas salvando o clique na URL do navegador
-menu_abas = ["🛍️ Lançar Pedidos (Carrinho)", "🗂️ Mesas Abertas & Consumo"]
-escolha_aba = st.radio("Navegação do Salão:", menu_abas, index=default_tab, horizontal=True, label_visibility="collapsed")
-
-# Sincroniza a aba clicada com a URL para resistir ao F5
-idx_aba_atual = menu_abas.index(escolha_aba)
-if idx_aba_atual != default_tab:
-    st.query_params["aba"] = idx_aba_atual
-    st.rerun()
-# CONTEÚDO DA ABA 1: OPERAÇÃO DE LANÇAMENTO
-if idx_aba_atual == 0:
+tabs = st.tabs(["🛍️ Lançar Pedidos (Carrinho)", "🗂️ Mesas Abertas & Consumo"])
+# ABA 1: OPERAÇÃO DE LANÇAMENTO (INSTANTÂNEA)
+with tabs[0]:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
-        input_mesa = st.text_input("🪑 Número da Mesa:", placeholder="Obrigatório. Ex: Mesa 04")
+        input_mesa = st.text_input("🪑 Número da Mesa:", placeholder="Ex: Mesa 04")
     with col_comanda:
-        input_comanda = st.text_input("📋 Código da Comanda:", placeholder="Obrigatório. Ex: 1042")
+        input_comanda = st.text_input("📋 Código da Comanda:", placeholder="Ex: 1042")
 
     st.markdown("---")
     st.subheader("🔍 Encontrar Itens do Cardápio")
-    busca_termo = st.text_input("🔍 Buscar Produto no Cardápio (Lupa):", placeholder="Ex: Batata Frita")
+    busca_termo = st.text_input("🔍 Buscar Produto (Lupa):", placeholder="Ex: Batata Frita")
 
-    conn = init_connection()
-    produtos_filtrados = []
-    if conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if busca_termo:
-                cur.execute("SELECT id, nome, preco FROM produtos WHERE nome ILIKE %s ORDER BY nome;", (f"%{busca_termo}%",))
-            else:
-                cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
-            produtos_filtrados = cur.fetchall()
-        conn.close()
+    # Filtra os produtos direto na memória do celular, sem fazer requisição ao banco de dados
+    if busca_termo:
+        produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()]
+    else:
+        produtos_filtrados = st.session_state.produtos_cache
 
     if not produtos_filtrados:
         st.warning("Nenhum produto encontrado no cardápio.")
     else:
-        st.markdown("### Produtos Disponíveis")
         for prod in produtos_filtrados:
             col_n, col_p, col_q, col_b = st.columns([0.4, 0.2, 0.2, 0.2])
             p_base = float(prod['preco'])
-            
             with col_n:
                 st.markdown(f"**{prod['nome']}**")
             with col_p:
@@ -165,7 +138,7 @@ if idx_aba_atual == 0:
             with col_q:
                 qtd_p = st.number_input("Quantidade", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
             with col_b:
-                if st.button("➕ Adicionar à Seleção", key=f"add_cart_{prod['id']}", use_container_width=True):
+                if st.button("➕ Adicionar", key=f"add_cart_{prod['id']}", use_container_width=True):
                     p_id = str(prod['id'])
                     if p_id in st.session_state.carrinho:
                         st.session_state.carrinho[p_id]["qtd"] += qtd_p
@@ -174,44 +147,41 @@ if idx_aba_atual == 0:
                     st.toast(f"Adicionado: {qtd_p}x {prod['nome']}")
 
     st.markdown("---")
-    st.subheader("📋 Conferir Seleção de Itens (Carrinho)")
+    st.subheader("📋 Conferir Seleção (Carrinho)")
 
     if not st.session_state.carrinho:
-        st.info("Nenhum item selecionado até o momento.")
+        st.info("Nenhum item selecionado.")
     else:
-        st.markdown(f"**Destino Atual do Pedido:** {input_mesa.strip()} | **Identificador:** {input_comanda.strip()}")
+        st.markdown(f"**Destino:** {input_mesa.strip()} | **Comanda:** {input_comanda.strip()}")
         total_geral_carrinho = 0.0
         itens_remover = []
         
         for k, item in st.session_state.carrinho.items():
-            c_item_nome, c_item_preco, c_item_qtd, c_item_sub, c_item_del = st.columns([0.3, 0.2, 0.15, 0.2, 0.15])
+            c_item_nome, c_item_qtd, c_item_sub, c_item_del = st.columns([0.4, 0.2, 0.2, 0.2])
             sub_total_item = item["preco"] * item["qtd"]
             total_geral_carrinho += sub_total_item
-            
             with c_item_nome:
-                st.write(f"• **{item['nome']}**")
-            with c_item_preco:
-                st.write(f"R\$ {item['preco']:.2f} cada")
+                st.write(f"• **{item['nome']}** (R\$ {item['preco']:.2f})")
             with c_item_qtd:
                 st.write(f"{item['qtd']} un")
             with c_item_sub:
-                st.write(f"Subtotal: R\$ {sub_total_item:.2f}")
+                st.write(f"R\$ {sub_total_item:.2f}")
             with c_item_del:
-                if st.button("Tirar", key=f"del_item_cart_{k}"):
+                if st.button("Tirar", key=f"del_item_cart_{k}", use_container_width=True):
                     itens_remover.append(k)
                     
         for k in itens_remover:
             del st.session_state.carrinho[k]
             st.rerun()
             
-        st.markdown(f"### Total do Pedido: R\$ {total_geral_carrinho:.2f}")
+        st.markdown(f"### Total: R\$ {total_geral_carrinho:.2f}")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if st.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
                 if not input_mesa.strip() or input_mesa.strip().lower() in ["balcão", ""]:
-                    st.error("🚨 **LANÇAMENTO RECUSADO:** Informe uma **Mesa** válida.")
+                    st.error("🚨 Informe uma Mesa válida.")
                 elif not input_comanda.strip() or input_comanda.strip().lower() in ["não informado", ""]:
-                    st.error("🚨 **LANÇAMENTO RECUSADO:** O código da **Comanda** é obrigatório.")
+                    st.error("🚨 O código da Comanda é obrigatório.")
                 else:
                     conn = init_connection()
                     if conn:
@@ -243,24 +213,21 @@ if idx_aba_atual == 0:
                                     
                                     conn.commit()
                                     st.session_state.carrinho = {}
-                                    st.success("Pedido enviado com sucesso!")
-                                    time.sleep(0.5)
+                                    st.success("Pedido enviado!")
+                                    time.sleep(0.4)
                                     st.rerun()
                         except Exception as err:
-                            st.error(f"Erro no processamento do banco: {err}")
+                            st.error(f"Erro no banco: {err}")
                         finally:
                             conn.close()
         with col_c2:
-            if st.button("🗑️ Limpar Toda a Seleção", use_container_width=True):
+            if st.button("🗑️ Limpar Tudo", use_container_width=True):
                 st.session_state.carrinho = {}
-                st.success("Seleção esvaziada!")
-                time.sleep(0.5)
                 st.rerun()
 
-# CONTEÚDO DA ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS
-elif idx_aba_atual == 1:
+# ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS (CARREGA SOB DEMANDA)
+with tabs[1]:
     st.subheader("🗂️ Painel Operacional de Consumo das Mesas")
-    
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -273,21 +240,15 @@ elif idx_aba_atual == 1:
                 for m in mesas_abertas:
                     cur.execute("""
                         SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro
-                        FROM pedidos_realizados
-                        WHERE mesa_numero = %s
-                        GROUP BY produto_nome, comanda_codigo, garcao_nome
-                        ORDER BY produto_nome;
+                        FROM pedidos_realizados WHERE mesa_numero = %s GROUP BY produto_nome, comanda_codigo, garcao_nome ORDER BY produto_nome;
                     """, (m['mesa_numero'],))
                     itens_mesa = cur.fetchall()
-                    
                     if itens_mesa:
                         subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
                         comanda_ref = itens_mesa[0]['comanda_codigo']
                         garcao_ref = itens_mesa[0]['garcao_nome']
-                        
-                        with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — Consumo Acumulado: R\$ {subtotal_mesa:.2f}"):
-                            st.markdown(f"**Último Atendente Responsável:** `{garcao_ref}`")
-                            st.markdown("**Extrato de Lançamentos:**")
+                        with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — R\$ {subtotal_mesa:.2f}"):
+                            st.markdown(f"**Último Atendente:** `{garcao_ref}`")
                             for it in itens_mesa:
-                                st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — Subtotal: R\$ {float(it['total_financeiro']):.2f}")
+                                st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f}")
         conn.close()
