@@ -18,14 +18,12 @@ def init_db():
     conn = init_connection()
     if conn:
         with conn.cursor() as cur:
-            # Tabela de Insumos (Estoque Bruto em Kg ou L)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS insumos (
                     id SERIAL PRIMARY KEY,
                     nome VARCHAR(255) UNIQUE NOT NULL
                 );
             """)
-            # Tabela de Produtos (Preço de venda)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS produtos (
                     id SERIAL PRIMARY KEY,
@@ -33,7 +31,6 @@ def init_db():
                     preco NUMERIC(10, 2) NOT NULL
                 );
             """)
-            # Tabela de Ficha Técnica / Associação (6 insumos em g ou ml)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS ficha_tecnica (
                     id SERIAL PRIMARY KEY,
@@ -48,7 +45,6 @@ def init_db():
 
 init_db()
 
-# --- INTERFACE STREAMLIT ---
 st.title("🍳 Sistema de Gestão de Cardápio e Fichas Técnicas")
 st.caption("Rodando via GitHub, Streamlit Community Cloud e Banco Neon (PostgreSQL)")
 
@@ -57,18 +53,17 @@ tabs = st.tabs(["1. Cadastrar Insumos (Massa)", "2. Cadastrar Produtos & Ficha T
 # ABA 1: CADASTRO EM MASSA
 with tabs[0]:
     st.header("📦 Cadastro de Insumos em Massa")
-    st.info("Insira a lista de insumos brutos. O sistema assume estoque central em Quilogramas (Kg) ou Litros (L).")
+    st.info("O sistema assume estoque central em Quilogramas (Kg) ou Litros (L).")
     
     insumos_texto = st.text_area(
         "Digite ou cole os insumos (um por linha):",
-        placeholder="Massa Espaguete\nManjericão\nAlho\nManteiga\nCreme de Leite\nÁgua Mineral",
+        placeholder="Massa Espaguete\nManjericão\nAlho\nManteiga",
         height=200
     )
     
     if st.button("Cadastrar Insumos no Banco Neon", type="primary"):
         if insumos_texto.strip():
             linhas = [linha.strip() for linha in insumos_texto.split("\n") if linha.strip()]
-            
             conn = init_connection()
             if conn:
                 novos = 0
@@ -82,15 +77,14 @@ with tabs[0]:
                             pass
                     conn.commit()
                 conn.close()
-                st.success(f"Processamento concluído! {novos} novos insumos adicionados com sucesso.")
+                st.success(f"Processamento concluído! {novos} novos insumos adicionados.")
         else:
             st.warning("Por favor, digite ao menos um insumo.")
 
-# ABA 2: CADASTRO DE PRODUTO COM 6 ASSOCIAÇÕES
+# ABA 2: CADASTRO DE PRODUTO COM ATÉ 6 ASSOCIAÇÕES
 with tabs[1]:
     st.header("🍔 Cadastrar Produto Comercial")
     
-    # Buscar insumos cadastrados no banco
     conn = init_connection()
     lista_insumos = []
     if conn:
@@ -99,6 +93,10 @@ with tabs[1]:
             lista_insumos = cur.fetchall()
         conn.close()
         
+    # Monta a lista incluindo a opção opcional de não preenchimento
+    opcoes_select_obrigatorio = [item["nome"] for item in lista_insumos]
+    opcoes_select_opcional = ["- Nenhum -"] + opcoes_select_obrigatorio
+    
     insumo_opcoes = {item["nome"]: item["id"] for item in lista_insumos}
     
     col1, col2 = st.columns(2)
@@ -108,49 +106,56 @@ with tabs[1]:
         preco_produto = st.number_input("Preço de Venda (R$):", min_value=0.0, step=0.50, format="%.2f")
         
     st.markdown("---")
-    st.subheader("📋 Ficha Técnica: Associe Exatamente 6 Insumos Obrigatórios (g ou ml)")
+    st.subheader("📋 Ficha Técnica: Associe de 1 a no máximo 6 insumos (g ou ml)")
     
-    if len(lista_insumos) < 6:
-        st.error(f"Você possui apenas {len(lista_insumos)} insumos salvos. Cadastre pelo menos 6 na Aba 1 antes de prosseguir.")
+    if len(lista_insumos) < 1:
+        st.error("Nenhum insumo cadastrado no estoque. Cadastre ao menos um item na Aba 1.")
     else:
         dados_associacao = []
         
-        # Criação de 3 linhas com 2 colunas para organização na tela
         for i in range(3):
             c_left, c_right = st.columns(2)
             
-            # Bloco Esquerdo (Insumos 1, 3, 5)
+            # Coluna da Esquerda (Campos 1, 3, 5)
             idx_l = i * 2
             with c_left:
                 st.markdown(f"**Insumo {idx_l + 1}**")
                 sub_col1, sub_col2, sub_col3 = st.columns(3)
                 with sub_col1:
-                    ins_sel_l = st.selectbox(f"Selecione o item {idx_l + 1}", options=list(insumo_opcoes.keys()), key=f"ins_{idx_l}")
+                    if idx_l == 0:
+                        # O primeiro insumo sempre será obrigatório
+                        ins_sel_l = st.selectbox("Selecione o item 1", options=opcoes_select_obrigatorio, key=f"ins_{idx_l}")
+                    else:
+                        ins_sel_l = st.selectbox(f"Selecione o item {idx_l + 1} (Opcional)", options=opcoes_select_opcional, key=f"ins_{idx_l}")
                 with sub_col2:
                     qtd_sel_l = st.number_input(f"Qtd {idx_l + 1}", min_value=0.01, value=100.0, step=10.0, key=f"qtd_{idx_l}")
                 with sub_col3:
                     uni_sel_l = st.selectbox(f"Unidade {idx_l + 1}", options=["g", "ml"], key=f"uni_{idx_l}")
-                dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_l], "quantidade": qtd_sel_l, "unidade": uni_sel_l, "nome": ins_sel_l})
                 
-            # Bloco Direito (Insumos 2, 4, 6)
+                if ins_sel_l != "- Nenhum -":
+                    dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_l], "quantidade": qtd_sel_l, "unidade": uni_sel_l, "nome": ins_sel_l})
+                
+            # Coluna da Direita (Campos 2, 4, 6)
             idx_r = (i * 2) + 1
             with c_right:
                 st.markdown(f"**Insumo {idx_r + 1}**")
                 sub_col1, sub_col2, sub_col3 = st.columns(3)
                 with sub_col1:
-                    p_idx = min(idx_r, len(insumo_opcoes)-1)
-                    ins_sel_r = st.selectbox(f"Selecione o item {idx_r + 1}", options=list(insumo_opcoes.keys()), index=p_idx, key=f"ins_{idx_r}")
+                    ins_sel_r = st.selectbox(f"Selecione o item {idx_r + 1} (Opcional)", options=opcoes_select_opcional, key=f"ins_{idx_r}")
                 with sub_col2:
                     qtd_sel_r = st.number_input(f"Qtd {idx_r + 1}", min_value=0.01, value=100.0, step=10.0, key=f"qtd_{idx_r}")
                 with sub_col3:
                     uni_sel_r = st.selectbox(f"Unidade {idx_r + 1}", options=["g", "ml"], key=f"uni_{idx_r}")
-                dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_r], "quantidade": qtd_sel_r, "unidade": uni_sel_r, "nome": ins_sel_r})
+                
+                if ins_sel_r != "- Nenhum -":
+                    dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_r], "quantidade": qtd_sel_r, "unidade": uni_sel_r, "nome": ins_sel_r})
 
         st.markdown("")
-        if st.button("Salvar Produto e Ficha Técnica Completa", type="primary"):
+        if st.button("Salvar Produto e Ficha Técnica Dinâmica", type="primary"):
             ids_utilizados = [d["insumo_id"] for d in dados_associacao]
-            if len(set(ids_utilizados)) < 6:
-                st.error("Erro: Você repetiu o mesmo insumo em campos diferentes. Escolha 6 insumos distintos.")
+            
+            if len(set(ids_utilizados)) < len(dados_associacao):
+                st.error("Erro: Você repetiu o mesmo insumo em campos diferentes. Remova as duplicatas.")
             elif not nome_produto.strip():
                 st.error("Erro: O nome do produto comercial não pode estar vazio.")
             elif preco_produto <= 0:
@@ -172,16 +177,15 @@ with tabs[1]:
                                     (produto_id, dado["insumo_id"], dado["quantidade"], dado["unidade"])
                                 )
                             conn.commit()
-                        st.success(f"Sucesso! Produto '{nome_produto}' e sua Ficha Técnica foram salvos no Neon.")
+                        st.success(f"Sucesso! Produto '{nome_produto}' salvo no Neon com {len(dados_associacao)} insumo(s).")
                     except Exception as err:
                         st.error(f"Erro ao salvar no banco de dados: {err}")
                     finally:
                         conn.close()
 
-# ABA 3: VISUALIZAR CARDÁPIO E CONVERSÕES
+# ABA 3: VISUALIZAR CARDÁPIO
 with tabs[2]:
     st.header("📖 Cardápio Cadastrado & Fichas Técnicas")
-    
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -205,5 +209,5 @@ with tabs[2]:
                     for item in itens_ficha:
                         baixa_estoque = float(item['quantidade']) / 1000.0
                         unidade_estoque = "Kg" if item['unidade'] == "g" else "L"
-                        st.markdown(f"- **{item['insumo_nome']}**: {float(item['quantidade']):.1f}{item['unidade']} *(Baixa equivalente de **{baixa_estoque:.3f} {unidade_estoque}** no estoque central)*")
+                        st.markdown(f"- **{item['insumo_nome']}**: {float(item['quantidade']):.1f}{item['unidade']} *(Baixa: **{baixa_estoque:.3f} {unidade_estoque}** no estoque)*")
         conn.close()
