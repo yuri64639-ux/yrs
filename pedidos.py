@@ -41,28 +41,27 @@ def upgrade_db_pedidos():
 
 upgrade_db_pedidos()
 
-# Monitor em tempo real fixado no topo (atualiza a cada 1 segundo)
+# CHECAGEM OCULTA: O monitor visual sumiu, agora ele apenas gera os alertas para o garçom
 @st.fragment(run_every="1s")
-def render_estoque_tempo_real():
-    st.subheader("🔄 Monitor de Estoque Bruto (Atualiza a cada 1s)")
+def checar_alertas_estoque_oculto():
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT nome, quantidade_atual FROM insumos ORDER BY nome;")
-            estoque = cur.fetchall()
+            # Busca insumos que estão abaixo do nível crítico de 2 unidades (Kg ou L)
+            cur.execute("SELECT nome, quantidade_atual FROM insumos WHERE quantidade_atual <= 2.000 ORDER BY nome;")
+            itens_criticos = cur.fetchall()
         conn.close()
-        if estoque:
-            cols = st.columns(len(estoque) if len(estoque) < 5 else 5)
-            for idx, item in enumerate(estoque):
-                with cols[idx % 5]:
-                    st.metric(label=item['nome'], value=f"{float(item['quantidade_atual']):.3f}")
-        else:
-            st.info("Nenhum insumo cadastrado no estoque central.")
+        
+        # Dispara os alertas na tela do garçom se algo estiver acabando
+        if itens_criticos:
+            for item in itens_criticos:
+                st.error(f"⚠️ **ATENÇÃO GARÇOM:** O insumo **{item['nome']}** está acabando no estoque! (Restam apenas {float(item['quantidade_atual']):.3f} Kg/L)")
 
 st.title("🛒 Frente de Caixa: Lançamento de Vendas")
 st.caption("Identificação de clientes por Mesa/Comanda integrada com baixa por Ficha Técnica")
 
-render_estoque_tempo_real()
+# Executa o sistema de varredura e alertas automáticos
+checar_alertas_estoque_oculto()
 st.markdown("---")
 
 st.subheader("👤 Identificação do Cliente & Filtro")
@@ -86,7 +85,6 @@ if conn:
             cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
         produtos_filtrados = cur.fetchall()
     conn.close()
-
 if not produtos_filtrados:
     st.warning("Nenhum produto encontrado no cardápio.")
 else:
