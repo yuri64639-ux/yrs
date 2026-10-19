@@ -4,15 +4,14 @@ from tkinter import ttk, messagebox
 class CardapioApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Cadastro de Cardápio com Conversão de Unidades")
+        self.root.title("Cadastro de Cardápio - Kg/L para g/ml")
         self.root.geometry("950x700")
         
-        # Banco de dados simulado na memória
-        # Insumos padrões simulando estoque bruto (Kg ou L)
+        # Banco de dados temporário na memória com alguns insumos de exemplo
         self.insumos = ["Carne Moída", "Tomate", "Alface", "Cebola", "Azeite", "Frango", "Queijo", "Molho de Tomate", "Leite", "Farinha"]
         self.produtos = []
         
-        # Interface de Abas
+        # Criação das Abas
         self.tab_control = ttk.Notebook(root)
         
         self.tab_insumos = ttk.Frame(self.tab_control)
@@ -26,21 +25,21 @@ class CardapioApp:
         self.setup_tab_produtos()
 
     def setup_tab_insumos(self):
-        # Aba de Insumos
-        lbl = tk.Label(self.tab_insumos, text="Digite os insumos brutos (um por linha) para cadastro em massa.\n(O estoque bruto é considerado em Kg ou Litros):", font=("Arial", 11, "bold"), justify="left")
+        # Layout da Aba de Insumos
+        lbl = tk.Label(self.tab_insumos, text="Digite os insumos brutos (um por linha) para cadastro em massa.\n(O estoque principal é considerado em Kg ou Litros):", font=("Arial", 11, "bold"), justify="left")
         lbl.pack(pady=10, anchor="w", padx=20)
         
         self.txt_insumos = tk.Text(self.tab_insumos, width=60, height=15)
         self.txt_insumos.pack(pady=5, padx=20, fill="both", expand=True)
         
-        # Exemplo pré-preenchido para facilitar testes
+        # Exemplos iniciais na caixa de texto
         self.txt_insumos.insert("1.0", "Massa Espaguete\nManjericão\nAlho\nManteiga\nCreme de Leite\nÁgua Mineral")
         
         btn_salvar = tk.Button(self.tab_insumos, text="Cadastrar Insumos no Estoque", command=self.salvar_insumos_massa, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
         btn_salvar.pack(pady=15)
 
     def setup_tab_produtos(self):
-        # Aba de Produtos
+        # Layout da Aba de Produtos
         frame_inputs = tk.LabelFrame(self.tab_produtos, text=" Dados do Produto Comercial (Cardápio) ", padx=15, pady=15)
         frame_inputs.pack(fill="x", padx=20, pady=10)
         
@@ -52,7 +51,7 @@ class CardapioApp:
         self.entry_preco_produto = tk.Entry(frame_inputs, width=15)
         self.entry_preco_produto.grid(row=1, column=1, pady=5, padx=5, sticky="w")
         
-        # Frame de Associações (6 Insumos obrigatórios convertidos para g ou ml)
+        # Painel para as 6 associações obrigatórias
         frame_associacoes = tk.LabelFrame(self.tab_produtos, text=" Ficha Técnica: Associe exatamente 6 insumos (Consumo em g ou ml) ", padx=15, pady=15)
         frame_associacoes.pack(fill="both", expand=True, padx=20, pady=10)
         
@@ -60,7 +59,7 @@ class CardapioApp:
         self.entries_quantidades = []
         self.combos_unidades = []
         
-        # Grid para 6 associações (3 linhas x 2 colunas de inputs principais)
+        # Organização visual das 6 linhas de associação (3 linhas x 2 colunas de blocos)
         for i in range(6):
             row = i // 2
             col = (i % 2) * 5
@@ -74,15 +73,15 @@ class CardapioApp:
                 combo.set(self.insumos[i]) 
             self.combos_insumos.append(combo)
             
-            lbl_qtd = tk.Label(frame_associacoes, text="Qtd g/ml:")
+            lbl_qtd = tk.Label(frame_associacoes, text="Qtd:")
             lbl_qtd.grid(row=row, column=col+2, sticky="e", pady=12, padx=2)
             
             entry_qtd = tk.Entry(frame_associacoes, width=6)
-            entry_qtd.insert(0, "150") # valor padrão de teste (ex: 150g)
+            entry_qtd.insert(0, "150") 
             entry_qtd.grid(row=row, column=col+3, sticky="w", pady=12, padx=2)
             self.entries_quantidades.append(entry_qtd)
             
-            # Seletor de Unidade para a Ficha Técnica do prato
+            # Força as opções de unidade para g ou ml (compara ao estoque em Kg ou L)
             combo_uni = ttk.Combobox(frame_associacoes, values=["g", "ml"], width=4, state="readonly")
             combo_uni.set("g")
             combo_uni.grid(row=row, column=col+4, sticky="w", pady=12, padx=2)
@@ -105,7 +104,7 @@ class CardapioApp:
                 self.insumos.append(insumo)
                 novos_cont += 1
                 
-        # Atualiza as caixas de seleção em tempo real
+        # Atualiza em tempo real as listas de seleção dos produtos
         for combo in self.combos_insumos:
             current_val = combo.get()
             combo['values'] = self.insumos
@@ -122,7 +121,7 @@ class CardapioApp:
             messagebox.showerror("Erro", "Por favor, preencha o nome e o preço do produto comercial.")
             return
             
-        # Validação e captura das 6 associações em g ou ml
+        # Processa e valida cada uma das 6 associações obrigatórias
         insumos_associados = []
         for i in range(6):
             insumo_sel = self.combos_insumos[i].get()
@@ -141,7 +140,7 @@ class CardapioApp:
                 messagebox.showerror("Erro", f"Quantidade inválida no Insumo {i+1}. Digite apenas números maiores que zero.")
                 return
                 
-            # Cálculo de Equivalência: Exibe o equivalente do consumo da receita convertida para o Estoque Geral (Kg/L)
+            # Calcula automaticamente a correspondência matemática (Ex: 500g vira 0.500 Kg no estoque)
             qtd_estoque_equivalente = qtd_num / 1000.0
             unidade_estoque = "kg" if unidade_sel == "g" else "L"
             
@@ -153,7 +152,7 @@ class CardapioApp:
                 "unidade_estoque": unidade_estoque
             })
             
-        # Estruturação final do produto
+        # Salva a estrutura do produto finalizado
         produto_completo = {
             "nome": nome_prod,
             "preco": float(preco_prod.replace(",", ".")),
@@ -162,18 +161,18 @@ class CardapioApp:
         
         self.produtos.append(produto_completo)
         
-        # Geração do resumo com as duas métricas (Receita vs Estoque)
+        # Exibe um relatório detalhado na tela para confirmação
         resumo = f"Produto: {nome_prod} - R$ {preco_prod}\n"
         resumo += f"="*40 + "\n"
         resumo += "Ficha Técnica Gravada (Consumo de Insumos):\n\n"
         
         for item in insumos_associados:
             resumo += f"• {item['insumo']}: {item['quantidade_receita']}{item['unidade_receita']} "
-            resumo += f"(Baixa no estoque: {item['equivalente_estoque']:.3f} {item['unidade_estoque']})\n"
+            resumo += f"(Baixa calculada: {item['equivalente_estoque']:.3f} {item['unidade_estoque']})\n"
             
         messagebox.showinfo("Produto Cadastrado!", resumo)
         
-        # Limpa os campos de texto do produto para o próximo cadastro
+        # Limpa os campos para permitir o próximo cadastro de produto
         self.entry_nome_produto.delete(0, tk.END)
         self.entry_preco_produto.delete(0, tk.END)
 
