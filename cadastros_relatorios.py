@@ -53,6 +53,7 @@ with tabs[0]:
             if conn:
                 try:
                     with conn.cursor() as cur:
+                        # Insere o novo colaborador na base de dados Neon
                         cur.execute("INSERT INTO cadastros_garcons (nome, codigo_operacional) VALUES (%s, %s) ON CONFLICT DO NOTHING;", (novo_garcao.strip(), cod_garcao.strip()))
                         conn.commit()
                     st.success(f"Funcionário '{novo_garcao}' homologado e ativo no banco Neon!")
@@ -85,7 +86,9 @@ with tabs[1]:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_busca_garcons += [r[0] for r in cur.fetchall()]
+                # Limpa e extrai os valores brutos retornados da tupla do banco
+                for row in cur.fetchall():
+                    lista_busca_garcons.append(row[0] if isinstance(row, tuple) else row['nome'])
             except:
                 pass
         conn.close()
