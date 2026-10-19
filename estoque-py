@@ -54,7 +54,7 @@ st.caption("Rodando via GitHub, Streamlit Community Cloud e Banco Neon (PostgreS
 
 tabs = st.tabs(["1. Cadastrar Insumos (Massa)", "2. Cadastrar Produtos & Ficha Técnica", "3. Visualizar Cardápio"])
 
-# TABELA 1: CADASTRO EM MASSA
+# ABA 1: CADASTRO EM MASSA
 with tabs[0]:
     st.header("📦 Cadastro de Insumos em Massa")
     st.info("Insira a lista de insumos brutos. O sistema assume estoque central em Quilogramas (Kg) ou Litros (L).")
@@ -86,7 +86,7 @@ with tabs[0]:
         else:
             st.warning("Por favor, digite ao menos um insumo.")
 
-# TABELA 2: CADASTRO DE PRODUTO COM 6 ASSOCIAÇÕES
+# ABA 2: CADASTRO DE PRODUTO COM 6 ASSOCIAÇÕES
 with tabs[1]:
     st.header("🍔 Cadastrar Produto Comercial")
     
@@ -101,7 +101,7 @@ with tabs[1]:
         
     insumo_opcoes = {item["nome"]: item["id"] for item in lista_insumos}
     
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns(2)
     with col1:
         nome_produto = st.text_input("Nome do Prato / Bebida do Cardápio:")
     with col2:
@@ -123,7 +123,7 @@ with tabs[1]:
             idx_l = i * 2
             with c_left:
                 st.markdown(f"**Insumo {idx_l + 1}**")
-                sub_col1, sub_col2, sub_col3 = st.columns([2, 1, 1])
+                sub_col1, sub_col2, sub_col3 = st.columns(3)
                 with sub_col1:
                     ins_sel_l = st.selectbox(f"Selecione o item {idx_l + 1}", options=list(insumo_opcoes.keys()), key=f"ins_{idx_l}")
                 with sub_col2:
@@ -136,7 +136,7 @@ with tabs[1]:
             idx_r = (i * 2) + 1
             with c_right:
                 st.markdown(f"**Insumo {idx_r + 1}**")
-                sub_col1, sub_col2, sub_col3 = st.columns([2, 1, 1])
+                sub_col1, sub_col2, sub_col3 = st.columns(3)
                 with sub_col1:
                     p_idx = min(idx_r, len(insumo_opcoes)-1)
                     ins_sel_r = st.selectbox(f"Selecione o item {idx_r + 1}", options=list(insumo_opcoes.keys()), index=p_idx, key=f"ins_{idx_r}")
@@ -168,17 +168,17 @@ with tabs[1]:
                             
                             for dado in dados_associacao:
                                 cur.execute(
-                                    "INSERT INTO ficha_tecnica (produto_id, insumo_id, grandmother, unidade) VALUES (%s, %s, %s, %s);".replace("grandmother", "quantidade"),
+                                    "INSERT INTO ficha_tecnica (produto_id, insumo_id, quantidade, unidade) VALUES (%s, %s, %s, %s);",
                                     (produto_id, dado["insumo_id"], dado["quantidade"], dado["unidade"])
                                 )
                             conn.commit()
-                        st.success(f"Sucesso! Produto '{nome_produto}' e sua Ficha Técnica de 6 insumos foram salvos de forma permanente no Neon.")
+                        st.success(f"Sucesso! Produto '{nome_produto}' e sua Ficha Técnica foram salvos no Neon.")
                     except Exception as err:
                         st.error(f"Erro ao salvar no banco de dados: {err}")
                     finally:
                         conn.close()
 
-# TABELA 3: VISUALIZAR CARDÁPIO E CONVERSÕES
+# ABA 3: VISUALIZAR CARDÁPIO E CONVERSÕES
 with tabs[2]:
     st.header("📖 Cardápio Cadastrado & Fichas Técnicas")
     
