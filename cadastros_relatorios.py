@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 import time
 
-# Configuração de interface corporativa
+# Configuração de interface corporativa estável
 st.set_page_config(page_title="Gestão de Equipe & Performance", layout="wide")
 
 def init_connection():
@@ -19,7 +19,6 @@ def init_db_funcionarios():
     conn = init_connection()
     if conn:
         with conn.cursor() as cur:
-            # Cria a tabela de garçons oficiais vinculada ao banco Neon
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS cadastros_garcons (
                     id SERIAL PRIMARY KEY,
@@ -36,19 +35,17 @@ init_db_funcionarios()
 st.title("👥 Dashboard de Garçons & Performance de Vendas")
 st.caption("Controle centralizado de colaboradores e auditoria de faturamento analítico")
 
-# Criação das abas administrativas
 tabs = st.tabs(["📝 Cadastrar Novo Garçom", "📊 Relatório e Performance de Vendas"])
-# ABA 1: FORMULÁRIO DE CADASTRO OFICIAL DE GARÇONS
 with tabs[0]:
     st.subheader("📝 Registrar Colaborador no Sistema")
     
     col_cad1, col_dados2 = st.columns(2)
     with col_cad1:
-        novo_garcao = st.text_input("Nome Completo do Garçom:", placeholder="Ex: Carlos Silva")
+        novo_garcao = st.text_input("Nome Completo do Garçom:", placeholder="Ex: Carlos Silva", key="f_nome_novo")
     with col_dados2:
-        cod_garcao = st.text_input("Código Operacional / Senha rápida:", type="password", placeholder="Ex: 1234")
+        cod_garcao = st.text_input("Código Operacional / Senha rápida:", type="password", placeholder="Ex: 1234", key="f_senha_novo")
         
-    if st.button("Salvar Registro de Funcionário", type="primary", use_container_width=True):
+    if st.button("Salvar Registro de Funcionário", type="primary", use_container_width=True, key="f_btn_salvar"):
         if not novo_garcao.strip() or not cod_garcao.strip():
             st.error("Validação Recusada: Preencha todos os campos obrigatórios.")
         else:
@@ -79,32 +76,32 @@ with tabs[0]:
                 st.markdown(f"- 🟢 **{f['nome']}** *(Admitido em: {f['data_cadastro'].strftime('%d/%m/%Y')})*")
         else:
             st.info("Nenhum garçom cadastrado até o momento.")
-
-# ABA 2: RELATÓRIO ANALÍTICO SEPARADO POR PERÍODOS E COLABORADOR
 with tabs[1]:
     st.subheader("🔍 Filtro de Fechamento por Período e Garçom")
     
-    # Coleta a lista de garçons para o filtro de busca
     conn = init_connection()
     lista_busca_garcons = ["Todos os Garçons"]
     if conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-            lista_busca_garcons += [r[0] for r in cur.fetchall()]
+            try:
+                cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
+                lista_busca_garcons += [r[0] for r in cur.fetchall()]
+            except:
+                pass
         conn.close()
+
     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
     with c_f1:
-        sel_garcao_filtro = st.selectbox("Selecione o Garçom:", options=lista_busca_garcons)
+        sel_garcao_filtro = st.selectbox("Selecione o Garçom:", options=lista_busca_garcons, key="f_sel_garc")
     with c_f2:
         ano_atual = datetime.now().year
-        ano_sel = st.selectbox("Ano:", options=list(range(ano_atual, ano_atual - 4, -1)))
+        ano_sel = st.selectbox("Ano:", options=list(range(ano_atual, ano_atual - 4, -1)), key="f_sel_ano")
     with c_f3:
         meses_nome = {0: "Todos os Meses", 1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
-        mes_sel = st.selectbox("Mês:", options=list(meses_nome.keys()), format_func=lambda x: meses_nome[x], index=datetime.now().month)
+        mes_sel = st.selectbox("Mês:", options=list(meses_nome.keys()), format_func=lambda x: meses_nome[x], index=datetime.now().month, key="f_sel_mes")
     with c_f4:
-        dia_sel = st.selectbox("Dia:", options=["Todos os Dias"] + list(range(1, 32)))
+        dia_sel = st.selectbox("Dia:", options=["Todos os Dias"] + list(range(1, 32)), key="f_sel_dia")
 
-    # Montagem da consulta relacional calendarizada
     query = "SELECT produto_nome, quantidade_pedida, valor_total, mesa_numero, comanda_codigo, garcao_nome, data_hora FROM pedidos_realizados WHERE 1=1"
     parametros = []
 
@@ -147,10 +144,9 @@ with tabs[1]:
         st.markdown("---")
         st.write("**Extrato de Lançamentos do Período:**")
         
-        # Formata a tabela para leitura limpa do gestor
         df_exibir = df.copy()
         df_exibir['data_hora'] = pd.to_datetime(df_exibir['data_hora']).dt.strftime('%d/%m/%Y %H:%M')
         df_exibir.columns = ['Produto', 'Qtd', 'Valor (R$)', 'Mesa', 'Comanda', 'Garçom Responsável', 'Data/Hora']
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
     else:
-        st.info("Nenhum lançamento de venda registrado para os filtros de período e garçom selecionados.")
+        st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
