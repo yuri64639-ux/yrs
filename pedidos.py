@@ -33,7 +33,7 @@ def upgrade_db_silencioso():
                 );
             """)
             try:
-                # Injeção em lote de segurança nas tabelas sem exibir textos na interface
+                # Executa as alterações estruturais de forma oculta nos bastidores
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS total NUMERIC(10, 2) NOT NULL DEFAULT 0.00;")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
