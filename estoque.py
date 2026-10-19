@@ -2,6 +2,7 @@ import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
+import time
 
 # Configuração de Logs do Sistema
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -79,7 +80,6 @@ def render_dashboard_estoque():
             cols = st.columns(min(len(items), 5))
             for idx, item in enumerate(items):
                 qtd = float(item['quantidade_atual'])
-                # Alerta visual corporativo dinâmico baseado em criticidade
                 label_status = "🔴 Crítico" if qtd <= Config.LOW_STOCK_THRESHOLD else "🟢 Normal"
                 with cols[idx % 5]:
                     st.metric(
@@ -99,7 +99,7 @@ st.markdown("---")
 menu_tabs = st.tabs(["📥 Entrada de Insumos (Lote)", "🏗️ Engenharia de Fichas Técnicas", "📋 Auditoria e Controle de Cardápio"])
 
 # ABA 1: INGESTÃO DE MATÉRIA-PRIMA EM MASSA
-with menu_tabs[0]:
+with menu_tabs:
     st.header("📥 Ingestão de Matéria-Prima em Lote")
     st.markdown("Utilize esta interface para cadastrar novos insumos comerciais por linha. O estoque base é parametrizado em **Quilos (Kg)** ou **Litros (L)**.")
     
@@ -133,7 +133,7 @@ with menu_tabs[0]:
         else:
             st.warning("Validação Recusada: O campo de entrada de dados textual está vazio.")
 # ABA 2: ENGENHARIA DE PRODUTOS E MATRIZ DE COMPOSIÇÃO (FICHAS TÉCNICAS)
-with menu_tabs[1]:
+with menu_tabs:
     st.header("🏗️ Engenharia de Fichas Técnicas")
     
     db_conn = DatabaseManager.get_connection()
@@ -145,7 +145,7 @@ with menu_tabs[1]:
         db_conn.close()
         
     opcoes_obrigatorias = [item["nome"] for item in lista_ativos_insumos] if lista_ativos_insumos else ["- Cadastre insumos primeiro -"]
-    opcoes_opcionais = ["- Nenhum -"] + ([item["nome"] for item in lista_ativos_insumos] if lista_insumos else [])
+    opcoes_opcionais = ["- Nenhum -"] + ([item["nome"] for item in lista_ativos_insumos] if lista_ativos_insumos else [])
     mapeamento_insumos = {item["nome"]: item["id"] for item in lista_ativos_insumos}
     
     c_dados1, c_dados2 = st.columns(2)
@@ -210,7 +210,7 @@ with menu_tabs[1]:
                 try:
                     with db_conn.cursor() as cur:
                         cur.execute("INSERT INTO produtos (nome, preco) VALUES (%s, %s) RETURNING id;", (input_nome_sku.strip(), input_preco_sku))
-                        id_gerado_produto = cur.fetchone()[0]
+                        id_gerado_produto = cur.fetchone()
                         
                         for item_associado in componentes_ficha:
                             cur.execute(
@@ -227,7 +227,7 @@ with menu_tabs[1]:
                     db_conn.close()
 
 # ABA 3: AUDITORIA E EXCLUSÃO SELETIVA EM LOTE DO CARDÁPIO
-with menu_tabs[2]:
+with menu_tabs:
     st.header("📋 Auditoria e Controle de Cardápio")
     st.markdown("Abaixo estão listados todos os SKUs comercializados. Selecione múltiplos itens para exclusão imediata em lote do servidor central.")
     
@@ -242,7 +242,6 @@ with menu_tabs[2]:
             else:
                 fila_exclusao_lote = []
                 
-                # Renderizador Avançado de Tabela com Checkboxes Alinhados
                 for sku in todos_skus:
                     c_check, c_expand = st.columns([0.04, 0.96])
                     with c_check:
@@ -271,7 +270,6 @@ with menu_tabs[2]:
                     if st.button(f"🗑️ Expurgar {total_selecionados} SKU(s) Selecionado(s)", type="primary", use_container_width=True):
                         try:
                             with db_conn.cursor() as cur:
-                                # Processamento massivo de exclusão via ARRAY PostgreSQL
                                 cur.execute("DELETE FROM produtos WHERE id = ANY(%s);", (fila_exclusao_lote,))
                                 db_conn.commit()
                             st.success(f"Auditoria Concluída: {total_selecionados} SKUs removidos do ecossistema.")
