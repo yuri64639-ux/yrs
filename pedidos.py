@@ -109,7 +109,7 @@ with col_logout:
 
 st.markdown("---")
 tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
-with tabs[0]:
+with tabs:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
@@ -184,9 +184,24 @@ with tabs[0]:
                         try:
                             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                                 erro_estoque = False
-                                for k, item in st.session_state.carrinho.items():
-                                    cur.execute("SELECT f.insumo_id, f.quantidade, i.nome, i.quantidade_atual FROM ficha_tecnica f JOIN insumos i ON f.insumo_id = i.id WHERE f.produto_id = %s;", (item['id_real'],))
-                                    ficha = cur.fetchall()
+                                ids_produtos = [item['id_real'] for item in st.session_state.carrinho.values()]
+                                
+                                cur.execute("""
+                                    SELECT f.produto_id, f.insumo_id, f.quantidade, i.nome, i.quantidade_atual 
+                                    FROM ficha_tecnica f 
+                                    JOIN insumos i ON f.insumo_id = i.id 
+                                    WHERE f.produto_id = ANY(%s);
+                                """, (ids_produtos,))
+                                todas_fichas = cur.fetchall()
+                                
+                                mapa_fichas = {}
+                                for row in todas_fichas:
+                                    if row['produto_id'] not in mapa_fichas:
+                                        mapa_fichas[row['produto_id']] = []
+                                    mapa_fichas[row['produto_id']].append(row)
+                                
+                                for item in st.session_state.carrinho.values():
+                                    ficha = mapa_fichas.get(item['id_real'], [])
                                     for f_item in ficha:
                                         consumo_necessario = (float(f_item['quantidade']) / 1000.0) * item['qtd']
                                         if float(f_item['quantidade_atual']) < consumo_necessario:
@@ -194,18 +209,17 @@ with tabs[0]:
                                             erro_estoque = True
                                 
                                 if not erro_estoque:
-                                    for k, item in st.session_state.carrinho.items():
-                                        cur.execute("SELECT f.insumo_id, f.quantidade FROM ficha_tecnica f WHERE f.produto_id = %s;", (item['id_real'],))
-                                        ficha = cur.fetchall()
+                                    for item in st.session_state.carrinho.values():
+                                        ficha = mapa_fichas.get(item['id_real'], [])
                                         for f_item in ficha:
                                             consumo = (float(f_item['quantidade']) / 1000.0) * item['qtd']
                                             cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s;", (consumo, f_item['insumo_id']))
                                         
                                         valor_venda_item = item["preco"] * item["qtd"]
                                         cur.execute("""
-                                            INSERT INTO pedidos_realizados (produto_nome, quantidade_pedida, valor_total, total, forma_pagamento, metodo_pagamento, taxa_inclusa, mesa_numero, comanda_codigo, status_conta, garcao_nome) 
+                                            INSERT INTO pedidos_realizados (produto_nome, quantity_pedida, valor_total, total, forma_pagamento, metodo_pagamento, taxa_inclusa, mesa_numero, comanda_codigo, status_conta, garcao_nome) 
                                             VALUES (%s, %s, %s, %s, 'Mesa Aberta', 'Mesa Aberta', FALSE, %s, %s, 'Aberta', %s);
-                                        """, (item['nome'], item['qtd'], valor_venda_item, valor_venda_item, input_mesa.strip(), input_comanda.strip(), st.session_state.garcao_atual))
+                                        """.replace("quantity_pedida", "quantidade_pedida"), (item['nome'], item['qtd'], valor_venda_item, valor_venda_item, input_mesa.strip(), input_comanda.strip(), st.session_state.garcao_atual))
                                     
                                     conn.commit()
                                     st.session_state.carrinho = {}
@@ -221,7 +235,7 @@ with tabs[0]:
                 st.session_state.carrinho = {}
                 st.rerun()
 
-with tabs[1]:
+with tabs:
     st.subheader("🗂️ Consumo Atual do Salão")
     conn = init_connection()
     if conn:
@@ -229,7 +243,7 @@ with tabs[1]:
             cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
             mesas_abertas = cur.fetchall()
             if not mesas_abertas:
-                st.info("Nenhum mesa aberta no momento.")
+                st.info("Nenhuma mesa aberta no momento.")
             else:
                 for m in mesas_abertas:
                     cur.execute("""
@@ -239,12 +253,12 @@ with tabs[1]:
                     itens_mesa = cur.fetchall()
                     if itens_mesa:
                         subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
-                        comanda_ref = itens_mesa[0]['comanda_codigo']
+                        comanda_ref = itens_mesa['comanda_codigo']
                         with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — Total Aberto: R\$ {subtotal_mesa:.2f}"):
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
-with tabs[2]:
+with tabs:
     if not st.session_state.gerente_autenticado:
         st.subheader("🔐 Área Restrita ao Gerente")
         senha_gerencia = st.text_input("Insira a senha master de gerência:", type="password", key="senha_master_gerencia")
