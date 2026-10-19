@@ -1,6 +1,47 @@
 import streamlit as st
+import psycopg2
 from psycopg2.extras import RealDictCursor
-from banco import init_connection, init_db
+
+# Configuração da página do Streamlit
+st.set_page_config(page_title="Gestão de Cardápio & Insumos", layout="wide")
+
+# Conexão com o Banco de Dados Neon (PostgreSQL)
+def init_connection():
+    try:
+        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+    except Exception as e:
+        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        return None
+
+# Criação das tabelas caso não existam
+def init_db():
+    conn = init_connection()
+    if conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS insumos (
+                    id SERIAL PRIMARY KEY,
+                    nome VARCHAR(255) UNIQUE NOT NULL
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS produtos (
+                    id SERIAL PRIMARY KEY,
+                    nome VARCHAR(255) UNIQUE NOT NULL,
+                    preco NUMERIC(10, 2) NOT NULL
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ficha_tecnica (
+                    id SERIAL PRIMARY KEY,
+                    produto_id INT REFERENCES produtos(id) ON DELETE CASCADE,
+                    insumo_id INT REFERENCES insumos(id) ON DELETE CASCADE,
+                    quantidade NUMERIC(10, 2) NOT NULL,
+                    unidade VARCHAR(10) NOT NULL
+                );
+            """)
+            conn.commit()
+        conn.close()
 
 # Inicializa o banco de dados Neon na primeira execução
 init_db()
@@ -11,7 +52,7 @@ st.caption("Rodando via GitHub, Streamlit Community Cloud e Banco Neon (PostgreS
 tabs = st.tabs(["1. Cadastrar Insumos (Massa)", "2. Cadastrar Produtos & Ficha Técnica", "3. Visualizar e Gerenciar Cardápio"])
 
 # ABA 1: CADASTRO EM MASSA
-with tabs:
+with tabs[0]:
     st.header("📦 Cadastro de Insumos em Massa")
     st.info("O sistema assume estoque central em Quilogramas (Kg) ou Litros (L).")
     
@@ -41,9 +82,8 @@ with tabs:
                 st.rerun()
         else:
             st.warning("Por favor, digite ao menos um insumo.")
-
 # ABA 2: CADASTRO DE PRODUTO COM ATÉ 6 ASSOCIAÇÕES
-with tabs:
+with tabs[1]:
     st.header("🍔 Cadastrar Produto Comercial")
     
     conn = init_connection()
@@ -134,7 +174,7 @@ with tabs:
                         conn.close()
 
 # ABA 3: VISUALIZAR E DELETAR MULTIPLOS PRODUTOS
-with tabs:
+with tabs[2]:
     st.header("📖 Gerenciamento do Cardápio")
     
     conn = init_connection()
