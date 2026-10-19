@@ -1,171 +1,209 @@
-import sys
+import streamlit as st
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-class CardapioSistema:
-    def __init__(self):
-        # Banco de dados inicial simulado em memória
-        # Os insumos brutos do estoque são considerados em Kg ou Litros
-        self.insumos = ["Carne Moída", "Tomate", "Alface", "Cebola", "Azeite", "Frango", "Queijo", "Molho de Tomate", "Leite", "Farinha"]
-        self.produtos = []
+# Configuração da página do Streamlit
+st.set_page_config(page_title="Gestão de Cardápio & Insumos", layout="wide")
 
-    def menu_principal(self):
-        while True:
-            print("\n" + "="*50)
-            print("         SISTEMA DE CADASTRO DE CARDÁPIO")
-            print("="*50)
-            print("1 - Cadastrar Insumos em Massa (Estoque em Kg/L)")
-            print("2 - Cadastrar Produto Comercial & Associar 6 Insumos")
-            print("3 - Visualizar Cardápio e Fichas Técnicas")
-            print("4 - Sair do Programa")
-            print("="*50)
+# Conexão com o Banco de Dados Neon (PostgreSQL)
+def init_connection():
+    try:
+        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+    except Exception as e:
+        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        return None
+
+# Criação das tabelas caso não existam
+def init_db():
+    conn = init_connection()
+    if conn:
+        with conn.cursor() as cur:
+            # Tabela de Insumos (Estoque Bruto em Kg ou L)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS insumos (
+                    id SERIAL PRIMARY KEY,
+                    nome VARCHAR(255) UNIQUE NOT NULL
+                );
+            """)
+            # Tabela de Produtos (Preço de venda)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS produtos (
+                    id SERIAL PRIMARY KEY,
+                    nome VARCHAR(255) UNIQUE NOT NULL,
+                    preco NUMERIC(10, 2) NOT NULL
+                );
+            """)
+            # Tabela de Ficha Técnica / Associação (6 insumos em g ou ml)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ficha_tecnica (
+                    id SERIAL PRIMARY KEY,
+                    produto_id INT REFERENCES produtos(id) ON DELETE CASCADE,
+                    insumo_id INT REFERENCES insumos(id) ON DELETE CASCADE,
+                    quantidade NUMERIC(10, 2) NOT NULL,
+                    unidade VARCHAR(10) NOT NULL
+                );
+            """)
+            conn.commit()
+        conn.close()
+
+init_db()
+
+# --- INTERFACE STREAMLIT ---
+st.title("🍳 Sistema de Gestão de Cardápio e Fichas Técnicas")
+st.caption("Rodando via GitHub, Streamlit Community Cloud e Banco Neon (PostgreSQL)")
+
+tabs = st.tabs(["1. Cadastrar Insumos (Massa)", "2. Cadastrar Produtos & Ficha Técnica", "3. Visualizar Cardápio"])
+
+# TABELA 1: CADASTRO EM MASSA
+with tabs[0]:
+    st.header("📦 Cadastro de Insumos em Massa")
+    st.info("Insira a lista de insumos brutos. O sistema assume estoque central em Quilogramas (Kg) ou Litros (L).")
+    
+    insumos_texto = st.text_area(
+        "Digite ou cole os insumos (um por linha):",
+        placeholder="Massa Espaguete\nManjericão\nAlho\nManteiga\nCreme de Leite\nÁgua Mineral",
+        height=200
+    )
+    
+    if st.button("Cadastrar Insumos no Banco Neon", type="primary"):
+        if insumos_texto.strip():
+            linhas = [linha.strip() for linha in insumos_texto.split("\n") if linha.strip()]
             
-            opcao = input("Escolha uma opção: ").strip()
-            
-            if opcao == "1":
-                self.cadastrar_insumos_massa()
-            elif opcao == "2":
-                self.cadastrar_produto_com_ficha()
-            elif opcao == "3":
-                self.visualizar_cardapio()
-            elif opcao == "4":
-                print("\nEncerrando o programa. Até logo!")
-                sys.exit()
-            else:
-                print("\n[ERRO] Opção inválida! Tente novamente.")
-
-    def cadastrar_insumos_massa(self):
-        print("\n" + "-"*50)
-        print("    CADASTRO DE INSUMOS EM MASSA (Estoque bruto: Kg ou L)")
-        print("-"*50)
-        print("Instruções: Digite ou cole os insumos desejados.")
-        print("Envie uma linha EM BRANCO (aperte Enter sem digitar nada) para salvar.")
-        print("-"*50)
-        
-        novos_insumos = []
-        while True:
-            item = input("Nome do insumo: ").strip()
-            if item == "":
-                break
-            if item.lower() not in [i.lower() for i in self.insumos] and item.lower() not in [n.lower() for n in novos_insumos]:
-                novos_insumos.append(item)
-                print(f"-> '{item}' adicionado à fila.")
-            else:
-                print("-> [Aviso] Este insumo já está cadastrado ou já foi digitado.")
-        
-        if novos_insumos:
-            self.insumos.extend(novos_insumos)
-            print(f"\n[SUCESSO] {len(novos_insumos)} novos insumos foram adicionados ao banco de dados!")
+            conn = init_connection()
+            if conn:
+                novos = 0
+                with conn.cursor() as cur:
+                    for insumo in linhas:
+                        try:
+                            cur.execute("INSERT INTO insumos (nome) VALUES (%s) ON CONFLICT DO NOTHING;", (insumo,))
+                            if cur.rowcount > 0:
+                                novos += 1
+                        except:
+                            pass
+                    conn.commit()
+                conn.close()
+                st.success(f"Processamento concluído! {novos} novos insumos adicionados com sucesso.")
         else:
-            print("\n[Aviso] Nenhum insumo novo foi digitado.")
+            st.warning("Por favor, digite ao menos um insumo.")
 
-    def cadastrar_produto_com_ficha(self):
-        print("\n" + "-"*50)
-        print("            CADASTRO DE PRODUTO DO CARDÁPIO")
-        print("-"*50)
+# TABELA 2: CADASTRO DE PRODUTO COM 6 ASSOCIAÇÕES
+with tabs[1]:
+    st.header("🍔 Cadastrar Produto Comercial")
+    
+    # Buscar insumos cadastrados no banco
+    conn = init_connection()
+    lista_insumos = []
+    if conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, nome FROM insumos ORDER BY nome;")
+            lista_insumos = cur.fetchall()
+        conn.close()
         
-        if len(self.insumos) < 6:
-            print(f"\n[ERRO] Você tem apenas {len(self.insumos)} insumos cadastrados.")
-            print("É necessário ter pelo menos 6 insumos cadastrados para montar a ficha técnica.")
-            return
-
-        nome_produto = input("Nome do prato/bebida comercial: ").strip()
-        if not nome_produto:
-            print("[ERRO] O nome do produto não pode ser vazio.")
-            return
+    insumo_opcoes = {item["nome"]: item["id"] for item in lista_insumos}
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        nome_produto = st.text_input("Nome do Prato / Bebida do Cardápio:")
+    with col2:
+        preco_produto = st.number_input("Preço de Venda (R$):", min_value=0.0, step=0.50, format="%.2f")
+        
+    st.markdown("---")
+    st.subheader("📋 Ficha Técnica: Associe Exatamente 6 Insumos Obrigatórios (g ou ml)")
+    
+    if len(lista_insumos) < 6:
+        st.error(f"Você possui apenas {len(lista_insumos)} insumos salvos. Cadastre pelo menos 6 na Aba 1 antes de prosseguir.")
+    else:
+        dados_associacao = []
+        
+        # Criação de 3 linhas com 2 colunas para organização na tela
+        for i in range(3):
+            c_left, c_right = st.columns(2)
             
-        preco_input = input("Preço de venda (R$): ").strip()
-        try:
-            preco_venda = float(preco_input.replace(",", "."))
-            if preco_venda <= 0:
-                raise ValueError
-        except ValueError:
-            print("[ERRO] Preço inválido! Insira um número maior do que zero.")
-            return
+            # Bloco Esquerdo (Insumos 1, 3, 5)
+            idx_l = i * 2
+            with c_left:
+                st.markdown(f"**Insumo {idx_l + 1}**")
+                sub_col1, sub_col2, sub_col3 = st.columns([2, 1, 1])
+                with sub_col1:
+                    ins_sel_l = st.selectbox(f"Selecione o item {idx_l + 1}", options=list(insumo_opcoes.keys()), key=f"ins_{idx_l}")
+                with sub_col2:
+                    qtd_sel_l = st.number_input(f"Qtd {idx_l + 1}", min_value=0.01, value=100.0, step=10.0, key=f"qtd_{idx_l}")
+                with sub_col3:
+                    uni_sel_l = st.selectbox(f"Unidade {idx_l + 1}", options=["g", "ml"], key=f"uni_{idx_l}")
+                dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_l], "quantidade": qtd_sel_l, "unidade": uni_sel_l, "nome": ins_sel_l})
+                
+            # Bloco Direito (Insumos 2, 4, 6)
+            idx_r = (i * 2) + 1
+            with c_right:
+                st.markdown(f"**Insumo {idx_r + 1}**")
+                sub_col1, sub_col2, sub_col3 = st.columns([2, 1, 1])
+                with sub_col1:
+                    p_idx = min(idx_r, len(insumo_opcoes)-1)
+                    ins_sel_r = st.selectbox(f"Selecione o item {idx_r + 1}", options=list(insumo_opcoes.keys()), index=p_idx, key=f"ins_{idx_r}")
+                with sub_col2:
+                    qtd_sel_r = st.number_input(f"Qtd {idx_r + 1}", min_value=0.01, value=100.0, step=10.0, key=f"qtd_{idx_r}")
+                with sub_col3:
+                    uni_sel_r = st.selectbox(f"Unidade {idx_r + 1}", options=["g", "ml"], key=f"uni_{idx_r}")
+                dados_associacao.append({"insumo_id": insumo_opcoes[ins_sel_r], "quantidade": qtd_sel_r, "unidade": uni_sel_r, "nome": ins_sel_r})
 
-        print("\n" + "-"*50)
-        print("  VINCULAR EXATAMENTE 6 INSUMOS OBRIGATÓRIOS (g ou ml)")
-        print("-"*50)
-        print("Lista de insumos disponíveis:")
-        for idx, insumo in enumerate(self.insumos, 1):
-            print(f" [{idx}] {insumo}")
-        print("-"*50)
+        st.markdown("")
+        if st.button("Salvar Produto e Ficha Técnica Completa", type="primary"):
+            ids_utilizados = [d["insumo_id"] for d in dados_associacao]
+            if len(set(ids_utilizados)) < 6:
+                st.error("Erro: Você repetiu o mesmo insumo em campos diferentes. Escolha 6 insumos distintos.")
+            elif not nome_produto.strip():
+                st.error("Erro: O nome do produto comercial não pode estar vazio.")
+            elif preco_produto <= 0:
+                st.error("Erro: O preço do produto deve ser maior que zero.")
+            else:
+                conn = init_connection()
+                if conn:
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "INSERT INTO produtos (nome, preco) VALUES (%s, %s) RETURNING id;",
+                                (nome_produto.strip(), preco_produto)
+                            )
+                            produto_id = cur.fetchone()[0]
+                            
+                            for dado in dados_associacao:
+                                cur.execute(
+                                    "INSERT INTO ficha_tecnica (produto_id, insumo_id, grandmother, unidade) VALUES (%s, %s, %s, %s);".replace("grandmother", "quantidade"),
+                                    (produto_id, dado["insumo_id"], dado["quantidade"], dado["unidade"])
+                                )
+                            conn.commit()
+                        st.success(f"Sucesso! Produto '{nome_produto}' e sua Ficha Técnica de 6 insumos foram salvos de forma permanente no Neon.")
+                    except Exception as err:
+                        st.error(f"Erro ao salvar no banco de dados: {err}")
+                    finally:
+                        conn.close()
 
-        ficha_tecnica = []
-        insumos_usados_neste_produto = set()
-
-        for i in range(1, 7):
-            while True:
-                try:
-                    escolha = int(input(f"\nEscolha o número do Insumo {i}/6: "))
-                    if escolha < 1 or escolha > len(self.insumos):
-                        print(f"[ERRO] Escolha um número válido entre 1 e {len(self.insumos)}.")
-                        continue
+# TABELA 3: VISUALIZAR CARDÁPIO E CONVERSÕES
+with tabs[2]:
+    st.header("📖 Cardápio Cadastrado & Fichas Técnicas")
+    
+    conn = init_connection()
+    if conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
+            todos_produtos = cur.fetchall()
+            
+            if not todos_produtos:
+                st.info("Nenhum produto cadastrado no sistema até o momento.")
+            
+            for prod in todos_produtos:
+                with st.expander(f"🍽️ {prod['nome']} — R$ {prod['preco']:.2f}"):
+                    cur.execute("""
+                        SELECT f.quantidade, f.unidade, i.nome as insumo_nome 
+                        FROM ficha_tecnica f
+                        JOIN insumos i ON f.insumo_id = i.id
+                        WHERE f.produto_id = %s;
+                    """, (prod['id'],))
+                    itens_ficha = cur.fetchall()
                     
-                    insumo_selecionado = self.insumos[escolha - 1]
-                    
-                    if insumo_selecionado in insumos_usados_neste_produto:
-                        print(f"[ERRO] Você já adicionou '{insumo_selecionado}' neste produto. Escolha um insumo diferente.")
-                        continue
-                        
-                    break
-                except ValueError:
-                    print("[ERRO] Digite um número inteiro correspondente ao insumo.")
-
-            while True:
-                try:
-                    qtd_input = input(f"Quantidade gasta de '{insumo_selecionado}': ").strip()
-                    qtd_num = float(qtd_input.replace(",", "."))
-                    if qtd_num <= 0:
-                        raise ValueError
-                    break
-                except ValueError:
-                    print("[ERRO] Quantidade inválida! Digite apenas valores numéricos maiores que zero.")
-
-            while True:
-                unidade = input(f"Unidade de medida para a receita (g / ml): ").strip().lower()
-                if unidade in ["g", "ml"]:
-                    break
-                print("[ERRO] Unidade inválida! Escolha 'g' para gramas ou 'ml' para mililitros.")
-
-            # Cálculo de conversão para a baixa do estoque (g/ml -> Kg/L)
-            qtd_estoque_equivalente = qtd_num / 1000.0
-            unidade_estoque = "kg" if unidade == "g" else "L"
-
-            ficha_tecnica.append({
-                "insumo": insumo_selecionado,
-                "quantidade_receita": qtd_num,
-                "unidade_receita": unidade,
-                "equivalente_estoque": qtd_estoque_equivalente,
-                "unidade_estoque": unidade_estoque
-            })
-            insumos_usados_neste_produto.add(insumo_selecionado)
-
-        # Salvando o produto final
-        novo_produto = {
-            "nome": nome_produto,
-            "preco": preco_venda,
-            "ficha_tecnica": ficha_tecnica
-        }
-        self.produtos.append(novo_produto)
-        print(f"\n[SUCESSO] Produto '{nome_produto}' cadastrado!")
-
-    def visualizar_cardapio(self):
-        print("\n" + "="*50)
-        print("            CARDÁPIO COMPLETO E FICHAS TÉCNICAS")
-        print("="*50)
-        
-        if not self.produtos:
-            print("\nNenhum produto cadastrado no cardápio até o momento.")
-            return
-
-        for idx, prod in enumerate(self.produtos, 1):
-            print(f"\n{idx}. Produto: {prod['nome']}")
-            print(f"   Preço de Venda: R$ {prod['preco']:.2f}")
-            print("   Ficha Técnica:")
-            for item in prod['ficha_tecnica']:
-                print(f"     • {item['insumo']}: {item['quantidade_receita']}{item['unidade_receita']} "
-                      f"-> (Equivale a {item['equivalente_estoque']:.3f} {item['unidade_estoque']} no estoque bruto)")
-            print("-" * 50)
-
-if __name__ == "__main__":
-    app = CardapioSistema()
-    app.menu_principal()
+                    st.write("**Composição da Receita (Ficha Técnica):**")
+                    for item in itens_ficha:
+                        baixa_estoque = float(item['quantidade']) / 1000.0
+                        unidade_estoque = "Kg" if item['unidade'] == "g" else "L"
+                        st.markdown(f"- **{item['insumo_nome']}**: {float(item['quantidade']):.1f}{item['unidade']} *(Baixa equivalente de **{baixa_estoque:.3f} {unidade_estoque}** no estoque central)*")
+        conn.close()
