@@ -53,7 +53,6 @@ with tabs[0]:
             if conn:
                 try:
                     with conn.cursor() as cur:
-                        # Insere o novo colaborador na base de dados Neon
                         cur.execute("INSERT INTO cadastros_garcons (nome, codigo_operacional) VALUES (%s, %s) ON CONFLICT DO NOTHING;", (novo_garcao.strip(), cod_garcao.strip()))
                         conn.commit()
                     st.success(f"Funcionário '{novo_garcao}' homologado e ativo no banco Neon!")
@@ -83,12 +82,11 @@ with tabs[1]:
     conn = init_connection()
     lista_busca_garcons = ["Todos os Garçons"]
     if conn:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                # Limpa e extrai os valores brutos retornados da tupla do banco
                 for row in cur.fetchall():
-                    lista_busca_garcons.append(row[0] if isinstance(row, tuple) else row['nome'])
+                    lista_busca_garcons.append(row['nome'])
             except:
                 pass
         conn.close()
@@ -105,7 +103,7 @@ with tabs[1]:
     with c_f4:
         dia_sel = st.selectbox("Dia:", options=["Todos os Dias"] + list(range(1, 32)), key="f_sel_dia")
 
-    query = "SELECT produto_nome, quantidade_pedida, valor_total, mesa_numero, comanda_codigo, garcao_nome, data_hora FROM pedidos_realizados WHERE 1=1"
+    query = "SELECT produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo, garcao_nome, data_hora FROM pedidos_realizados WHERE 1=1"
     parametros = []
 
     if sel_garcao_filtro != "Todos os Garçons":
@@ -138,18 +136,28 @@ with tabs[1]:
         faturamento_total = df['valor_total'].sum()
         pedidos_total = len(df)
         
-        m_c1, m_c2 = st.columns(2)
+        df['comissao_item'] = df.apply(lambda row: (row['valor_total'] / 1.10) * 0.10 if row['taxa_inclusa'] else row['valor_total'] * 0.10, axis=1)
+        comissao_total = df['comissao_item'].sum()
+        
+        m_c1, m_c2, m_c3 = st.columns(3)
         with m_c1:
             st.metric("Total Vendido pelo Filtro", f"R$ {faturamento_total:.2f}")
         with m_c2:
             st.metric("Total de Itens Lançados", f"{pedidos_total} produtos")
+        with m_c3:
+            st.metric("Comissão Acumulada (10% Garçom)", f"R$ {comissao_total:.2f}")
             
         st.markdown("---")
         st.write("**Extrato de Lançamentos do Período:**")
         
         df_exibir = df.copy()
         df_exibir['data_hora'] = pd.to_datetime(df_exibir['data_hora']).dt.strftime('%d/%m/%Y %H:%M')
-        df_exibir.columns = ['Produto', 'Qtd', 'Valor (R$)', 'Mesa', 'Comanda', 'Garçom Responsável', 'Data/Hora']
+        df_exibir['Taxa (10%)'] = df_exibir['taxa_inclusa'].apply(lambda x: "🟢 Paga" if x else "⚪ Não cobrada")
+        df_exibir['Comissão do Item'] = df_exibir['comissao_item'].apply(lambda x: f"R$ {x:.2f}")
+        
+        df_exibir = df_exibir[['produto_nome', 'quantidade_pedida', 'valor_total', 'Taxa (10%)', 'Comissão do Item', 'mesa_numero', 'comanda_codigo', 'garcao_nome', 'data_hora']]
+        df_exibir.columns = ['Produto', 'Qtd', 'Valor (R$)', 'Taxa (10%)', 'Comissão', 'Mesa', 'Comanda', 'Garçom Responsável', 'Data/Hora']
+        
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
+else:
+    st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
