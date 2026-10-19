@@ -14,7 +14,7 @@ def init_connection():
         st.error(f"Erro ao conectar ao banco Neon: {e}")
         return None
 
-# Atualização estrutural para incluir Mesa e Comanda no banco
+# Atualização estrutural para garantir a tabela no banco
 def upgrade_db_pedidos():
     conn = init_connection()
     if conn:
@@ -41,30 +41,28 @@ def upgrade_db_pedidos():
 
 upgrade_db_pedidos()
 
-# CHECAGEM OCULTA: O monitor visual sumiu, agora ele apenas gera os alertas para o garçom
+# CHECAGEM OCULTA: Monitora em segundo plano e alerta o garçom sobre itens acabando
 @st.fragment(run_every="1s")
 def checar_alertas_estoque_oculto():
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Busca insumos que estão abaixo do nível crítico de 2 unidades (Kg ou L)
             cur.execute("SELECT nome, quantidade_atual FROM insumos WHERE quantidade_atual <= 2.000 ORDER BY nome;")
             itens_criticos = cur.fetchall()
         conn.close()
         
-        # Dispara os alertas na tela do garçom se algo estiver acabando
         if itens_criticos:
             for item in itens_criticos:
                 st.error(f"⚠️ **ATENÇÃO GARÇOM:** O insumo **{item['nome']}** está acabando no estoque! (Restam apenas {float(item['quantidade_atual']):.3f} Kg/L)")
 
 st.title("🛒 Frente de Caixa: Lançamento de Vendas")
-st.caption("Identificação de clientes por Mesa/Comanda integrada com baixa por Ficha Técnica")
+st.caption("Frente de caixa simplificada conectada ao Banco de Dados Neon central")
 
 # Executa o sistema de varredura e alertas automáticos
 checar_alertas_estoque_oculto()
 st.markdown("---")
 
-st.subheader("👤 Identificação do Cliente & Filtro")
+st.subheader("👤 Identificação do Cliente")
 col_mesa, col_comanda = st.columns(2)
 with col_mesa:
     input_mesa = st.text_input("🪑 Número da Mesa:", value="Balcão", placeholder="Ex: Mesa 04")
@@ -99,6 +97,7 @@ else:
         with col_q:
             qtd_p = st.number_input("Qtd", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
         with col_t:
+            # Opção de pagar ou não os 10% (Marcada por padrão)
             p_taxa = st.checkbox("Pagar 10% serviço", value=True, key=f"caixa_taxa_{prod['id']}")
             sub = p_base * qtd_p
             v_final = sub * 1.10 if p_taxa else sub
@@ -107,6 +106,7 @@ else:
             if st.button("🚀 Lançar", key=f"caixa_btn_{prod['id']}", type="primary"):
                 st.session_state[f"caixa_conf_{prod['id']}"] = True
         
+        # Tela interativa de confirmação
         if st.session_state.get(f"caixa_conf_{prod['id']}", False):
             with st.status(f"⚠️ Confirmar lançamento para {input_mesa} / Comanda: {input_comanda}?", expanded=True):
                 st.write(f"• **Produto:** {qtd_p}x {prod['nome']}")
@@ -117,6 +117,7 @@ else:
                         conn = init_connection()
                         if conn:
                             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                                # Puxa a ficha técnica para debitar do estoque
                                 cur.execute("SELECT f.insumo_id, f.quantidade FROM ficha_tecnica f WHERE f.produto_id = %s;", (prod['id'],))
                                 ficha = cur.fetchall()
                                 
@@ -124,6 +125,7 @@ else:
                                     consumo = (float(item['quantidade']) / 1000.0) * qtd_p
                                     cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s;", (consumo, item['insumo_id']))
                                     
+                                # Grava o pedido com o valor correspondente à escolha da taxa
                                 cur.execute("""
                                     INSERT INTO pedidos_realizados (produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo) 
                                     VALUES (%s, %s, %s, %s, %s, %s);
@@ -138,27 +140,3 @@ else:
                     if st.button("❌ Cancelar", key=f"caixa_cancel_{prod['id']}"):
                         st.session_state[f"caixa_conf_{prod['id']}"] = False
                         st.rerun()
-
-st.markdown("---")
-st.subheader("📋 Histórico de Vendas Recentes")
-filtro = st.radio("Filtrar histórico por status da taxa:", ["Todos", "Com 10%", "Sem Taxa"], horizontal=True, key="filtro_vendas_radio")
-
-conn = init_connection()
-if conn:
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        query_base = "SELECT produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo, data_hora FROM pedidos_realizados "
-        if filtro == "Com 10%":
-            cur.execute(query_base + "WHERE taxa_inclusa = TRUE ORDER BY data_hora DESC LIMIT 15;")
-        elif filtro == "Sem Taxa":
-            cur.execute(query_base + "WHERE taxa_inclusa = FALSE ORDER BY data_hora DESC LIMIT 15;")
-        else:
-            cur.execute(query_base + "ORDER BY data_hora DESC LIMIT 15;")
-        historico = cur.fetchall()
-    conn.close()
-    
-    if historico:
-        for p in historico:
-            txt_t = "🟢 (Com 10%)" if p['taxa_inclusa'] else "⚪ (Sem taxa)"
-            st.text(f"⏱️ {p['data_hora'].strftime('%H:%M')} | {p['mesa_numero']} (Comanda: {p['comanda_codigo']}) -> {p['quantidade_pedida']}x {p['produto_nome']} | R$ {float(p['valor_total']):.2f} {txt_t}")
-    else:
-        st.info("Nenhum pedido lançado recentemente com este filtro.")
