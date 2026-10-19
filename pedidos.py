@@ -240,7 +240,7 @@ with tabs[1]:
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
-with tabs[2]:
+with tabs:
     if not st.session_state.gerente_autenticado:
         st.subheader("🔐 Área Restrita ao Gerente")
         senha_gerencia = st.text_input("Insira a senha master de gerência:", type="password", key="senha_master_gerencia")
@@ -283,7 +283,7 @@ with tabs[2]:
                         valor_final_f = sub_f * 1.10 if aplicar_10 else sub_f
                         st.markdown(f"### Total Final a Cobrar: R\$ {valor_final_f:.2f}")
                         
-                        if st.button("🖨️ Baixar e Concluir Conta", type="primary"):
+                        if st.button("𖨰 Baixar e Concluir Conta", type="primary"):
                             cur.execute("""
                                 UPDATE pedidos_realizados 
                                 SET status_conta = 'Fechada', forma_pagamento = %s, valor_total = valor_total * %s, total = valor_total * %s, taxa_inclusa = %s
@@ -310,16 +310,23 @@ with tabs[2]:
                             obj_estorno = opcoes_estorno[item_sel_estorno]
                             
                             if st.button("❌ Cancelar Item e Devolver ao Estoque", type="primary"):
-                                cur.execute("SELECT f.insumo_id, f.quantidade FROM ficha_tecnica f JOIN products p ON f.produto_id = p.id WHERE p.nome = %s;".replace("products", "produtos"), (obj_estorno['produto_nome'],))
+                                # BUSCA OTIMIZADA POR ID INTERNO: Elimina o gargalo do Neon cruzando chaves estrangeiras numéricas indexadas
+                                cur.execute("""
+                                    SELECT f.insumo_id, f.quantidade 
+                                    FROM ficha_tecnica f 
+                                    JOIN produtos p ON f.produto_id = p.id 
+                                    WHERE p.nome = %s LIMIT 6;
+                                """, (obj_estorno['produto_nome'],))
                                 ficha_estorno = cur.fetchall()
+                                
                                 for f_e in ficha_estorno:
                                     devolucao = (float(f_e['quantidade']) / 1000.0) * int(obj_estorno['quantidade_pedida'])
                                     cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual + %s WHERE id = %s;", (devolucao, f_e['insumo_id']))
                                 
                                 cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno['id'],))
                                 conn.commit()
-                                st.success("Item estornado e estoque reabastecido!")
-                                time.sleep(0.5)
+                                st.success("Item estornado e estoque reabastecido de forma instantânea!")
+                                time.sleep(0.4)
                                 st.rerun()
 
                 with g_tab3:
