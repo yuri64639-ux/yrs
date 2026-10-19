@@ -3,15 +3,17 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 
+# Configuração de ambiente para dispositivos móveis
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
 def init_connection():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
     except Exception as e:
-        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        st.error(f"Erro de conexão: {e}")
         return None
 
+# OPERAÇÃO INVISÍVEL: Toda a manutenção de colunas roda aqui dentro de forma oculta
 def upgrade_db_silencioso():
     conn = init_connection()
     if conn:
@@ -31,6 +33,7 @@ def upgrade_db_silencioso():
                 );
             """)
             try:
+                # Injeção em lote de segurança nas tabelas sem exibir textos na interface
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS total NUMERIC(10, 2) NOT NULL DEFAULT 0.00;")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
@@ -43,9 +46,9 @@ def upgrade_db_silencioso():
             conn.commit()
         conn.close()
 
+# Dispara o corretor em segundo plano sem poluir o Streamlit
 upgrade_db_silencioso()
 
-# Inicialização de memória de alto desempenho
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
 if "produtos_cache" not in st.session_state:
@@ -62,6 +65,7 @@ else:
     if "garcao_atual" not in st.session_state:
         st.session_state.garcao_atual = ""
 
+# --- LOGIN SEGURO ---
 if not st.session_state.usuario_autenticado:
     st.container()
     col_l1, col_l2, col_l3 = st.columns([0.1, 0.8, 0.1])
@@ -81,7 +85,7 @@ if not st.session_state.usuario_autenticado:
                 st.error("Credenciais Inválidas!")
     st.stop()
 
-# CARREGAMENTO INTELIGENTE (Puxa do banco uma vez e guarda na memória local do app)
+# Cache local de alta velocidade para maquininhas e celulares
 tempo_atual = time.time()
 if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
     conn = init_connection()
@@ -106,7 +110,7 @@ with col_logout:
 
 st.markdown("---")
 tabs = st.tabs(["🛍️ Lançar Pedidos (Carrinho)", "🗂️ Mesas Abertas & Consumo"])
-# ABA 1: OPERAÇÃO DE LANÇAMENTO (INSTANTÂNEA)
+# ABA 1: OPERAÇÃO DE LANÇAMENTO (OTIMIZADA PARA CELULARES)
 with tabs[0]:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
@@ -119,7 +123,6 @@ with tabs[0]:
     st.subheader("🔍 Encontrar Itens do Cardápio")
     busca_termo = st.text_input("🔍 Buscar Produto (Lupa):", placeholder="Ex: Batata Frita")
 
-    # Filtra os produtos direto na memória do celular, sem fazer requisição ao banco de dados
     if busca_termo:
         produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()]
     else:
@@ -157,16 +160,16 @@ with tabs[0]:
         itens_remover = []
         
         for k, item in st.session_state.carrinho.items():
-            c_item_nome, c_item_qtd, c_item_sub, c_item_del = st.columns([0.4, 0.2, 0.2, 0.2])
+            col_c_nome, col_c_qtd, col_c_sub, col_c_del = st.columns([0.4, 0.2, 0.2, 0.2])
             sub_total_item = item["preco"] * item["qtd"]
             total_geral_carrinho += sub_total_item
-            with c_item_nome:
+            with col_c_nome:
                 st.write(f"• **{item['nome']}** (R\$ {item['preco']:.2f})")
-            with c_item_qtd:
+            with col_c_qtd:
                 st.write(f"{item['qtd']} un")
-            with c_item_sub:
+            with col_c_sub:
                 st.write(f"R\$ {sub_total_item:.2f}")
-            with c_item_del:
+            with col_c_del:
                 if st.button("Tirar", key=f"del_item_cart_{k}", use_container_width=True):
                     itens_remover.append(k)
                     
@@ -225,7 +228,7 @@ with tabs[0]:
                 st.session_state.carrinho = {}
                 st.rerun()
 
-# ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS (CARREGA SOB DEMANDA)
+# ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS
 with tabs[1]:
     st.subheader("🗂️ Painel Operacional de Consumo das Mesas")
     conn = init_connection()
