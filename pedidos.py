@@ -1,211 +1,92 @@
+import streamlit as st
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import time
+
+# Configuração da página do Streamlit para o Caixa/Pedidos
+st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
+
+# Conexão segura e direta com o Banco de Dados Neon na nuvem
+def init_connection():
+    try:
+        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+    except Exception as e:
+        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        return None
+
+# Atualização estrutural para incluir Mesa e Comanda no banco
+def upgrade_db_pedidos():
+    conn = init_connection()
+    if conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS pedidos_realizados (
+                    id SERIAL PRIMARY KEY,
+                    produto_nome VARCHAR(255) NOT NULL,
+                    quantidade_pedida INT NOT NULL,
+                    valor_total NUMERIC(10,2) NOT NULL,
+                    taxa_inclusa BOOLEAN NOT NULL DEFAULT TRUE,
+                    mesa_numero VARCHAR(50) DEFAULT 'Balcão',
+                    comanda_codigo VARCHAR(100) DEFAULT 'Não Informado',
+                    data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            try:
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS mesa_numero VARCHAR(50) DEFAULT 'Balcão';")
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS comanda_codigo VARCHAR(100) DEFAULT 'Não Informado';")
+            except:
+                pass
+            conn.commit()
+        conn.close()
+
+upgrade_db_pedidos()
+
+# Monitor em tempo real fixado no topo (atualiza a cada 1 segundo)
+@st.fragment(run_every="1s")
+def render_estoque_tempo_real():
+    st.subheader("🔄 Monitor de Estoque Bruto (Atualiza a cada 1s)")
+    conn = init_connection()
+    if conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT nome, quantidade_atual FROM insumos ORDER BY nome;")
+            estoque = cur.fetchall()
+        conn.close()
+        if estoque:
+            cols = st.columns(len(estoque) if len(estoque) < 5 else 5)
+            for idx, item in enumerate(estoque):
+                with cols[idx % 5]:
+                    st.metric(label=item['nome'], value=f"{float(item['quantidade_atual']):.3f}")
+        else:
+            st.info("Nenhum insumo cadastrado no estoque central.")
+
+st.title("🛒 Frente de Caixa: Lançamento de Vendas")
+st.caption("Identificação de clientes por Mesa/Comanda integrada com baixa por Ficha Técnica")
+
+render_estoque_tempo_real()
+st.markdown("---")
+
+st.subheader("👤 Identificação do Cliente & Filtro")
+col_mesa, col_comanda = st.columns(2)
+with col_mesa:
+    input_mesa = st.text_input("🪑 Número da Mesa:", value="Balcão", placeholder="Ex: Mesa 04")
+with col_comanda:
+    input_comanda = st.text_input("📋 Código da Comanda:", value="Não Informado", placeholder="Ex: 1042")
+
+st.markdown("---")
+st.subheader("🔍 Localizar Produto")
+busca_termo = st.text_input("🔍 Buscar Produto no Cardápio (Lupa):", placeholder="Ex: Batata Frita", key="busca_lupa_caixa")
+
+conn = init_connection()
+produtos_filtrados = []
+if conn:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        if busca_termo:
+            cur.execute("SELECT id, nome, preco FROM produtos WHERE nome ILIKE %s ORDER BY nome;", (f"%{busca_termo}%",))
+        else:
+            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
+        produtos_filtrados = cur.fetchall()
+    conn.close()
 
-
-[     UTC     ] Logs for cepo3eospdnckk2eqpsq2g.streamlit.app/
-
-────────────────────────────────────────────────────────────────────────────────────────
-
-[14:52:53] 🚀 Starting up repository: 'yrs', branch: 'main', main module: 'pedidos.py'
-
-[14:52:53] 🐙 Cloning repository...
-
-[14:52:54] 🐙 Cloning into '/mount/src/yrs'...
-
-[14:52:54] 🐙 Cloned repository!
-
-[14:52:54] 🐙 Pulling code changes from Github...
-
-[14:52:56] 📦 Processing dependencies...
-
-──────────────────────────────────────── uv ───────────────────────────────────────────
-
-Using uv pip install.
-
-Using Python 3.14.8 environment at /home/adminuser/venv
-
-Resolved 5 packages in 249ms
-
-Prepared 5 packages in 755ms
-
-Installed 5 packages in 70ms
-
- + numpy==2.5.4
-
- [2026-10-19 14:52:57.538423] + pandas==3.0.6
-
- + psycopg2-binary==2.9.13
-
- + python-dateutil==2.9.0.post0
-
- + six==1.17.0
-
-Checking if Streamlit is installed
-
-Installing rich for an improved exception logging
-
-Using uv pip install.
-
-Using Python 3.14.8 environment at /home/adminuser/venv
-
-Resolved 4 packages in 120ms
-
-Prepared 4 packages in 128ms
-
-Installed 4 packages in 19ms
-
- + markdown-it-py==4.2.0
-
- + mdurl==0.1.2
-
- + pygments==2.21.0
-
- + rich==15.0.0
-
-────────────────────────────────────────────────────────────────────────────────────────
-
-[14:52:59] 🐍 Python dependencies were installed from /mount/src/yrs/requirements.txt using uv.
-
-Check if streamlit is installed
-
-──────────────────────────────── Installing Streamlit ──────────────────────────────────
-
-Using uv pip install.
-
-Using Python 3.14.8 environment at /home/adminuser/venv
-
-Resolved 34 packages in 421ms
-
-Prepared 30 packages in 1.34s
-
-Installed 30 packages in 31ms
-
- + altair==6.3.0
-
- + anyio==4.15.1
-
- + attrs==26.1.0
-
- + certifi==2026.10.18
-
- + charset-normalizer==3.5.2
-
- + click==8.5.0
-
- + h11==0.16.0
-
- + idna[2026-10-19 14:53:01.956425] ==3.20
-
- + itsdangerous==2.2.0
-
- + jinja2==3.1.6
-
- + jsonschema==4.26.0
-
- + jsonschema-specifications==2025.9.1
-
- + markupsafe==3.0.4[2026-10-19 14:53:01.956668] 
-
- + narwhals==2.27.1
-
- + packaging==26.3
-
- + pillow==12.3.0
-
- + protobuf==7.36.2
-
- + pyarrow[2026-10-19 14:53:01.957056] ==26.0.0
-
- + pydeck==0.9.3
-
- + python-multipart==0.0.32
-
- + referencing==0.37.0
-
- + requests==2.34.2
-
- + rpds-py==2026.9.1
-
- + starlette[2026-10-19 14:53:01.957385] ==1.9.0
-
- + streamlit==1.66.0
-
- + typing-extensions==4.16.0
-
- + urllib3==2.8.0
-
- + uvicorn==0.54.0[2026-10-19 14:53:01.957570] 
-
- + watchdog==6.0.0
-
- + websockets==17.2
-
-────────────────────────────────────────────────────────────────────────────────────────
-
-[14:53:02] 📦 Processed dependencies!
-
-2026-10-19 14:53:05.034 Uvicorn server started on :::8501
-
-2026-10-19 14:53:09.833 Script compilation error
-
-Traceback (most recent call last):
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 743, in _run_script
-
-    code = self._script_cache.get_bytecode(script_path)
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
-
-    filebody = magic.add_magic(filebody, script_path)
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/magic.py", line 44, in add_magic
-
-    tree = ast.parse(code, script_path, "exec")
-
-  File "/usr/local/lib/python3.14/ast.py", line 46, in parse
-
-    return compile(source, filename, mode, flags,
-
-                   _feature_version=feature_version, optimize=optimize)
-
-  File "/mount/src/yrs/pedidos.py", line 55
-
-    conn.close()if not produtos_filtrados:
-
-                                         ^
-
-SyntaxError: invalid syntax
-
-2026-10-19 14:53:11.001 Script compilation error
-
-Traceback (most recent call last):
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 743, in _run_script
-
-    code = self._script_cache.get_bytecode(script_path)
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
-
-    filebody = magic.add_magic(filebody, script_path)
-
-  File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/scriptrunner/magic.py", line 44, in add_magic
-
-    tree = ast.parse(code, script_path, "exec")
-
-  File "/usr/local/lib/python3.14/ast.py", line 46, in parse
-
-    return compile(source, filename, mode, flags,
-
-                   _feature_version=feature_version, optimize=optimize)
-
-  File "/mount/src/yrs/pedidos.py", line 55
-
-    conn.close()if not produtos_filtrados:
-
-                                         ^
-
-SyntaxError: invalid syntax
-
-principal
-yuri64639-ux/yrs/main/pedidos.py
 if not produtos_filtrados:
     st.warning("Nenhum produto encontrado no cardápio.")
 else:
@@ -228,7 +109,6 @@ else:
             if st.button("🚀 Lançar", key=f"caixa_btn_{prod['id']}", type="primary"):
                 st.session_state[f"caixa_conf_{prod['id']}"] = True
         
-        # Confirmação detalhada exibindo a identificação do cliente na tela
         if st.session_state.get(f"caixa_conf_{prod['id']}", False):
             with st.status(f"⚠️ Confirmar lançamento para {input_mesa} / Comanda: {input_comanda}?", expanded=True):
                 st.write(f"• **Produto:** {qtd_p}x {prod['nome']}")
@@ -246,7 +126,6 @@ else:
                                     consumo = (float(item['quantidade']) / 1000.0) * qtd_p
                                     cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s;", (consumo, item['insumo_id']))
                                     
-                                # Insere os dados adicionais de rastreabilidade
                                 cur.execute("""
                                     INSERT INTO pedidos_realizados (produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo) 
                                     VALUES (%s, %s, %s, %s, %s, %s);
@@ -282,7 +161,6 @@ if conn:
     if historico:
         for p in historico:
             txt_t = "🟢 (Com 10%)" if p['taxa_inclusa'] else "⚪ (Sem taxa)"
-            # Exibe as informações completas de destino no log histórico
             st.text(f"⏱️ {p['data_hora'].strftime('%H:%M')} | {p['mesa_numero']} (Comanda: {p['comanda_codigo']}) -> {p['quantidade_pedida']}x {p['produto_nome']} | R$ {float(p['valor_total']):.2f} {txt_t}")
     else:
         st.info("Nenhum pedido lançado recentemente com este filtro.")
