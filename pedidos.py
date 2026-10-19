@@ -36,6 +36,10 @@ def upgrade_db_silencioso():
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
                 cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS status_conta VARCHAR(50) DEFAULT 'Aberta';")
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS mesa_numero VARCHAR(50) DEFAULT 'Balcão';")
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS comanda_codigo VARCHAR(100) DEFAULT 'Não Informado';")
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) DEFAULT 'Dinheiro';")
+                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS garcao_nome VARCHAR(255) DEFAULT 'Sistema';")
             except:
                 pass
             conn.commit()
@@ -92,7 +96,7 @@ if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo
 
 col_titulo, col_logout = st.columns([0.7, 0.3])
 with col_titulo:
-    st.title("🛒 Caixa & Salão Operacional")
+    st.title("🛒 Caixa & Salão")
 with col_logout:
     st.markdown(f"👤 **{st.session_state.garcao_atual}**")
     if st.button("🚪 Sair", use_container_width=True):
@@ -104,7 +108,7 @@ with col_logout:
         st.rerun()
 
 st.markdown("---")
-tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência (Contas, Estornos e Transferências)"])
+tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
 with tabs[0]:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
@@ -240,7 +244,7 @@ with tabs[1]:
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
-with tabs:
+with tabs[2]:
     if not st.session_state.gerente_autenticado:
         st.subheader("🔐 Área Restrita ao Gerente")
         senha_gerencia = st.text_input("Insira a senha master de gerência:", type="password", key="senha_master_gerencia")
@@ -268,7 +272,7 @@ with tabs:
                 
                 with g_tab1:
                     if not lista_mesas_gerencia:
-                        st.info("Nenhuma mesa ativa para fechamento.")
+                        st.info("Nenhuma mesa activa para fechamento.")
                     else:
                         mesa_fechar = st.selectbox("Selecione a Mesa para Fechar:", options=lista_mesas_gerencia, key="sel_fechar_m")
                         cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
@@ -290,7 +294,7 @@ with tabs:
                                 WHERE mesa_numero = %s AND status_conta = 'Aberta';
                             """, (forma_p, 1.10 if aplicar_10 else 1.0, 1.10 if aplicar_10 else 1.0, aplicar_10, mesa_fechar))
                             conn.commit()
-                            st.success(f"Conta da {mesa_fechar} fechada com sucesso em {forma_p}!")
+                            st.success(f"Conta da {mesa_fechar} fechada com sucesso!")
                             time.sleep(0.5)
                             st.rerun()
 
@@ -310,7 +314,6 @@ with tabs:
                             obj_estorno = opcoes_estorno[item_sel_estorno]
                             
                             if st.button("❌ Cancelar Item e Devolver ao Estoque", type="primary"):
-                                # BUSCA OTIMIZADA POR ID INTERNO: Elimina o gargalo do Neon cruzando chaves estrangeiras numéricas indexadas
                                 cur.execute("""
                                     SELECT f.insumo_id, f.quantidade 
                                     FROM ficha_tecnica f 
@@ -325,7 +328,7 @@ with tabs:
                                 
                                 cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno['id'],))
                                 conn.commit()
-                                st.success("Item estornado e estoque reabastecido de forma instantânea!")
+                                st.success("Item estornado!")
                                 time.sleep(0.4)
                                 st.rerun()
 
@@ -343,7 +346,7 @@ with tabs:
                         else:
                             item_sel_trans = st.selectbox("Item a ser Transferido:", options=list(opcoes_trans.keys()))
                             obj_trans = opcoes_trans[item_sel_trans]
-                            mesa_destino = st.text_input("Número da Mesa de Destino (Ex: Mesa 12):")
+                            mesa_destino = st.text_input("Número da Mesa de Destino:")
                             
                             if st.button("🔄 Executar Transferência", type="primary"):
                                 if not mesa_destino.strip():
@@ -351,7 +354,7 @@ with tabs:
                                 else:
                                     cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans['id']))
                                     conn.commit()
-                                    st.success(f"Item transferido com sucesso para a {mesa_destino}!")
+                                    st.success("Item transferido!")
                                     time.sleep(0.5)
                                     st.rerun()
             conn.close()
