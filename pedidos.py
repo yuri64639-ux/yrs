@@ -238,28 +238,32 @@ with tabs[0]:
                 st.session_state.carrinho = {}
                 st.rerun()
 
-# ABA 2: CONSULTA DE CONSUMO DAS MESAS ATIVAS (ÍNDICE 1)
+# ABA 2: CONSULTA DE CONSUMO INDIVIDUAL CARREGADO APENAS SOB DEMANDA (ÍNDICE 1)
 with tabs[1]:
     st.subheader("🗂️ Painel de Acompanhamento de Mesas Ativas")
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Lista apenas os nomes das mesas abertas (Consulta leve de string única)
             cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
             mesas_abertas = cur.fetchall()
+            
             if not mesas_abertas:
                 st.info("Nenhuma mesa com consumo aberto no momento.")
             else:
                 for m in mesas_abertas:
-                    cur.execute("""
-                        SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro
-                        FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' GROUP BY produto_nome, comanda_codigo, garcao_nome ORDER BY produto_nome;
-                    """, (m['mesa_numero'],))
-                    itens_mesa = cur.fetchall()
-                    if itens_mesa:
-                        subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
-                        # CORREÇÃO DO INDEX: Coleta a string comanda e garçom de forma segura da primeira linha resolvida
-                        comanda_ref = itens_mesa[0]['comanda_codigo']
-                        with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — Subtotal Aberto: R\$ {subtotal_mesa:.2f}"):
+                    # O segredo do desempenho: o Streamlit só busca a comanda pesada se o usuário clicar no expander
+                    with st.expander(f"🪑 {m['mesa_numero']} (Toque para Carregar Conta)"):
+                        cur.execute("""
+                            SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro
+                            FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' GROUP BY produto_nome, comanda_codigo, garcao_nome ORDER BY produto_nome;
+                        """, (m['mesa_numero'],))
+                        itens_mesa = cur.fetchall()
+                        
+                        if itens_mesa:
+                            subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
+                            st.markdown(f"**Identificador Comanda:** `{itens_mesa[0]['comanda_codigo']}` | **Total: R\$ {subtotal_mesa:.2f}**")
+                            st.markdown("---")
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
@@ -295,7 +299,7 @@ with tabs[2]:
                         st.info("Não há comandas abertas para faturamento no salão.")
                     else:
                         mesa_fechar = st.selectbox("Selecione a Mesa para Encerrar:", options=lista_mesas_gerencia, key="sel_fechar_m")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
+                        cur.execute("SELECT id, produto_nome, quantity_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_fechar,))
                         itens_f = cur.fetchall()
                         
                         sub_f = sum(float(i['valor_total']) for i in itens_f)
@@ -307,7 +311,7 @@ with tabs[2]:
                         valor_final_f = sub_f * 1.10 if aplicar_10 else sub_f
                         st.markdown(f"### Total Final do Caixa: R\$ {valor_final_f:.2f}")
                         
-                        if st.button("🖨️ Encerrar Conta e Emitir Baixa", type="primary", use_container_width=True):
+                        if st.button("𖨰 Encerrar Conta e Emitir Baixa", type="primary", use_container_width=True):
                             ids_fechar = [item['id'] for item in itens_f]
                             cur.execute("""
                                 UPDATE pedidos_realizados 
@@ -324,7 +328,7 @@ with tabs[2]:
                         st.info("Nenhum ativo disponível para estorno.")
                     else:
                         mesa_estorno = st.selectbox("Selecione a Mesa:", options=lista_mesas_gerencia, key="sel_estorno_m")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_estorno,))
+                        cur.execute("SELECT id, produto_nome, quantity_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_estorno,))
                         itens_estornar = cur.fetchall()
                         
                         opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']} (ID Ref: {i['id']})": i for i in itens_estornar}
@@ -351,6 +355,7 @@ with tabs[2]:
                                 conn.commit()
                                 st.success("Transação desfeita e inventário estornado!")
                                 time.sleep(0.4)
+                                cur.execute("SELECT 1;") # Reset de cursor fictício de velocidade
                                 st.rerun()
 
                 with g_tab3:
@@ -358,7 +363,7 @@ with tabs[2]:
                         st.info("Nenhum ativo disponível para transferência.")
                     else:
                         mesa_origem = st.selectbox("Mesa de Origem:", options=lista_mesas_gerencia, key="sel_trans_origem")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_origem,))
+                        cur.execute("SELECT id, produto_nome, quantity_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';".replace("quantity_pedida", "quantidade_pedida"), (mesa_origem,))
                         itens_trans = cur.fetchall()
                         
                         opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']} (ID Ref: {i['id']})": i for i in itens_trans}
@@ -375,7 +380,7 @@ with tabs[2]:
                                 else:
                                     cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans['id']))
                                     conn.commit()
-                                    st.success(f"Item transferido de forma permanente para a {mesa_destino}!")
+                                    st.success("Item transferido!")
                                     time.sleep(0.5)
                                     st.rerun()
             conn.close()
