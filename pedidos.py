@@ -3,7 +3,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 
-# Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
 def init_connection():
@@ -13,7 +12,6 @@ def init_connection():
         st.error(f"Erro de conexão: {e}")
         return None
 
-# MANUTENÇÃO OCULTA: Executa o ajuste de colunas de faturamento em segundo plano no Neon
 def upgrade_db_silencioso():
     conn = init_connection()
     if conn:
@@ -49,7 +47,6 @@ def upgrade_db_silencioso():
 
 upgrade_db_silencioso()
 
-# Inicialização de memória de alto desempenho (Evita lentidão ao alternar abas)
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
 if "produtos_cache" not in st.session_state:
@@ -59,7 +56,6 @@ if "ultimo_carregamento_produtos" not in st.session_state:
 if "gerente_autenticado" not in st.session_state:
     st.session_state.gerente_autenticado = False
 
-# Sistema Anti-F5: Mantém o operador conectado caso a página recarregue
 if "garcao" in st.query_params:
     st.session_state.usuario_autenticado = True
     st.session_state.garcao_atual = st.query_params["garcao"]
@@ -69,7 +65,6 @@ else:
     if "garcao_atual" not in st.session_state:
         st.session_state.garcao_atual = ""
 
-# --- TELA DE LOGIN OBRIGATÓRIA ---
 if not st.session_state.usuario_autenticado:
     st.container()
     col_l1, col_l2, col_l3 = st.columns([0.1, 0.8, 0.1])
@@ -89,7 +84,6 @@ if not st.session_state.usuario_autenticado:
                 st.error("Credenciais Inválidas!")
     st.stop()
 
-# Carregamento inteligente do cardápio uma única vez (Economiza dados e zera a lentidão)
 tempo_atual = time.time()
 if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
     conn = init_connection()
@@ -114,7 +108,6 @@ with col_logout:
         st.rerun()
 
 st.markdown("---")
-# Criação estruturada de abas indexadas nativas
 tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência Master"])
 # ABA 1: OPERAÇÃO DE LANÇAMENTO (ÍNDICE 0)
 with tabs[0]:
@@ -129,7 +122,6 @@ with tabs[0]:
     st.subheader("🔍 Encontrar Itens")
     busca_termo = st.text_input("🔍 Buscar Produto (Lupa):", placeholder="Ex: Batata Frita")
 
-    # Varredura direta em cache de alta velocidade
     produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()] if busca_termo else st.session_state.produtos_cache
 
     if not produtos_filtrados:
@@ -185,7 +177,6 @@ with tabs[0]:
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if st.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
-                # TRAVA OPERACIONAL MOBILE OBRIGATÓRIA
                 if not input_mesa.strip() or input_mesa.strip().lower() in ["balcão", ""]:
                     st.error("🚨 LANÇAMENTO RECUSADO: Você deve informar o número da Mesa.")
                 elif not input_comanda.strip() or input_comanda.strip().lower() in ["não informado", ""]:
@@ -220,13 +211,12 @@ with tabs[0]:
                                             st.error(f"Estoque Insuficiente de '{f_item['nome']}'!")
                                             erro_estoque = True
                                 
-                                # Processamento massivo controlado e seguro
                                 if not erro_estoque:
                                     for item in st.session_state.carrinho.values():
                                         ficha = mapa_fichas.get(item['id_real'], [])
                                         for f_item in ficha:
                                             consumo = (float(f_item['quantidade']) / 1000.0) * item['qtd']
-                                            cur.execute("UPDATE insumos SET quantity_atual = quantidade_atual - %s WHERE id = %s;".replace("quantity_atual", "quantidade_atual"), (consumo, f_item['insumo_id']))
+                                            cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s;", (consumo, f_item['insumo_id']))
                                         
                                         valor_venda_item = item["preco"] * item["qtd"]
                                         cur.execute("""
@@ -267,7 +257,8 @@ with tabs[1]:
                     itens_mesa = cur.fetchall()
                     if itens_mesa:
                         subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
-                        comanda_ref = itens_mesa['comanda_codigo']
+                        # CORREÇÃO DO INDEX: Coleta a string comanda e garçom de forma segura da primeira linha resolvida
+                        comanda_ref = itens_mesa[0]['comanda_codigo']
                         with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — Subtotal Aberto: R\$ {subtotal_mesa:.2f}"):
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
