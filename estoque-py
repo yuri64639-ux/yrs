@@ -3,7 +3,7 @@ import sys
 class CardapioSistema:
     def __init__(self):
         # Banco de dados inicial simulado em memória
-        # Os insumos brutos do estoque são sempre pensados em Kg ou Litros
+        # Os insumos brutos do estoque são considerados em Kg ou Litros
         self.insumos = ["Carne Moída", "Tomate", "Alface", "Cebola", "Azeite", "Frango", "Queijo", "Molho de Tomate", "Leite", "Farinha"]
         self.produtos = []
 
@@ -124,9 +124,9 @@ class CardapioSistema:
                 unidade = input(f"Unidade de medida para a receita (g / ml): ").strip().lower()
                 if unidade in ["g", "ml"]:
                     break
-                print("[ERRO] Unidade inválida! Escolha estritamente 'g' para gramas ou 'ml' para mililitros.")
+                print("[ERRO] Unidade inválida! Escolha 'g' para gramas ou 'ml' para mililitros.")
 
-            # Realiza o cálculo de conversão automática para a baixa do estoque bruto (Kg/L)
+            # Cálculo de conversão para a baixa do estoque (g/ml -> Kg/L)
             qtd_estoque_equivalente = qtd_num / 1000.0
             unidade_estoque = "kg" if unidade == "g" else "L"
 
@@ -139,17 +139,14 @@ class CardapioSistema:
             })
             insumos_usados_neste_produto.add(insumo_selecionado)
 
-        # Montagem do dicionário estruturado do produto comercializado
+        # Salvando o produto final
         novo_produto = {
             "nome": nome_produto,
             "preco": preco_venda,
             "ficha_tecnica": ficha_tecnica
         }
         self.produtos.append(novo_produto)
-        
-        print("\n" + "="*50)
-        print(f"[SUCESSO] Produto '{nome_produto}' cadastrado com sucesso!")
-        print("="*50)
+        print(f"\n[SUCESSO] Produto '{nome_produto}' cadastrado!")
 
     def visualizar_cardapio(self):
         print("\n" + "="*50)
@@ -163,10 +160,10 @@ class CardapioSistema:
         for idx, prod in enumerate(self.produtos, 1):
             print(f"\n{idx}. Produto: {prod['nome']}")
             print(f"   Preço de Venda: R$ {prod['preco']:.2f}")
-            print("   Ficha Técnica (Associações obrigatórias):")
+            print("   Ficha Técnica:")
             for item in prod['ficha_tecnica']:
                 print(f"     • {item['insumo']}: {item['quantidade_receita']}{item['unidade_receita']} "
-                      f"-> (Baixa calculada no estoque: {item['equivalente_estoque']:.3f} {item['unidade_estoque']})")
+                      f"-> (Equivale a {item['equivalente_estoque']:.3f} {item['unidade_estoque']} no estoque bruto)")
             print("-" * 50)
 
 if __name__ == "__main__":
