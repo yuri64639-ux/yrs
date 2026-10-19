@@ -5,7 +5,6 @@ import pandas as pd
 from datetime import datetime
 import time
 
-# Configuração de interface corporativa estável
 st.set_page_config(page_title="Gestão de Equipe & Performance", layout="wide")
 
 def init_connection():
@@ -159,5 +158,5 @@ with tabs[1]:
         df_exibir.columns = ['Produto', 'Qtd', 'Valor (R$)', 'Taxa (10%)', 'Comissão', 'Mesa', 'Comanda', 'Garçom Responsável', 'Data/Hora']
         
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
-else:
-    st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
+    else:
+        st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
