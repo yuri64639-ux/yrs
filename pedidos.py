@@ -14,7 +14,7 @@ def init_connection():
         st.error(f"Erro ao conectar ao banco Neon: {e}")
         return None
 
-# MIGRAÇÃO SILENCIOSA: Garante a criação da coluna garcao_nome de forma transparente
+# MIGRAÇÃO SILENCIOSA: Executa as correções estruturais sem exibir nenhum texto na interface
 def upgrade_db_silencioso():
     conn = init_connection()
     if conn:
@@ -48,15 +48,25 @@ def upgrade_db_silencioso():
 
 upgrade_db_silencioso()
 
-# Inicialização de memória de Sessão Streamlit
+# Inicializa as variáveis de controle do carrinho
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
-if "usuario_autenticado" not in st.session_state:
-    st.session_state.usuario_autenticado = False
-if "garcao_atual" not in st.session_state:
-    st.session_state.garcao_atual = ""
 
-# --- TELA DE LOGIN OBRIGATÓRIA DOS GARÇONS ---
+# --- PERSISTÊNCIA VIA URL (ANTI-F5) ---
+# Se o usuário já tiver os dados na URL do navegador, recupera automaticamente
+if "garcao" in st.query_params:
+    st.session_state.usuario_autenticado = True
+    st.session_state.garcao_atual = st.query_params["garcao"]
+else:
+    if "usuario_autenticado" not in st.session_state:
+        st.session_state.usuario_autenticado = False
+    if "garcao_atual" not in st.session_state:
+        st.session_state.garcao_atual = ""
+
+# Define qual aba deve abrir com base na URL (padrão é a aba 0)
+default_tab = int(st.query_params.get("aba", 0))
+
+# --- TELA DE LOGIN OPERACIONAL ---
 if not st.session_state.usuario_autenticado:
     st.container()
     col_l1, col_l2, col_l3 = st.columns([0.3, 0.4, 0.3])
@@ -66,18 +76,20 @@ if not st.session_state.usuario_autenticado:
         senha_input = st.text_input("Insira sua Senha Operacional:", type="password")
         
         if st.button("Entrar no Sistema", type="primary", use_container_width=True):
-            # Validação simples de senha operacional padrão
             if (nome_input in ["Garçom 01", "Garçom 02", "Garçom 03"] and senha_input == "1234") or (nome_input == "Gerente" and senha_input == "admin"):
                 st.session_state.usuario_autenticado = True
                 st.session_state.garcao_atual = nome_input
+                # Salva o login diretamente nos parâmetros da URL do navegador
+                st.query_params["garcao"] = nome_input
+                st.query_params["aba"] = 0
                 st.success(f"Bem-vindo, {nome_input}!")
                 time.sleep(0.5)
                 st.rerun()
             else:
-                st.error("Credenciais Inválidas! Senha incorreta para o operador selecionado.")
-    st.stop()  # Trava o carregamento do restante da página caso não esteja logado
+                st.error("Credenciais Inválidas!")
+    st.stop()
 
-# --- INTERFACE OPERACIONAL LIBERADA ---
+# --- INTERFACE DO GARÇOM ---
 @st.fragment(run_every="1s")
 def checar_alertas_estoque_oculto():
     conn = init_connection()
@@ -90,7 +102,6 @@ def checar_alertas_estoque_oculto():
             for item in itens_criticos:
                 st.error(f"⚠️ **ATENÇÃO GARÇOM:** O insumo **{item['nome']}** está acabando no estoque! (Restam apenas {float(item['quantidade_atual']):.3f} Kg/L)")
 
-# Barra Superior com Dados do Operador Conectado
 col_titulo, col_logout = st.columns([0.8, 0.2])
 with col_titulo:
     st.title("🛒 Frente de Caixa & Gerenciamento de Salão")
@@ -100,14 +111,23 @@ with col_logout:
         st.session_state.usuario_autenticado = False
         st.session_state.garcao_atual = ""
         st.session_state.carrinho = {}
+        st.query_params.clear()  # Limpa o link do navegador no logoff
         st.rerun()
 
 checar_alertas_estoque_oculto()
 st.markdown("---")
 
-tabs = st.tabs(["🛍️ Lançar Pedidos (Carrinho)", "🗂️ Mesas Abertas & Consumo"])
-# ABA 1: OPERAÇÃO DE LANÇAMENTO
-with tabs[0]:
+# Renderiza as abas salvando o clique na URL do navegador
+menu_abas = ["🛍️ Lançar Pedidos (Carrinho)", "🗂️ Mesas Abertas & Consumo"]
+escolha_aba = st.radio("Navegação do Salão:", menu_abas, index=default_tab, horizontal=True, label_visibility="collapsed")
+
+# Sincroniza a aba clicada com a URL para resistir ao F5
+idx_aba_atual = menu_abas.index(escolha_aba)
+if idx_aba_atual != default_tab:
+    st.query_params["aba"] = idx_aba_atual
+    st.rerun()
+# CONTEÚDO DA ABA 1: OPERAÇÃO DE LANÇAMENTO
+if idx_aba_atual == 0:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
@@ -157,7 +177,7 @@ with tabs[0]:
     st.subheader("📋 Conferir Seleção de Itens (Carrinho)")
 
     if not st.session_state.carrinho:
-        st.info("Nenhum item selecionado até o momento. Use os botões acima para montar o pedido.")
+        st.info("Nenhum item selecionado até o momento.")
     else:
         st.markdown(f"**Destino Atual do Pedido:** {input_mesa.strip()} | **Identificador:** {input_comanda.strip()}")
         total_geral_carrinho = 0.0
@@ -189,7 +209,7 @@ with tabs[0]:
         with col_c1:
             if st.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
                 if not input_mesa.strip() or input_mesa.strip().lower() in ["balcão", ""]:
-                    st.error("🚨 **LANÇAMENTO RECUSADO:** Você deve informar um número válido para a **Mesa**.")
+                    st.error("🚨 **LANÇAMENTO RECUSADO:** Informe uma **Mesa** válida.")
                 elif not input_comanda.strip() or input_comanda.strip().lower() in ["não informado", ""]:
                     st.error("🚨 **LANÇAMENTO RECUSADO:** O código da **Comanda** é obrigatório.")
                 else:
@@ -204,7 +224,7 @@ with tabs[0]:
                                     for f_item in ficha:
                                         consumo_necessario = (float(f_item['quantidade']) / 1000.0) * item['qtd']
                                         if float(f_item['quantidade_atual']) < consumo_necessario:
-                                            st.error(f"Estoque Insuficiente! Item '{f_item['nome']}' precisa de {consumo_necessario:.3f} Kg/L.")
+                                            st.error(f"Estoque Insuficiente de '{f_item['nome']}'!")
                                             erro_estoque_geral = True
                                 
                                 if not erro_estoque_geral:
@@ -237,8 +257,8 @@ with tabs[0]:
                 time.sleep(0.5)
                 st.rerun()
 
-# ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS
-with tabs[1]:
+# CONTEÚDO DA ABA 2: CONSULTA DE CONSUMO EM TEMPO REAL DAS MESAS ATIVAS
+elif idx_aba_atual == 1:
     st.subheader("🗂️ Painel Operacional de Consumo das Mesas")
     
     conn = init_connection()
@@ -266,7 +286,7 @@ with tabs[1]:
                         garcao_ref = itens_mesa[0]['garcao_nome']
                         
                         with st.expander(f"🪑 {m['mesa_numero']} (Comanda: {comanda_ref}) — Consumo Acumulado: R\$ {subtotal_mesa:.2f}"):
-                            st.markdown(f"**Atendente Responsável:** `{garcao_ref}`")
+                            st.markdown(f"**Último Atendente Responsável:** `{garcao_ref}`")
                             st.markdown("**Extrato de Lançamentos:**")
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — Subtotal: R\$ {float(it['total_financeiro']):.2f}")
