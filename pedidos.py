@@ -185,7 +185,7 @@ st.markdown("---")
 tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
 
 # ABA 1: OPERAÇÃO DE LANÇAMENTO (ÍNDICE 0)
-with tabs:
+with tabs[0]:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
@@ -278,8 +278,8 @@ with tabs:
         if not busca_termo:
             st.info("Utilize a lupa de pesquisa acima para encontrar e adicionar produtos ao carrinho.")
 
-# ABA 2: VISUALIZAÇÃO DE MESAS EM ABERTO
-with tabs:
+# ABA 2: VISUALIZAÇÃO DE MESAS EM ABERTO (ÍNDICE 1)
+with tabs[1]:
     st.subheader("📋 Painel de Consumo")
     conn = init_connection()
     if conn:
@@ -309,7 +309,7 @@ with tabs:
                     for i in itens:
                         st.write(f"• {i['quantidade_pedida']}x {i['produto_nome']} — R$ {float(i['valor_total']):.2f}")
 
-# ABA 3: CONTEXTO GERENCIAL RESIDUAL
-with tabs:
+# ABA 3: CONTEXTO GERENCIAL RESIDUAL (ÍNDICE 2)
+with tabs[2]:
     st.subheader("🔐 Área de Segurança e Relatórios")
     st.info("Utilize credenciais administrativas para gerar auditoria de estoque ou faturamento consolidado.")
