@@ -164,7 +164,7 @@ with tabs[0]:
             with col_n:
                 st.markdown(f"**{prod['nome']}**")
             with col_p:
-                st.markdown(f"R\\\\$ {p_base:.2f}")
+                st.markdown(f"R\\$ {p_base:.2f}")
             with col_q:
                 qtd_p = st.number_input("Quantidade", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
             with col_b:
@@ -191,11 +191,11 @@ with tabs[0]:
             sub_total_item = item["preco"] * item["qtd"]
             total_geral_carrinho += sub_total_item
             with col_c_nome:
-                st.write(f"• **{item['nome']}** (R\\\\$ {item['preco']:.2f})")
+                st.write(f"• **{item['nome']}** (R\\$ {item['preco']:.2f})")
             with col_c_qtd:
                 st.write(f"{item['qtd']} un")
             with col_c_sub:
-                st.write(f"R\\\\$ {sub_total_item:.2f}")
+                st.write(f"R\\$ {sub_total_item:.2f}")
             with col_c_del:
                 if st.button("Tirar", key=f"del_item_cart_{k}", use_container_width=True):
                     itens_remover.append(k)
@@ -204,7 +204,7 @@ with tabs[0]:
             del st.session_state.carrinho[k]
             st.rerun()
             
-        st.markdown(f"### Total Acumulado do Pedido: R\\\\$ {total_geral_carrinho:.2f}")
+        st.markdown(f"### Total Acumulado do Pedido: R\\$ {total_geral_carrinho:.2f}")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if st.button("✅ Confirmar e Enviar Pedido", type="primary", use_container_width=True):
@@ -288,10 +288,10 @@ with tabs[1]:
                         if itens_mesa:
                             subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
                             comanda_ref = itens_mesa[0]['comanda_codigo']
-                            st.markdown(f"**Identificador Comanda:** `{comanda_ref}` | **Total: R\\\\$ {subtotal_mesa:.2f}**")
+                            st.markdown(f"**Identificador Comanda:** `{comanda_ref}` | **Total: R\\$ {subtotal_mesa:.2f}**")
                             st.markdown("---")
                             for it in itens_mesa:
-                                st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\\\\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
+                                st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
 
 with tabs[2]:
@@ -330,14 +330,14 @@ with tabs[2]:
                             itens_f = cur.fetchall()
                             
                             sub_f = sum(float(i['valor_total']) for i in itens_f)
-                            st.write(f"**Consumo dos Produtos:** R\\\\$ {sub_f:.2f}")
+                            st.write(f"**Consumo dos Produtos:** R\\$ {sub_f:.2f}")
                             
                             aplicar_10 = st.checkbox("Incluir Taxa de Serviço Opcional (10%)", value=True, key="chk_taxa_10_gerencia")
                             forma_p = st.selectbox("Método de Recebimento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
                             
                             multiplicador = 1.10 if aplicar_10 else 1.0
                             valor_final_f = sub_f * multiplicador
-                            st.markdown(f"### Total Final do Caixa: R\\\\$ {valor_final_f:.2f}")
+                            st.markdown(f"### Total Final do Caixa: R\\$ {valor_final_f:.2f}")
                             
                             if st.button("Confirmar Encerramento", type="primary", use_container_width=True):
                                 ids_fechar = [item['id'] for item in itens_f]
