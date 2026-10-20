@@ -119,48 +119,49 @@ with aba_vendas:
                     st.rerun()
 
     st.subheader("🔍 Localizar Produto")
-    busca_termo = st.text_input("🔍 Buscar Produto no Cardápio (Lupa):", placeholder="Ex: Batata Frita", key="busca_lupa_caixa")
+    busca_termo = st.text_input("🔍 Buscar Produto no Cardápio (Lupa):", placeholder="Digite para buscar... Ex: Batata Frita", key="busca_lupa_caixa")
 
-    conn = init_connection()
-    produtos_filtrados = []
-    if conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if busca_termo:
+    # MODIFICAÇÃO: Só consulta o banco e exibe se o usuário digitar algo na busca
+    if busca_termo.strip():
+        conn = init_connection()
+        produtos_filtrados = []
+        if conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT id, nome, preco FROM produtos WHERE nome ILIKE %s ORDER BY nome;", (f"%{busca_termo}%",))
-            else:
-                cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
-            produtos_filtrados = cur.fetchall()
+                produtos_filtrados = cur.fetchall()
 
-    if not produtos_filtrados:
-        st.warning("Nenhum produto encontrado no cardápio.")
+        if not produtos_filtrados:
+            st.warning("Nenhum produto encontrado com esse nome.")
+        else:
+            for prod in produtos_filtrados:
+                col_n, col_p, col_q, col_t, col_b = st.columns([0.3, 0.15, 0.15, 0.2, 0.2])
+                p_base = float(prod['preco'])
+                
+                with col_n:
+                    st.markdown(f"**{prod['nome']}**")
+                with col_p:
+                    st.markdown(f"R$ {p_base:.2f}")
+                with col_q:
+                    qtd_p = st.number_input("Qtd", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
+                with col_t:
+                    p_taxa = st.checkbox("Pagar 10% serviço", value=True, key=f"caixa_taxa_{prod['id']}")
+                    sub = p_base * qtd_p
+                    v_final = sub * 1.10 if p_taxa else sub
+                    st.caption(f"Total: R$ {v_final:.2f}")
+                with col_b:
+                    if st.button("🚀 Lançar", key=f"caixa_btn_{prod['id']}", type="primary"):
+                        st.session_state.pedido_confirmar = {
+                            "id": prod['id'],
+                            "nome": prod['nome'],
+                            "qtd": qtd_p,
+                            "valor_final": v_final,
+                            "taxa": p_taxa,
+                            "mesa": input_mesa.strip(),
+                            "comanda": input_comanda.strip()
+                        }
+                        st.rerun()
     else:
-        for prod in produtos_filtrados:
-            col_n, col_p, col_q, col_t, col_b = st.columns([0.3, 0.15, 0.15, 0.2, 0.2])
-            p_base = float(prod['preco'])
-            
-            with col_n:
-                st.markdown(f"**{prod['nome']}**")
-            with col_p:
-                st.markdown(f"R$ {p_base:.2f}")
-            with col_q:
-                qtd_p = st.number_input("Qtd", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
-            with col_t:
-                p_taxa = st.checkbox("Pagar 10% serviço", value=True, key=f"caixa_taxa_{prod['id']}")
-                sub = p_base * qtd_p
-                v_final = sub * 1.10 if p_taxa else sub
-                st.caption(f"Total: R$ {v_final:.2f}")
-            with col_b:
-                if st.button("🚀 Lançar", key=f"caixa_btn_{prod['id']}", type="primary"):
-                    st.session_state.pedido_confirmar = {
-                        "id": prod['id'],
-                        "nome": prod['nome'],
-                        "qtd": qtd_p,
-                        "valor_final": v_final,
-                        "taxa": p_taxa,
-                        "mesa": input_mesa.strip(),
-                        "comanda": input_comanda.strip()
-                    }
-                    st.rerun()
+        st.info("💡 Digite o nome de um produto acima para realizar o lançamento.")
 with aba_mesas_abertas:
     st.subheader("📋 Consumo por Mesa e Código de Comanda")
     
@@ -202,7 +203,7 @@ with aba_mesas_abertas:
                     with c_row1: st.write(i['produto_nome'])
                     with c_row2: st.write(f"{i['quantidade_pedida']}x")
                     with c_row3: st.write(f"R$ {float(i['valor_total']):.2f}")
-                    with c_row4: st.write(i['data_hora'].strftime("%H:%M:%S"))
+                    with c_row4: i['data_hora'].strftime("%H:%M:%S") if i['data_hora'] else st.write("-")
                 
                 st.markdown("---")
                 
