@@ -185,7 +185,7 @@ st.markdown("---")
 tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
 
 # ABA 1: OPERAÇÃO DE LANÇAMENTO (ÍNDICE 0)
-with tabs[0]:
+with tabs:
     st.subheader("👤 Identificação do Atendimento")
     col_mesa, col_comanda = st.columns(2)
     with col_mesa:
@@ -193,7 +193,40 @@ with tabs[0]:
     with col_comanda:
         comanda_final = st.text_input("📋 Código da Comanda:", placeholder="Ex: 1042", value="Não Informado")
 
-    # Exibição direta do carrinho (Conforme solicitado anteriormente, a listagem crua foi removida)
+    st.markdown("---")
+    st.subheader("🔍 Encontrar Itens")
+    # Lupa de busca rápida por produto reativada
+    busca_termo = st.text_input("🔍 Buscar Produto (Lupa):", placeholder="Ex: Batata Frita")
+
+    # Filtro em memória de alto desempenho usando o cache
+    produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()] if busca_termo else st.session_state.produtos_cache
+
+    if busca_termo:
+        if not produtos_filtrados:
+            st.warning("Nenhum produto encontrado com este nome.")
+        else:
+            for prod in produtos_filtrados:
+                col_n, col_p, col_q, col_b = st.columns([0.4, 0.2, 0.2, 0.2])
+                p_base = float(prod['preco'])
+                with col_n:
+                    st.markdown(f"**{prod['nome']}**")
+                with col_p:
+                    st.markdown(f"R$ {p_base:.2f}")
+                with col_q:
+                    qtd_p = st.number_input("Quantidade", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
+                with col_b:
+                    if st.button("➕ Selecionar", key=f"add_cart_{prod['id']}", use_container_width=True):
+                        pid = prod['id']
+                        if pid in st.session_state.carrinho:
+                            st.session_state.carrinho[pid]['qtd'] += qtd_p
+                        else:
+                            st.session_state.carrinho[pid] = {
+                                "nome": prod['nome'],
+                                "preco": p_base,
+                                "qtd": qtd_p
+                            }
+                        st.toast(f"➕ {prod['nome']} adicionado ao carrinho!")
+
     if st.session_state.carrinho:
         st.markdown("---")
         st.subheader("🛒 Itens Selecionados no Atendimento")
@@ -242,10 +275,11 @@ with tabs[0]:
                 st.session_state.carrinho = {}
                 st.rerun()
     else:
-        st.info("O carrinho está vazio. Adicione itens para prosseguir.")
+        if not busca_termo:
+            st.info("Utilize a lupa de pesquisa acima para encontrar e adicionar produtos ao carrinho.")
 
 # ABA 2: VISUALIZAÇÃO DE MESAS EM ABERTO
-with tabs[1]:
+with tabs:
     st.subheader("📋 Painel de Consumo")
     conn = init_connection()
     if conn:
@@ -276,6 +310,6 @@ with tabs[1]:
                         st.write(f"• {i['quantidade_pedida']}x {i['produto_nome']} — R$ {float(i['valor_total']):.2f}")
 
 # ABA 3: CONTEXTO GERENCIAL RESIDUAL
-with tabs[2]:
+with tabs:
     st.subheader("🔐 Área de Segurança e Relatórios")
     st.info("Utilize credenciais administrativas para gerar auditoria de estoque ou faturamento consolidado.")
