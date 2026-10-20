@@ -1,5 +1,6 @@
 import streamlit as st
 import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 import time
 
@@ -18,46 +19,70 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def init_connection():
+# Inicializa o Pool de Conexões seguro para threads (Suporta múltiplos acessos sem travar)
+@st.cache_resource
+def get_connection_pool():
     try:
-        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+        # Configurado para manter entre 1 e 20 conexões reutilizáveis simultâneas
+        return ThreadedConnectionPool(1, 20, st.secrets["DATABASE_URL"], sslmode="require")
     except Exception as e:
-        st.error(f"Erro de conexão: {e}")
+        st.error(f"Erro ao inicializar pool de conexões: {e}")
         return None
 
-# MANUTENÇÃO OCULTA: Executa o ajuste de colunas de faturamento em segundo plano no Neon
+def init_connection():
+    pool = get_connection_pool()
+    if pool:
+        try:
+            return pool.getconn()
+        except Exception as e:
+            st.error(f"Erro ao obter conexão do pool: {e}")
+    return None
+
+def release_connection(conn):
+    pool = get_connection_pool()
+    if pool and conn:
+        try:
+            pool.putconn(conn)
+        except:
+            pass
+
+# MANUTENÇÃO OCULTA: Agora com cache para rodar uma única vez no servidor e não travar cliques
+@st.cache_resource
 def upgrade_db_silencioso():
-    conn = init_connection()
-    if conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS pedidos_realizados (
-                    id SERIAL PRIMARY KEY,
-                    produto_nome VARCHAR(255) NOT NULL,
-                    quantidade_pedida INT NOT NULL,
-                    valor_total NUMERIC(10,2) NOT NULL,
-                    taxa_inclusa BOOLEAN NOT NULL DEFAULT FALSE,
-                    mesa_numero VARCHAR(50) DEFAULT 'Balcão',
-                    comanda_codigo VARCHAR(100) DEFAULT 'Não Informado',
-                    forma_pagamento VARCHAR(50) DEFAULT 'Mesa Aberta',
-                    garcao_nome VARCHAR(255) DEFAULT 'Sistema',
-                    status_conta VARCHAR(50) DEFAULT 'Aberta',
-                    data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            try:
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS total NUMERIC(10, 2) NOT NULL DEFAULT 0.00;")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS status_conta VARCHAR(50) DEFAULT 'Aberta';")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS mesa_numero VARCHAR(50) DEFAULT 'Balcão';")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS comanda_codigo VARCHAR(100) DEFAULT 'Não Informado';")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) DEFAULT 'Dinheiro';")
-                cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS garcao_nome VARCHAR(255) DEFAULT 'Sistema';")
-            except:
-                pass
-            conn.commit()
-        conn.close()
+    pool = get_connection_pool()
+    if pool:
+        conn = pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS pedidos_realizados (
+                        id SERIAL PRIMARY KEY,
+                        produto_nome VARCHAR(255) NOT NULL,
+                        quantidade_pedida INT NOT NULL,
+                        valor_total NUMERIC(10,2) NOT NULL,
+                        taxa_inclusa BOOLEAN NOT NULL DEFAULT FALSE,
+                        mesa_numero VARCHAR(50) DEFAULT 'Balcão',
+                        comanda_codigo VARCHAR(100) DEFAULT 'Não Informado',
+                        forma_pagamento VARCHAR(50) DEFAULT 'Mesa Aberta',
+                        garcao_nome VARCHAR(255) DEFAULT 'Sistema',
+                        status_conta VARCHAR(50) DEFAULT 'Aberta',
+                        data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                try:
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS total NUMERIC(10, 2) NOT NULL DEFAULT 0.00;")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS status_conta VARCHAR(50) DEFAULT 'Aberta';")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS mesa_numero VARCHAR(50) DEFAULT 'Balcão';")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS comanda_codigo VARCHAR(100) DEFAULT 'Não Informado';")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) DEFAULT 'Dinheiro';")
+                    cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS garcao_nome VARCHAR(255) DEFAULT 'Sistema';")
+                except:
+                    pass
+                conn.commit()
+        finally:
+            pool.putconn(conn)
 
 upgrade_db_silencioso()
 
@@ -89,10 +114,10 @@ if not st.session_state.usuario_autenticado:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row for row in cur.fetchall()]
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
             except:
                 pass
-        conn.close()
+        release_connection(conn)
 
     st.container()
     col_l1, col_l2, col_l3 = st.columns([0.1, 0.8, 0.1])
@@ -120,7 +145,7 @@ if not st.session_state.usuario_autenticado:
                                 autenticado_db = True
                         except:
                             pass
-                    conn.close()
+                    release_connection(conn)
                 
                 if autenticado_db:
                     st.session_state.usuario_autenticado = True
@@ -140,7 +165,7 @@ if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
             st.session_state.produtos_cache = cur.fetchall()
-        conn.close()
+        release_connection(conn)
         st.session_state.ultimo_carregamento_produtos = tempo_atual
 
 col_titulo, col_logout = st.columns([0.7, 0.3])
@@ -168,7 +193,7 @@ with tabs[0]:
     with col_comanda:
         comanda_final = st.text_input("📋 Código da Comanda:", placeholder="Ex: 1042", value="Não Informado")
 
-    # Exibição direta do carrinho (A lista de produtos do cardápio foi inteiramente removida daqui)
+    # Exibição direta do carrinho (Conforme solicitado anteriormente, a listagem crua foi removida)
     if st.session_state.carrinho:
         st.markdown("---")
         st.subheader("🛒 Itens Selecionados no Atendimento")
@@ -211,7 +236,7 @@ with tabs[0]:
                     except Exception as e:
                         st.error(f"Erro ao salvar: {e}")
                     finally:
-                        conn.close()
+                        release_connection(conn)
         with col_c2:
             if st.button("❌ Limpar Tudo", use_container_width=True):
                 st.session_state.carrinho = {}
@@ -224,14 +249,16 @@ with tabs[1]:
     st.subheader("📋 Painel de Consumo")
     conn = init_connection()
     if conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT mesa_numero, comanda_codigo, produto_nome, quantidade_pedida, valor_total 
-                FROM pedidos_realizados WHERE status_conta = 'Aberta' 
-                ORDER BY mesa_numero, comanda_codigo;
-            """)
-            pedidos_abertos = cur.fetchall()
-        conn.close()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT mesa_numero, comanda_codigo, produto_nome, quantidade_pedida, valor_total 
+                    FROM pedidos_realizados WHERE status_conta = 'Aberta' 
+                    ORDER BY mesa_numero, comanda_codigo;
+                """)
+                pedidos_abertos = cur.fetchall()
+        finally:
+            release_connection(conn)
         
         if not pedidos_abertos:
             st.info("Nenhuma mesa ou comanda aberta no momento.")
