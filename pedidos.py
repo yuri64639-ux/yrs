@@ -168,37 +168,7 @@ with tabs[0]:
     with col_comanda:
         comanda_final = st.text_input("📋 Código da Comanda:", placeholder="Ex: 1042", value="Não Informado")
 
-    st.markdown("---")
-    st.subheader("🔍 Encontrar Itens")
-    busca_termo = st.text_input("🔍 Buscar Produto (Lupa):", placeholder="Ex: Batata Frita")
-
-    produtos_filtrados = [p for p in st.session_state.produtos_cache if busca_termo.lower() in p['nome'].lower()] if busca_termo else st.session_state.produtos_cache
-
-    if not produtos_filtrados:
-        st.warning("Nenhum produto encontrado no cardápio.")
-    else:
-        for prod in produtos_filtrados:
-            col_n, col_p, col_q, col_b = st.columns([0.4, 0.2, 0.2, 0.2])
-            p_base = float(prod['preco'])
-            with col_n:
-                st.markdown(f"**{prod['nome']}**")
-            with col_p:
-                st.markdown(f"R$ {p_base:.2f}")
-            with col_q:
-                qtd_p = st.number_input("Quantidade", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}")
-            with col_b:
-                if st.button("➕ Selecionar", key=f"add_cart_{prod['id']}", use_container_width=True):
-                    pid = prod['id']
-                    if pid in st.session_state.carrinho:
-                        st.session_state.carrinho[pid]['qtd'] += qtd_p
-                    else:
-                        st.session_state.carrinho[pid] = {
-                            "nome": prod['nome'],
-                            "preco": p_base,
-                            "qtd": qtd_p
-                        }
-                    st.toast(f"➕ {prod['nome']} adicionado ao carrinho!")
-
+    # Exibição direta do carrinho (A lista de produtos do cardápio foi inteiramente removida daqui)
     if st.session_state.carrinho:
         st.markdown("---")
         st.subheader("🛒 Itens Selecionados no Atendimento")
@@ -246,6 +216,8 @@ with tabs[0]:
             if st.button("❌ Limpar Tudo", use_container_width=True):
                 st.session_state.carrinho = {}
                 st.rerun()
+    else:
+        st.info("O carrinho está vazio. Adicione itens para prosseguir.")
 
 # ABA 2: VISUALIZAÇÃO DE MESAS EM ABERTO
 with tabs[1]:
