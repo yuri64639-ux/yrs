@@ -4,6 +4,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import time as time_module
+import re
 
 # Configuração de Identidade Visual na Aba do Navegador
 st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
@@ -62,8 +63,6 @@ st.markdown(
         box-shadow: 0px 6px 15px rgba(212, 175, 55, 0.4);
         transform: translateY(-2px);
     }
-
-    /* Estilização do Logo Metálico Centralizado */
     .logo-container {
         text-align: center;
         padding: 20px;
@@ -137,51 +136,63 @@ st.markdown(
 st.write("---")
 
 # Formulário de Entrada do Cliente
-nome = st.text_input("Seu Nome Completo:")
-whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999")
+nome = st.text_input("Seu Nome Completo:", key="input_nome_cliente")
+whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999", key="input_whatsapp_cliente")
 
-# Filtro de Serviços Demandado
-servicos = [
-    "Cabelo",
-    "Barba",
-    "Cabelo e Barba"
-]
-servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos)
+servicos = ["Cabelo", "Barba", "Cabelo e Barba"]
+servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos, key="select_servico_cliente")
 
-# Seleção Dinâmica de Datas (Próximas 2 semanas disponíveis)
 data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
-data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite)
+data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# Lista Estruturada de Horários Disponíveis por Turno
-horarios_disponiveis = [
-    "09:00", "09:40", "10:20", "11:00", "11:40", 
-    "13:30", "14:10", "14:50", "15:30", "16:10", "16:50", "17:30"
-]
+# 🕒 Campo de texto livre corrigido e destravado para celular
+horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
-# Varredura dinâmica de horários ocupados direto no banco em nuvem da Neon
-conn = obter_conexao()
-horarios_ocupados = []
-if conn:
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SET search_path TO public;")
-            cur.execute("SELECT horario FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
-            horarios_ocupados = [row[0] for row in cur.fetchall()]
-    except Exception:
-        if conn: conn.rollback()
+st.markdown("<br>", unsafe_allow_html=True)
 
-horarios_livres = [h for h in horarios_disponiveis if h not in horarios_ocupados]
+if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente"):
+    # 1. Validação de campos vazios
+    if nome.strip() == "" or whatsapp.strip() == "":
+        st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
+    # 2. Validação estrutural do formato digitado
+    elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
+        st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
+    else:
+        # 🛠️ CORREÇÃO DE LOGICA: Fatiamento explícito dos índices da lista de strings da hora
+        partes_hora = horario_digitado.split(":")
+        hora_ajustada = int(partes_hora[0])
+        minuto_ajustada = int(partes_hora[1])
+        horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
 
-# Exibição e validação do Horário
-if len(horarios_livres) > 0:
-    horario_selecionado = st.selectbox("Escolha o Horário Livre:", horarios_livres)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    if st.button("Confirmar Meu Agendamento"):
-        if nome.strip() == "" or whatsapp.strip() == "":
-            st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
+        # 🕒 REGRA DOS 40 MINUTOS
+        conn = obter_conexao()
+        conflito_horario = False
+        proximo_cliente_info = ""
+        
+        if conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
+                    agendados_dia = cur.fetchall()
+                    
+                    data_base_str = str(data_selecionada)
+                    dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
+                    
+                    for agendamento in agendados_dia:
+                        dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
+                        diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
+                        
+                        if diferenca < 40:
+                            conflito_horario = True
+                            proximo_cliente_info = f"{agendamento['horario']}"
+                            break
+            except Exception:
+                if conn: conn.rollback()
+        
+        if conflito_horario:
+            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, digite um horário mais cedo ou mais tarde.")
         else:
             conn = obter_conexao()
             if conn:
@@ -191,13 +202,11 @@ if len(horarios_livres) > 0:
                         cur.execute("""
                             INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
                             VALUES (%s, %s, %s, %s, %s);
-                        """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado))
+                        """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
                         conn.commit()
-                    st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}.")
+                    st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
                     st.balloons()
                     time_module.sleep(0.8)
                     st.rerun()
                 except Exception:
                     if conn: conn.rollback()
-else:
-    st.warning("❌ Desculpe, todos os horários para este dia já estão preenchidos. Por favor, selecione outra data!")
