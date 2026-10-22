@@ -106,7 +106,7 @@ if not st.session_state.usuario_autenticado:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row for row in cur.fetchall()]
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
             except:
                 pass
         conn.close()
