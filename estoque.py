@@ -1,4 +1,89 @@
-# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO (ATUALIZADO) ---
+import streamlit as st
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import logging
+import time
+
+# Configuração de Logs do Sistema
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+class Config:
+    PAGE_TITLE = "ERP Gastronômico - Backoffice & Engenharia de Menu"
+    LOW_STOCK_THRESHOLD = 2.000  # Limite crítico em Kg ou Litros
+
+class DatabaseManager:
+    @staticmethod
+    def get_connection():
+        try:
+            return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+        except Exception as e:
+            logging.error(f"Falha de conexão com a instância Neon: {e}")
+            st.error("🚨 Falha na comunicação com o servidor de dados central. Verifique as credenciais.")
+            return None
+
+    @classmethod
+    def execute_migration(cls):
+        conn = cls.get_connection()
+        if not conn:
+            return
+        try:
+            with conn.cursor() as cur:
+                # Criação das Tabelas estruturadas com amarração por ID de Empresa
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS insumos (
+                        id SERIAL PRIMARY KEY,
+                        nome VARCHAR(255) NOT NULL,
+                        quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000,
+                        empresa_id INT
+                    );
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS produtos (
+                        id SERIAL PRIMARY KEY,
+                        nome VARCHAR(255) NOT NULL,
+                        preco NUMERIC(10, 2) NOT NULL,
+                        empresa_id INT
+                    );
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ficha_tecnica (
+                        id SERIAL PRIMARY KEY,
+                        produto_id INT REFERENCES produtos(id) ON DELETE CASCADE,
+                        insumo_id INT REFERENCES insumos(id) ON DELETE CASCADE,
+                        quantidade NUMERIC(10, 2) NOT NULL,
+                        unidade VARCHAR(10) NOT NULL,
+                        empresa_id INT
+                    );
+                """)
+                
+                # Injeção de segurança retroativa para colunas Multi-Tenant
+                cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000;")
+                cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                cur.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                cur.execute("ALTER TABLE ficha_tecnica ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                
+                # Remove travas universais antigas que impediam produtos duplicados em contas diferentes
+                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS insumos_nome_key;")
+                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS produtos_nome_key;")
+                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS unique_insumo_por_empresa;")
+                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS unique_produto_por_empresa;")
+                
+                # Aplica chaves que protegem duplicidade APENAS dentro da própria empresa
+                cur.execute("ALTER TABLE insumos ADD CONSTRAINT unique_insumo_por_empresa UNIQUE (nome, empresa_id);")
+                cur.execute("ALTER TABLE produtos ADD CONSTRAINT unique_produto_por_empresa UNIQUE (nome, empresa_id);")
+                
+                conn.commit()
+                logging.info("Migração e regras de chaves compostas executadas com sucesso.")
+        except Exception as e:
+            logging.critical(f"Erro crítico durante a execução do DDL: {e}")
+        finally:
+            conn.close()
+
+# Executa barreira de migração de dados antes da renderização da UI
+st.set_page_config(page_title=Config.PAGE_TITLE, layout="wide", initial_sidebar_state="expanded")
+DatabaseManager.execute_migration()
+
+# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO COM FALLBACK DE SEGURANÇA ---
 id_empresa_contexto = None
 
 if "empresa_id_ativo" in st.session_state and st.session_state.empresa_id_ativo:
@@ -8,7 +93,7 @@ elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_gar
 elif "emp_id" in st.query_params:
     id_empresa_contexto = int(st.query_params["emp_id"])
 
-# CORREÇÃO DE SEGURANÇA: Permite selecionar a empresa direto se o token de sessão estiver vazio
+# Se for aberto sozinho sem token de sessão anterior, permite selecionar a empresa e digitar as chaves
 if not id_empresa_contexto:
     st.markdown("<h3>🔒 Autenticação de Almoxarifado</h3>", unsafe_allow_html=True)
     conn = DatabaseManager.get_connection()
@@ -86,7 +171,6 @@ with menu_tabs[0]:
                 try:
                     with db_conn.cursor() as cur:
                         for item_nome in ativos_linhas:
-                            # ON CONFLICT DO NOTHING baseado na nova restrição composta nome + empresa_id
                             cur.execute("""
                                 INSERT INTO insumos (nome, empresa_id) 
                                 VALUES (%s, %s) 
@@ -170,7 +254,6 @@ with menu_tabs[1]:
             if db_conn:
                 try:
                     with db_conn.cursor() as cur:
-                        # Insere o produto respeitando a restrição de unicidade por empresa
                         cur.execute("""
                             INSERT INTO produtos (nome, preco, empresa_id) 
                             VALUES (%s, %s, %s) 
@@ -179,15 +262,14 @@ with menu_tabs[1]:
                         """, (input_nome_sku.strip(), input_preco_sku, id_empresa_contexto))
                         id_novo_produto = cur.fetchone()[0]
                         
-                        # Limpa composições antigas para evitar resíduos se o produto já existia
                         cur.execute("DELETE FROM ficha_tecnica WHERE produto_id = %s AND empresa_id = %s;", (id_novo_produto, id_empresa_contexto))
                         
                         for comp in componentes_selecionados:
                             id_insumo_alvo = mapeamento_insumos.get(comp["nome"])
                             if id_insumo_alvo:
                                 cur.execute("""
-                                    INSERT INTO ficha_tecnica (produto_id, insumo_id, quantidade, unidade, empresa_id) 
-                                    VALUES (%s, %s, %s, %s, %s);
+                                    INSERT INTO ficha_tecnica (produto_id, insumo_id, grandmother, quantidade, unidade, empresa_id) 
+                                    VALUES (%s, %s, %s, %s, %s, %s);
                                 """, (id_novo_produto, id_insumo_alvo, comp["quantidade"], comp["unidade"], id_empresa_contexto))
                         db_conn.commit()
                     st.success(f"Produto '{input_nome_sku}' integrado e blindado para sua empresa!")
