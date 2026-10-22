@@ -8,56 +8,21 @@ st.set_page_config(page_title="Caixa Mobile", layout="wide", initial_sidebar_sta
 st.markdown("""
 <style>
 /* OCULTA TOTALMENTE OS ELEMENTOS PADRÃO DO STREAMLIT (Estrela, Lápis, Share, 3 Pontinhos) */
-header, [data-testid="stHeader"] {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0px !important;
-}
-footer {
-    display: none !important;
-    visibility: hidden !important;
-}
-#MainMenu {
-    display: none !important;
-    visibility: hidden !important;
-}
-.stDeployButton {
-    display: none !important;
-    visibility: hidden !important;
-}
+header, [data-testid="stHeader"] { display: none !important; visibility: hidden !important; height: 0px !important; }
+footer { display: none !important; visibility: hidden !important; }
+#MainMenu { display: none !important; visibility: hidden !important; }
+.stDeployButton { display: none !important; visibility: hidden !important; }
+
 /* Compactação total para telas pequenas (evita rolagens horizontais) */
-.block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 1rem !important;
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-}
-h1 {
-    font-size: 1.6rem !important;
-    margin-bottom: 0.5rem !important;
-}
-h2 {
-    font-size: 1.3rem !important;
-    margin-top: 0.5rem !important;
-}
-h3 {
-    font-size: 1.1rem !important;
-    margin-top: 0.5rem !important;
-}
+.block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; }
+h2 { font-size: 1.3rem !important; margin-top: 0.5rem !important; }
+h3 { font-size: 1.1rem !important; margin-top: 0.5rem !important; }
+
 /* Remove espaçamentos exagerados e força preenchimento completo no celular */
-[data-testid="column"] {
-    padding: 0.2rem 0rem !important;
-    width: 100% !important;
-    min-width: 100% !important;
-}
-div.stButton > button {
-    margin-top: 5px !important;
-    font-size: 1rem !important;
-    padding: 0.5rem !important;
-}
-div[data-testid="stForm"] {
-    padding: 0.5rem !important;
-}
+[data-testid="column"] { padding: 0.2rem 0rem !important; width: 100% !important; min-width: 100% !important; }
+div.stButton > button { margin-top: 5px !important; font-size: 1rem !important; padding: 0.5rem !important; }
+div[data-testid="stForm"] { padding: 0.5rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -88,57 +53,70 @@ def upgrade_db_silencioso():
                 garcao_nome VARCHAR(255) DEFAULT 'Sistema',
                 status_conta VARCHAR(50) DEFAULT 'Aberta',
                 data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                empresa_id INT
             );
             """)
-            
-            # Garante que todas as colunas de faturamento existam na tabela de pedidos
             cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS total NUMERIC(10, 2) NOT NULL DEFAULT 0.00;")
             cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS metodo_pagamento VARCHAR(50) NOT NULL DEFAULT 'Não Informado';")
             cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
-            
+            cur.execute("ALTER TABLE pedidos_realizados ADD COLUMN IF NOT EXISTS empresa_id INT;")
         conn.commit()
         conn.close()
 
 upgrade_db_silencioso()
 # --- INICIALIZAÇÃO DE MEMÓRIA E ESTADOS ---
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = {}
-if "produtos_cache" not in st.session_state:
-    st.session_state.produtos_cache = []
-if "ultimo_carregamento_produtos" not in st.session_state:
-    st.session_state.ultimo_carregamento_produtos = 0.0
-if "gerente_autenticado" not in st.session_state:
-    st.session_state.gerente_autenticado = False
-if "input_mesa_salva" not in st.session_state:
-    st.session_state.input_mesa_salva = ""
-if "input_comanda_salva" not in st.session_state:
-    st.session_state.input_comanda_salva = ""
+if "carrinho" not in st.session_state: st.session_state.carrinho = {}
+if "produtos_cache" not in st.session_state: st.session_state.produtos_cache = []
+if "ultimo_carregamento_produtos" not in st.session_state: st.session_state.ultimo_carregamento_produtos = 0.0
+if "gerente_autenticado" not in st.session_state: st.session_state.gerente_autenticado = False
+if "input_mesa_salva" not in st.session_state: st.session_state.input_mesa_salva = ""
+if "input_comanda_salva" not in st.session_state: st.session_state.input_comanda_salva = ""
+if "empresa_id_garcom" not in st.session_state: st.session_state.empresa_id_garcom = None
 
-# Sistema Anti-F5 para manter o operador logado no smartphone
-if "garcao" in st.query_params:
+# Sistema Anti-F5 integrado com Controle de Inquilino (Multi-Tenant)
+if "garcao" in st.query_params and "emp_id" in st.query_params:
     st.session_state.usuario_autenticado = True
     st.session_state.garcao_atual = st.query_params["garcao"]
+    st.session_state.empresa_id_garcom = int(st.query_params["emp_id"])
 else:
-    if "usuario_autenticado" not in st.session_state:
-        st.session_state.usuario_autenticado = False
-    if "garcao_atual" not in st.session_state:
-        st.session_state.garcao_atual = ""
+    if "usuario_autenticado" not in st.session_state: st.session_state.usuario_autenticado = False
+    if "garcao_atual" not in st.session_state: st.session_state.garcao_atual = ""
 
-# --- FLUXO DE LOGIN DINÂMICO ADAPTADO PARA CELULAR ---
+# --- FLUXO DE LOGIN MULTI-EMPRESA ADAPTADO ---
 if not st.session_state.usuario_autenticado:
+    st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
+    
+    conn = init_connection()
+    lista_empresas = []
+    if conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("SELECT id, nome_fantasia FROM public.empresas ORDER BY nome_fantasia;")
+                lista_empresas = cur.fetchall()
+            except: pass
+        conn.close()
+        
+    mapa_empresas = {row[1]: row[0] for row in lista_empresas}
+    
+    if not mapa_empresas:
+        st.error("Nenhuma empresa localizada na nuvem Neon. Crie uma conta pelo Painel do PC.")
+        st.stop()
+        
+    empresa_escolhida = st.selectbox("Selecione a Empresa:", options=list(mapa_empresas.keys()))
+    id_empresa_sel = mapa_empresas[empresa_escolhida]
+    
+    # Carrega dinamicamente apenas a lista de garçons vinculados à empresa selecionada
     lista_garcons_db = ["Gerente"]
     conn = init_connection()
     if conn:
         with conn.cursor() as cur:
             try:
-                cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row for row in cur.fetchall()]
-            except:
-                pass
+                cur.execute("SELECT nome FROM public.cadastros_garcons WHERE empresa_id = %s ORDER BY nome;", (id_empresa_sel,))
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
+            except: pass
         conn.close()
 
-    st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
     nome_input = st.selectbox("Selecione seu Nome:", options=lista_garcons_db)
     senha_input = st.text_input("Senha / Código Operacional:", type="password")
 
@@ -146,7 +124,9 @@ if not st.session_state.usuario_autenticado:
         if nome_input == "Gerente" and senha_input == "admin":
             st.session_state.usuario_autenticado = True
             st.session_state.garcao_atual = nome_input
+            st.session_state.empresa_id_garcom = id_empresa_sel
             st.query_params["garcao"] = nome_input
+            st.query_params["emp_id"] = str(id_empresa_sel)
             st.success("Acesso Autorizado!")
             time.sleep(0.3)
             st.rerun()
@@ -156,17 +136,17 @@ if not st.session_state.usuario_autenticado:
             if conn:
                 with conn.cursor() as cur:
                     try:
-                        cur.execute("SELECT nome FROM cadastros_garcons WHERE nome = %s AND codigo_operacional = %s;", (nome_input, senha_input.strip()))
-                        if cur.fetchone():
-                            autenticado_db = True
-                    except:
-                        pass
+                        cur.execute("SELECT nome FROM public.cadastros_garcons WHERE nome = %s AND codigo_operacional = %s AND empresa_id = %s;", (nome_input, senha_input.strip(), id_empresa_sel))
+                        if cur.fetchone(): autenticado_db = True
+                    except: pass
                 conn.close()
 
             if autenticado_db:
                 st.session_state.usuario_autenticado = True
                 st.session_state.garcao_atual = nome_input
+                st.session_state.empresa_id_garcom = id_empresa_sel
                 st.query_params["garcao"] = nome_input
+                st.query_params["emp_id"] = str(id_empresa_sel)
                 st.success(f"Bem-vindo, {nome_input}!")
                 time.sleep(0.3)
                 st.rerun()
@@ -174,24 +154,22 @@ if not st.session_state.usuario_autenticado:
                 st.error("Senha Incorreta!")
     st.stop()
 
-# Renovação automática do cache de produtos (30 segundos)
+# Atualização de cache baseada na empresa ativa do operador logado
 tempo_atual = time.time()
 if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
+            # FILTRO CRÍTICO: Carrega estritamente o cardápio desta empresa inquilina
+            cur.execute("SELECT id, nome, preco FROM produtos WHERE empresa_id = %s ORDER BY nome;", (st.session_state.empresa_id_garcom,))
             resultado_completo = cur.fetchall()
             # REMOÇÃO DO PRIMEIRO ITEM DA LISTA DE PRODUTOS
             st.session_state.produtos_cache = resultado_completo[1:] if len(resultado_completo) > 1 else resultado_completo
         conn.close()
     st.session_state.ultimo_carregamento_produtos = tempo_atual
 
-# Cabeçalho compacto para celular
 st.markdown(f"👤 Operador: **{st.session_state.garcao_atual}**")
 st.markdown("---")
-
-# Criação das Abas em formato amigável para telas touch screen
 tabs = st.tabs(["🛍️ Lançar", "🗂️ Mesas", "🔐 ADM"])
 # --- ABA 1: OPERAÇÃO DE LANÇAMENTO VERTICALIZADO ---
 with tabs[0]:
@@ -251,8 +229,7 @@ with tabs[0]:
 
         for k in itens_remover:
             del st.session_state.carrinho[k]
-        if itens_remover:
-            st.rerun()
+        if itens_remover: st.rerun()
 
         st.markdown(f"#### 💰 Total Acumulado: **R$ {total_geral_carrinho:.2f}**")
 
@@ -273,14 +250,13 @@ with tabs[0]:
                             SELECT f.produto_id, f.insumo_id, f.quantidade, i.nome, i.quantidade_atual 
                             FROM ficha_tecnica f 
                             JOIN insumos i ON f.insumo_id = i.id 
-                            WHERE f.produto_id = ANY(%s);
-                            """, (ids_produtos,))
+                            WHERE f.produto_id = ANY(%s) AND i.empresa_id = %s;
+                            """, (ids_produtos, st.session_state.empresa_id_garcom))
                             todas_fichas = cur.fetchall()
 
                             mapa_fichas = {}
                             for row in todas_fichas:
-                                if row["produto_id"] not in mapa_fichas:
-                                    mapa_fichas[row["produto_id"]] = []
+                                if row["produto_id"] not in mapa_fichas: mapa_fichas[row["produto_id"]] = []
                                 mapa_fichas[row["produto_id"]].append(row)
 
                             for item in st.session_state.carrinho.values():
@@ -296,13 +272,14 @@ with tabs[0]:
                                     ficha = mapa_fichas.get(item["id_real"], [])
                                     for f_item in ficha:
                                         consumo = (float(f_item["quantidade"]) / 1000.0) * item["qtd"]
-                                        cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s;", (consumo, f_item["insumo_id"]))
+                                        cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual - %s WHERE id = %s AND empresa_id = %s;", (consumo, f_item["insumo_id"], st.session_state.empresa_id_garcom))
 
                                     valor_venda_item = item["preco"] * item["qtd"]
+                                    # INSERÇÃO VINCULANDO O ID DA EMPRESA DO GARÇOM LOGADO
                                     cur.execute("""
-                                    INSERT INTO pedidos_realizados (produto_nome, quantidade_pedida, valor_total, total, forma_pagamento, metodo_pagamento, taxa_inclusa, mesa_numero, comanda_codigo, status_conta, garcao_nome) 
-                                    VALUES (%s, %s, %s, %s, 'Mesa Aberta', 'Mesa Aberta', FALSE, %s, %s, 'Aberta', %s);
-                                    """, (item["nome"], item["qtd"], valor_venda_item, valor_venda_item, input_mesa.strip(), input_comanda.strip(), st.session_state.garcao_atual))
+                                    INSERT INTO pedidos_realizados (produto_nome, quantidade_pedida, valor_total, total, forma_pagamento, metodo_pagamento, taxa_inclusa, mesa_numero, comanda_codigo, status_conta, garcao_nome, empresa_id) 
+                                    VALUES (%s, %s, %s, %s, 'Mesa Aberta', 'Mesa Aberta', FALSE, %s, %s, 'Aberta', %s, %s);
+                                    """, (item["nome"], item["qtd"], valor_venda_item, valor_venda_item, input_mesa.strip(), input_comanda.strip(), st.session_state.garcao_atual, st.session_state.empresa_id_garcom))
 
                                 conn.commit()
                                 st.session_state.carrinho = {}
@@ -319,13 +296,14 @@ with tabs[0]:
     if st.button("🗑️ Limpar Carrinho", key="btn_limpar_bandeja_master", type="secondary", use_container_width=True):
         st.session_state.carrinho = {}
         st.rerun()
-# --- ABA 2: MONITOR DE MESAS - TOTALMENTE EMPILHADO ---
+# --- ABA 2: MONITOR DE MESAS ISOLADO POR EMPRESA ---
 with tabs[1]:
     st.markdown("### 🗂️ Consumo no Salão")
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
+            # Restringe o monitor de mesas apenas aos registros da empresa ativa do garçom
+            cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' AND empresa_id = %s ORDER BY mesa_numero;", (st.session_state.empresa_id_garcom,))
             mesas_abertas = cur.fetchall()
 
             if not mesas_abertas:
@@ -336,10 +314,10 @@ with tabs[1]:
                         cur.execute("""
                         SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro 
                         FROM pedidos_realizados 
-                        WHERE mesa_numero = %s AND status_conta = 'Aberta' 
+                        WHERE mesa_numero = %s AND status_conta = 'Aberta' AND empresa_id = %s
                         GROUP BY produto_nome, comanda_codigo, garcao_nome 
                         ORDER BY produto_nome;
-                        """, (m["mesa_numero"],))
+                        """, (m["mesa_numero"], st.session_state.empresa_id_garcom))
                         itens_mesa = cur.fetchall()
 
                         if itens_mesa:
@@ -351,7 +329,7 @@ with tabs[1]:
                                 st.markdown(f"• **{it['total_qtd']}x** {it['produto_nome']} — R$ {float(it['total_financeiro']):.2f}")
         conn.close()
 
-# --- ABA 3: GERÊNCIA E AUDITORIA PARA DISPOSITIVOS MÓVEIS ---
+# --- ABA 3: GERÊNCIA FINANCEIRA DO TERMINAL ---
 with tabs[2]:
     if not st.session_state.gerente_autenticado:
         st.markdown("### 🔐 Painel Master Gerencial")
@@ -362,8 +340,7 @@ with tabs[2]:
                 st.success("Módulo Liberado!")
                 time.sleep(0.3)
                 st.rerun()
-            else:
-                st.error("Senha Incorreta!")
+            else: st.error("Senha Incorreta!")
     else:
         st.markdown("### 🚀 Operações Especiais")
         if st.button("🔒 Trancar Painel ADM", use_container_width=True):
@@ -374,15 +351,14 @@ with tabs[2]:
         conn = init_connection()
         if conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
+                cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' AND empresa_id = %s ORDER BY mesa_numero;", (st.session_state.empresa_id_garcom,))
                 lista_mesas_gerencia = [r["mesa_numero"] for r in cur.fetchall()]
 
                 if opcao_adm == "💰 Fechar":
-                    if not lista_mesas_gerencia:
-                        st.info("Nenhuma comanda para faturamento.")
+                    if not lista_mesas_gerencia: st.info("Nenhuma comanda para faturamento.")
                     else:
                         mesa_fechar = st.selectbox("Selecione a Mesa para Encerrar:", options=lista_mesas_gerencia, key="sel_fechar_m")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' AND empresa_id = %s;", (mesa_fechar, st.session_state.empresa_id_garcom))
                         itens_f = cur.fetchall()
                         sub_f = sum(float(i["valor_total"]) for i in itens_f)
                         st.write(f"Consumo Original: R$ {sub_f:.2f}")
@@ -398,69 +374,62 @@ with tabs[2]:
                             cur.execute("""
                             UPDATE pedidos_realizados 
                             SET status_conta = 'Fechada', forma_pagamento = %s, total = valor_total * %s, valor_total = valor_total * %s, taxa_inclusa = %s 
-                            WHERE id = ANY(%s);
-                            """, (forma_p, fator_multiplicador, fator_multiplicador, aplicar_10, ids_fechar))
+                            WHERE id = ANY(%s) AND empresa_id = %s;
+                            """, (forma_p, fator_multiplicador, fator_multiplicador, aplicar_10, ids_fechar, st.session_state.empresa_id_garcom))
                             conn.commit()
                             st.success("Conta Encerrada com Sucesso!")
                             time.sleep(0.4)
                             st.rerun()
 
                 elif opcao_adm == "❌ Cancelar":
-                    if not lista_mesas_gerencia:
-                        st.info("Nenhum item aberto para estorno.")
+                    if not lista_mesas_gerencia: st.info("Nenhum item aberto para estorno.")
                     else:
                         mesa_estorno = st.selectbox("Selecione a Mesa:", options=lista_mesas_gerencia, key="sel_estorno_m")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_estorno,))
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' AND empresa_id = %s;", (mesa_estorno, st.session_state.empresa_id_garcom))
                         itens_estornar = cur.fetchall()
                         opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_estornar}
 
-                        if not opcoes_estorno:
-                            st.info("Mesa sem itens ativos.")
+                        if not opcoes_estorno: st.info("Mesa sem itens ativos.")
                         else:
                             item_sel_estorno = st.selectbox("Escolha o Item Incorreto:", options=list(opcoes_estorno.keys()))
                             obj_estorno = opcoes_estorno[item_sel_estorno]
 
                             if st.button("❌ Remover e Devolver Insumo", type="primary", use_container_width=True):
                                 cur.execute("""
-                                SELECT f.insumo_id, f.quantidade 
-                                FROM ficha_tecnica f 
+                                SELECT f.insumo_id, f.quantidade FROM ficha_tecnica f 
                                 JOIN produtos p ON f.produto_id = p.id 
-                                WHERE p.nome = %s 
-                                LIMIT 6;
-                                """, (obj_estorno["produto_nome"],))
+                                WHERE p.nome = %s AND p.empresa_id = %s LIMIT 6;
+                                """, (obj_estorno["produto_nome"], st.session_state.empresa_id_garcom))
                                 ficha_estorno = cur.fetchall()
 
                                 for f_e in ficha_estorno:
                                     devolucao = (float(f_e["quantidade"]) / 1000.0) * int(obj_estorno["quantidade_pedida"])
-                                    cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual + %s WHERE id = %s;", (devolucao, f_e["insumo_id"]))
+                                    cur.execute("UPDATE insumos SET quantidade_atual = quantidade_atual + %s WHERE id = %s AND empresa_id = %s;", (devolucao, f_e["insumo_id"], st.session_state.empresa_id_garcom))
 
-                                cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno["id"],))
+                                cur.execute("DELETE FROM pedidos_realizados WHERE id = %s AND empresa_id = %s;", (obj_estorno["id"], st.session_state.empresa_id_garcom))
                                 conn.commit()
                                 st.success("Lançamento Desfeito!")
                                 time.sleep(0.4)
                                 st.rerun()
 
                 elif opcao_adm == "🔄 Transferir":
-                    if not lista_mesas_gerencia:
-                        st.info("Nenhuma mesa ativa para transferência.")
+                    if not lista_mesas_gerencia: st.info("Nenhum item ativo para transferência.")
                     else:
                         mesa_origem = st.selectbox("Mesa de Origem:", options=lista_mesas_gerencia, key="sel_trans_origem")
-                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_origem,))
+                        cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' AND empresa_id = %s;", (mesa_origem, st.session_state.empresa_id_garcom))
                         itens_trans = cur.fetchall()
                         opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_trans}
 
-                        if not opcoes_trans:
-                            st.info("Sem itens para transferir.")
+                        if not opcoes_trans: st.info("Sem itens para transferir.")
                         else:
                             item_sel_trans = st.selectbox("Escolha o Item a Mudar:", options=list(opcoes_trans.keys()))
                             obj_trans = opcoes_trans[item_sel_trans]
                             mesa_destino = st.text_input("Nova Mesa Destino (Número):")
 
                             if st.button("🔄 Confirmar Transferência", type="primary", use_container_width=True):
-                                if not mesa_destino.strip():
-                                    st.error("Informe a mesa di destino!")
+                                if not mesa_destino.strip(): st.error("Informe a mesa di destino!")
                                 else:
-                                    cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans["id"]))
+                                    cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s AND empresa_id = %s;", (mesa_destino.strip(), obj_trans["id"], st.session_state.empresa_id_garcom))
                                     conn.commit()
                                     st.success("Item Transferido de Mesa!")
                                     time.sleep(0.5)
