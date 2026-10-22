@@ -8,6 +8,25 @@ st.set_page_config(page_title="Caixa Mobile", layout="wide", initial_sidebar_sta
 
 st.markdown("""
     <style>
+    /* OCULTA TOTALMENTE OS ELEMENTOS PADRÃO DO STREAMLIT (Estrela, Lápis, Share, 3 Pontinhos) */
+    header, [data-testid="stHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+    }
+    footer {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    .stDeployButton {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
     /* Compactação total para telas pequenas (evita rolagens horizontais) */
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
     h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; }
