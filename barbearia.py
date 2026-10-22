@@ -1,15 +1,27 @@
 import streamlit as st
 import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-import os
+import time as time_module
 
 # Configuração de Identidade Visual na Aba do Navegador
-st.set_page_config(page_title="Marinote club", page_icon="💈", layout="centered")
+st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
 
 # --- INJEÇÃO DE ARTWORK CSS PREMIUM (PRETO CARBONO & DOURADO METÁLICO) ---
 st.markdown(
     """
     <style>
+    /* Oculta os cabeçalhos nativos e menus de deploy do Streamlit */
+    [data-testid="stHeader"], [data-testid="stAppToolbar"], header {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
     /* Configuração do fundo dark de alto padrão */
     .stApp {
         background-color: #121212 !important;
@@ -80,31 +92,42 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Base de Dados Local em CSV
-DB_FILE = "agendamentos_barber.csv"
+# --- CONEXÃO COM O BANCO DE DADOS NEON CENTRAL ---
+@st.cache_resource
+def obter_conexao():
+    try:
+        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+    except Exception as e:
+        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        return None
 
-def carregar_dados():
-    if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
-    return pd.DataFrame(columns=["Nome", "WhatsApp", "Servico", "Data", "Horario"])
+def inicializar_banco():
+    conn = obter_conexao()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS public.agendamentos_marinote (
+                        id SERIAL PRIMARY KEY,
+                        nome TEXT NOT NULL,
+                        whatsapp TEXT NOT NULL,
+                        servico TEXT NOT NULL,
+                        data_agenda TEXT NOT NULL,
+                        horario TEXT NOT NULL
+                    );
+                """)
+                conn.commit()
+        except Exception:
+            if conn: conn.rollback()
 
-def salvar_agendamento(nome, whatsapp, servico, data, horario):
-    df = carregar_dados()
-    novo_registro = pd.DataFrame([{
-        "Nome": nome,
-        "WhatsApp": whatsapp,
-        "Servico": servico,
-        "Data": str(data),
-        "Horario": horario
-    }])
-    df = pd.concat([df, novo_registro], ignore_index=True)
-    df.to_csv(DB_FILE, index=False)
+inicializar_banco()
 
 # --- EXIBIÇÃO DO LOGO BRANDING ---
 st.markdown(
     """
     <div class="logo-container">
-        <div class="logo-text">Marinote club</div>
+        <div class="logo-text">marinote club</div>
         <div class="sub-logo">Agendamento de Horários</div>
     </div>
     """,
@@ -136,9 +159,18 @@ horarios_disponiveis = [
     "13:30", "14:10", "14:50", "15:30", "16:10", "16:50", "17:30"
 ]
 
-# Varredura e Bloqueio de Choque de Horários Duplicados
-df_agendados = carregar_dados()
-horarios_ocupados = df_agendados[df_agendados["Data"] == str(data_selecionada)]["Horario"].tolist()
+# Varredura dinâmica de horários ocupados direto no banco em nuvem da Neon
+conn = obter_conexao()
+horarios_ocupados = []
+if conn:
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public;")
+            cur.execute("SELECT horario FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
+            horarios_ocupados = [row[0] for row in cur.fetchall()]
+    except Exception:
+        if conn: conn.rollback()
+
 horarios_livres = [h for h in horarios_disponiveis if h not in horarios_ocupados]
 
 # Exibição e validação do Horário
@@ -151,8 +183,21 @@ if len(horarios_livres) > 0:
         if nome.strip() == "" or whatsapp.strip() == "":
             st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
         else:
-            salvar_agendamento(nome, whatsapp, servico_selecionado, data_selecionada, horario_selecionado)
-            st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}.")
-            st.balloons()
+            conn = obter_conexao()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("""
+                            INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
+                            VALUES (%s, %s, %s, %s, %s);
+                        """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado))
+                        conn.commit()
+                    st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}.")
+                    st.balloons()
+                    time_module.sleep(0.8)
+                    st.rerun()
+                except Exception:
+                    if conn: conn.rollback()
 else:
     st.warning("❌ Desculpe, todos os horários para este dia já estão preenchidos. Por favor, selecione outra data!")
