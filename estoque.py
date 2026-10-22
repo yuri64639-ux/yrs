@@ -28,7 +28,7 @@ class DatabaseManager:
             return
         try:
             with conn.cursor() as cur:
-                # Criação das Tabelas estruturadas com amarração por ID de Empresa
+                # Estrutura base Multi-Tenant
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS insumos (
                         id SERIAL PRIMARY KEY,
@@ -56,34 +56,31 @@ class DatabaseManager:
                     );
                 """)
                 
-                # Injeção de segurança retroativa para colunas Multi-Tenant
+                # Sincronização estrutural na nuvem Neon
                 cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000;")
                 cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS empresa_id INT;")
                 cur.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS empresa_id INT;")
                 cur.execute("ALTER TABLE ficha_tecnica ADD COLUMN IF NOT EXISTS empresa_id INT;")
                 
-                # Remove travas universais antigas que impediam produtos duplicados em contas diferentes
                 cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS insumos_nome_key;")
                 cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS produtos_nome_key;")
                 cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS unique_insumo_por_empresa;")
                 cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS unique_produto_por_empresa;")
                 
-                # Aplica chaves que protegem duplicidade APENAS dentro da própria empresa
                 cur.execute("ALTER TABLE insumos ADD CONSTRAINT unique_insumo_por_empresa UNIQUE (nome, empresa_id);")
                 cur.execute("ALTER TABLE produtos ADD CONSTRAINT unique_produto_por_empresa UNIQUE (nome, empresa_id);")
                 
                 conn.commit()
-                logging.info("Migração e regras de chaves compostas executadas com sucesso.")
         except Exception as e:
             logging.critical(f"Erro crítico durante a execução do DDL: {e}")
         finally:
             conn.close()
 
-# Executa barreira de migração de dados antes da renderização da UI
+# Inicializa migrações e renderização
 st.set_page_config(page_title=Config.PAGE_TITLE, layout="wide", initial_sidebar_state="expanded")
 DatabaseManager.execute_migration()
 
-# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO COM FALLBACK DE SEGURANÇA ---
+# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO COM PORTÃO DE SENHA ---
 id_empresa_contexto = None
 
 if "empresa_id_ativo" in st.session_state and st.session_state.empresa_id_ativo:
@@ -93,9 +90,9 @@ elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_gar
 elif "emp_id" in st.query_params:
     id_empresa_contexto = int(st.query_params["emp_id"])
 
-# Se for aberto sozinho sem token de sessão anterior, permite selecionar a empresa e digitar as chaves
+# BARREIRA DE AUTENTICAÇÃO: Se não houver token ativo ou o link for aberto direto, exige login e senha master da empresa
 if not id_empresa_contexto:
-    st.markdown("<h3>🔒 Autenticação de Almoxarifado</h3>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>🔒 Autenticação de Almoxarifado</h2>", unsafe_allow_html=True)
     conn = DatabaseManager.get_connection()
     lista_opcoes_emp = []
     if conn:
@@ -109,13 +106,31 @@ if not id_empresa_contexto:
         st.error("Nenhuma empresa localizada na nuvem Neon para associação.")
         st.stop()
         
-    emp_manual = st.selectbox("Selecione sua Empresa para liberar este terminal:", options=list(mapa_fallback.keys()))
-    if st.button("Liberar Módulo de Estoque", type="primary", use_container_width=True):
-        st.session_state.empresa_id_ativo = mapa_fallback[emp_manual]
-        st.query_params["emp_id"] = str(mapa_fallback[emp_manual])
-        st.success("Terminal Vinculado!")
-        time.sleep(0.3)
-        st.rerun()
+    with st.form("login_estoque_seguro"):
+        emp_manual = st.selectbox("Selecione sua Empresa para liberar este terminal:", options=list(mapa_fallback.keys()))
+        senha_comercial = st.text_input("Senha Master da Empresa:", type="password")
+        
+        if st.form_submit_button("Liberar Módulo de Estoque", type="primary", use_container_width=True):
+            id_selecionado = mapa_fallback[emp_manual]
+            
+            # Valida as credenciais direto na tabela master de corporações
+            conn = DatabaseManager.get_connection()
+            autenticado = False
+            if conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM public.empresas WHERE id = %s AND senha_master = %s;", (id_selecionado, senha_comercial.strip()))
+                    if cur.fetchone():
+                        autenticado = True
+                conn.close()
+                
+            if autenticado:
+                st.session_state.empresa_id_ativo = id_selecionado
+                st.query_params["emp_id"] = str(id_selecionado)
+                st.success("Terminal Vinculado e Protegido!")
+                time.sleep(0.3)
+                st.rerun()
+            else:
+                st.error("❌ Senha incorreta para o estabelecimento selecionado!")
     st.stop()
 # --- DASHBOARD PRIVADO COM FILTRAGEM POR EMPRESA ---
 @st.fragment(run_every="1s")
@@ -144,7 +159,15 @@ def render_dashboard_estoque():
             st.info("Nenhum ativo de insumo cadastrado na base de dados desta empresa.")
 
 # Interface Principal do Administrador
-st.title("💼 Enterprise Resource Planning (ERP) - Inteligência Operacional")
+col_titulo, col_logoff = st.columns([0.8, 0.2])
+with col_titulo:
+    st.title("💼 Enterprise Resource Planning (ERP) - Inteligência Operacional")
+with col_logoff:
+    if st.button("🔒 Bloquear Painel", use_container_width=True):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+
 render_dashboard_estoque()
 st.markdown("---")
 
@@ -268,8 +291,8 @@ with menu_tabs[1]:
                             id_insumo_alvo = mapeamento_insumos.get(comp["nome"])
                             if id_insumo_alvo:
                                 cur.execute("""
-                                    INSERT INTO ficha_tecnica (produto_id, insumo_id, grandmother, quantidade, unidade, empresa_id) 
-                                    VALUES (%s, %s, %s, %s, %s, %s);
+                                    INSERT INTO ficha_tecnica (produto_id, insumo_id, quantidade, unidade, empresa_id) 
+                                    VALUES (%s, %s, %s, %s, %s);
                                 """, (id_novo_produto, id_insumo_alvo, comp["quantidade"], comp["unidade"], id_empresa_contexto))
                         db_conn.commit()
                     st.success(f"Produto '{input_nome_sku}' integrado e blindado para sua empresa!")
