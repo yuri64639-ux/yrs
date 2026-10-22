@@ -3,18 +3,21 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 
-# Configuração e Injeção de CSS responsivo para dispositivos móveis
+# Configuração e injeção de CSS responsivo focado em telas de celulares e maquininhas
 st.set_page_config(page_title="Caixa Mobile", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
-    /* Otimizações fundamentais para telas de celulares e maquininhas */
+    /* Compactação total para telas pequenas (evita rolagens horizontais) */
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    h1 { font-size: 1.8rem !important; }
-    h2 { font-size: 1.4rem !important; }
-    h3 { font-size: 1.1rem !important; }
-    [data-testid="column"] { padding: 0.2rem 0rem !important; }
-    div.stButton > button { margin-top: 0px !important; }
+    h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; }
+    h2 { font-size: 1.3rem !important; margin-top: 0.5rem !important; }
+    h3 { font-size: 1.1rem !important; margin-top: 0.5rem !important; }
+    
+    /* Remove espaçamentos exagerados e força preenchimento completo no celular */
+    [data-testid="column"] { padding: 0.2rem 0rem !important; width: 100% !important; min-width: 100% !important; }
+    div.stButton > button { margin-top: 5px !important; font-size: 1rem !important; padding: 0.5rem !important; }
+    div[data-testid="stForm"] { padding: 0.5rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -66,7 +69,7 @@ if "input_mesa_salva" not in st.session_state:
 if "input_comanda_salva" not in st.session_state:
     st.session_state.input_comanda_salva = ""
 
-# Sistema Anti-F5
+# Sistema Anti-F5 para manter o operador logado no smartphone
 if "garcao" in st.query_params:
     st.session_state.usuario_autenticado = True
     st.session_state.garcao_atual = st.query_params["garcao"]
@@ -76,7 +79,7 @@ else:
     if "garcao_atual" not in st.session_state:
         st.session_state.garcao_atual = ""
 
-# --- FLUXO DE LOGIN DINÂMICO ---
+# --- FLUXO DE LOGIN DINÂMICO ADAPTADO PARA CELULAR ---
 if not st.session_state.usuario_autenticado:
     lista_garcons_db = ["Gerente"]
     conn = init_connection()
@@ -84,7 +87,7 @@ if not st.session_state.usuario_autenticado:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row for row in cur.fetchall()]
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
             except:
                 pass
         conn.close()
@@ -136,7 +139,7 @@ if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo
         conn.close()
         st.session_state.ultimo_carregamento_produtos = tempo_atual
 
-# Cabeçalho Fixo do topo
+# Cabeçalho compacto para celular
 col_header_1, col_header_2 = st.columns([0.6, 0.4])
 with col_header_1:
     st.markdown(f"📱 **{st.session_state.garcao_atual}**")
@@ -146,15 +149,16 @@ with col_header_2:
         st.query_params.clear()
         st.rerun()
 
-# Criação das Abas Mobile Compactas
+# Criação das Abas em formato amigável para telas touch screen
 tabs = st.tabs(["🛍️ Lançar", "🗂️ Mesas", "🔐 ADM"])
-# --- ABA 1: OPERAÇÃO DE LANÇAMENTO ---
+# --- ABA 1: OPERAÇÃO DE LANÇAMENTO VERTICALIZADO ---
 with tabs[0]:
     st.markdown("### 👤 Atendimento")
-    input_mesa = st.text_input("🪑 Mesa:", value=st.session_state.input_mesa_salva, placeholder="Ex: 04", key="input_mesa_real")
+    # No celular, as entradas de Mesa e Comanda ficam uma embaixo da outra para preservar legibilidade
+    input_mesa = st.text_input("🪑 Número da Mesa:", value=st.session_state.input_mesa_salva, placeholder="Ex: 04", key="input_mesa_real")
     st.session_state.input_mesa_salva = input_mesa
     
-    input_comanda = st.text_input("📋 Comanda:", value=st.session_state.input_comanda_salva, placeholder="Ex: 1042", key="input_comanda_real")
+    input_comanda = st.text_input("📋 Código da Comanda:", value=st.session_state.input_comanda_salva, placeholder="Ex: 1042", key="input_comanda_real")
     st.session_state.input_comanda_salva = input_comanda
 
     st.markdown("---")
@@ -166,15 +170,19 @@ with tabs[0]:
     if not produtos_filtrados:
         st.warning("Produto não encontrado.")
     else:
+        # Transforma a listagem de produtos em CARDS verticais fáceis de tocar com o polegar
         for prod in produtos_filtrados:
             p_base = float(prod['preco'])
             with st.container(border=True):
-                st.markdown(f"**{prod['nome']}** — `R$ {p_base:.2f}`")
-                c_qtd, c_btn = st.columns([0.4, 0.6])
-                with c_qtd:
+                st.markdown(f"**{prod['nome']}**")
+                st.markdown(f"Preço: `R$ {p_base:.2f}`")
+                
+                # Input de quantidade e botão lado a lado ocupando toda a base do card
+                col_m_qtd, col_m_btn = st.columns([0.4, 0.6])
+                with col_m_qtd:
                     qtd_p = st.number_input("Qtd", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}", label_visibility="collapsed")
-                with c_btn:
-                    if st.button("➕ Selecionar", key=f"add_cart_{prod['id']}", use_container_width=True, type="secondary"):
+                with col_m_btn:
+                    if st.button("➕ Adicionar", key=f"add_cart_{prod['id']}", use_container_width=True, type="secondary"):
                         p_id = str(prod['id'])
                         if p_id in st.session_state.carrinho:
                             st.session_state.carrinho[p_id]["qtd"] += qtd_p
@@ -183,25 +191,26 @@ with tabs[0]:
                         st.toast(f"Adicionado: {qtd_p}x {prod['nome']}")
 
     st.markdown("---")
-    st.markdown("### 📋 Seu Carrinho")
+    st.markdown("### 📋 Seu Carrinho Atual")
 
     if not st.session_state.carrinho:
         st.info("Carrinho vazio.")
     else:
-        st.caption(f"Destino: {input_mesa.strip()} | Comanda: {input_comanda.strip()}")
+        st.caption(f"Mesa: {input_mesa.strip()} | Comanda: {input_comanda.strip()}")
         total_geral_carrinho = 0.0
         itens_remover = []
         
+        # Exibição do carrinho em formato de lista empilhada
         for k, item in st.session_state.carrinho.items():
             sub_total_item = item["preco"] * item["qtd"]
             total_geral_carrinho += sub_total_item
             
             with st.container(border=True):
-                col_i1, col_i2 = st.columns([0.7, 0.3])
-                with col_i1:
+                col_c_txt, col_c_del = st.columns([0.8, 0.2])
+                with col_c_txt:
                     st.markdown(f"**{item['nome']}**")
-                    st.caption(f"{item['qtd']}x de R\$ {item['preco']:.2f} = R\$ {sub_total_item:.2f}")
-                with col_i2:
+                    st.caption(f"{item['qtd']} un x R\$ {item['preco']:.2f} = **R\$ {sub_total_item:.2f}**")
+                with col_c_del:
                     if st.button("❌", key=f"del_item_cart_{k}", use_container_width=True):
                         itens_remover.append(k)
                         
@@ -209,9 +218,10 @@ with tabs[0]:
             del st.session_state.carrinho[k]
             st.rerun()
             
-        st.markdown(f"#### 💰 Total: **R\$ {total_geral_carrinho:.2f}**")
+        st.markdown(f"#### 💰 Total Acumulado: **R\$ {total_geral_carrinho:.2f}**")
         
-        if st.button("✅ Enviar Pedido pro Banco", type="primary", use_container_width=True):
+        # Botões de fechamento grandes e fáceis de clicar
+        if st.button("✅ Enviar Pedido", type="primary", use_container_width=True):
             if not input_mesa.strip():
                 st.error("Informe a Mesa!")
             elif not input_comanda.strip():
@@ -263,7 +273,7 @@ with tabs[0]:
                                 st.session_state.carrinho = {}
                                 st.session_state.input_mesa_salva = ""
                                 st.session_state.input_comanda_salva = ""
-                                st.success("Enviado com sucesso!")
+                                st.success("Pedido Enviado!")
                                 time.sleep(0.4)
                                 st.rerun()
                     except Exception as err:
@@ -271,20 +281,21 @@ with tabs[0]:
                     finally:
                         conn.close()
                         
-        if st.button("🗑 Limpar Tudo", key="btn_limpar_bandeja_master", type="secondary", use_container_width=True):
+        if st.button("🗑️ Limpar Carrinho", key="btn_limpar_bandeja_master", type="secondary", use_container_width=True):
             st.session_state.carrinho = {}
             st.rerun()
-# --- ABA 2: PAINEL DE MESAS ATIVAS ---
+# --- ABA 2: MONITOR DE MESAS - TOTALMENTE EMPILHADO ---
 with tabs[1]:
-    st.markdown("### 🗂️ Painel Móvel de Mesas")
+    st.markdown("### 🗂️ Consumo no Salão")
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
             mesas_abertas = cur.fetchall()
             if not mesas_abertas:
-                st.info("Nenhuma mesa aberta.")
+                st.info("Nenhuma mesa aberta no momento.")
             else:
+                # Cada mesa vira uma linha vertical expansível fácil de clicar na tela touch
                 for m in mesas_abertas:
                     with st.expander(f"🪑 {m['mesa_numero']}"):
                         cur.execute("""
@@ -294,12 +305,13 @@ with tabs[1]:
                         itens_mesa = cur.fetchall()
                         if itens_mesa:
                             subtotal_mesa = sum(float(it['total_financeiro']) for it in itens_mesa)
-                            st.markdown(f"**Comanda:** `{itens_mesa[0]['comanda_codigo']}` | **Total: R\$ {subtotal_mesa:.2f}**")
+                            st.markdown(f"**Identificador Comanda:** `{itens_mesa[0]['comanda_codigo']}`")
+                            st.markdown(f"**Total Acumulado:** `R$ {subtotal_mesa:.2f}`")
                             st.markdown("---")
                             for it in itens_mesa:
                                 st.markdown(f"• **{it['total_qtd']}x** {it['produto_nome']} — `R$ {float(it['total_financeiro']):.2f}`")
         conn.close()
-# --- ABA 3: GESTÃO MASTER RESTREITA ---
+# --- ABA 3: GERÊNCIA E AUDITORIA PARA DISPOSITIVOS MÓVEIS ---
 with tabs[2]:
     if not st.session_state.gerente_autenticado:
         st.markdown("### 🔐 Painel Master Gerencial")
@@ -318,7 +330,8 @@ with tabs[2]:
             st.session_state.gerente_autenticado = False
             st.rerun()
         
-        opcao_adm = st.radio("Selecione a ação:", ["💰 Fechar Conta", "❌ Cancelar Item", "🔄 Transferir Mesa"], horizontal=True)
+        # Filtro seletor horizontal largo próprio para clique com o polegar
+        opcao_adm = st.radio("Selecione a ação:", ["💰 Fechar", "❌ Cancelar", "🔄 Transferir"], horizontal=True)
         
         conn = init_connection()
         if conn:
@@ -326,18 +339,18 @@ with tabs[2]:
                 cur.execute("SELECT DISTINCT mesa_numero FROM pedidos_realizados WHERE status_conta = 'Aberta' ORDER BY mesa_numero;")
                 lista_mesas_gerencia = [r['mesa_numero'] for r in cur.fetchall()]
                 
-                if opcao_adm == "💰 Fechar Conta":
+                if opcao_adm == "💰 Fechar":
                     if not lista_mesas_gerencia:
                         st.info("Nenhuma comanda para faturamento.")
                     else:
-                        mesa_fechar = st.selectbox("Selecione a Mesa:", options=lista_mesas_gerencia, key="sel_fechar_m")
+                        mesa_fechar = st.selectbox("Selecione a Mesa para Encerrar:", options=lista_mesas_gerencia, key="sel_fechar_m")
                         cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
                         itens_f = cur.fetchall()
                         
                         sub_f = sum(float(i['valor_total']) for i in itens_f)
                         st.write(f"Consumo Original: R$ {sub_f:.2f}")
                         
-                        aplicar_10 = st.checkbox("Adicionar Taxa de 10%", value=True, key="chk_taxa_10_gerencia")
+                        aplicar_10 = st.checkbox("Incluir Taxa de 10%", value=True, key="chk_taxa_10_gerencia")
                         forma_p = st.selectbox("Forma de Pagamento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
                         
                         fator_multiplicador = 1.10 if aplicar_10 else 1.00
@@ -356,11 +369,11 @@ with tabs[2]:
                                 WHERE id = ANY(%s);
                             """, (forma_p, fator_multiplicador, fator_multiplicador, aplicar_10, ids_fechar))
                             conn.commit()
-                            st.success("Conta Encerrada!")
+                            st.success("Conta Encerrada com Sucesso!")
                             time.sleep(0.4)
                             st.rerun()
 
-                elif opcao_adm == "❌ Cancelar Item":
+                elif opcao_adm == "❌ Cancelar":
                     if not lista_mesas_gerencia:
                         st.info("Nenhum item aberto para estorno.")
                     else:
@@ -370,9 +383,9 @@ with tabs[2]:
                         
                         opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_estornar}
                         if not opcoes_estorno:
-                            st.info("Mesa vazia.")
+                            st.info("Mesa sem itens ativos.")
                         else:
-                            item_sel_estorno = st.selectbox("Escolha o Item Falso:", options=list(opcoes_estorno.keys()))
+                            item_sel_estorno = st.selectbox("Escolha o Item Incorreto:", options=list(opcoes_estorno.keys()))
                             obj_estorno = opcoes_estorno[item_sel_estorno]
                             
                             if st.button("❌ Remover e Devolver Insumo", type="primary", use_container_width=True):
@@ -390,11 +403,11 @@ with tabs[2]:
                                 
                                 cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno['id'],))
                                 conn.commit()
-                                st.success("Item removido!")
+                                st.success("Lançamento Desfeito!")
                                 time.sleep(0.4)
                                 st.rerun()
 
-                elif opcao_adm == "🔄 Transferir Mesa":
+                elif opcao_adm == "🔄 Transferir":
                     if not lista_mesas_gerencia:
                         st.info("Nenhum item ativo para transferência.")
                     else:
@@ -404,19 +417,19 @@ with tabs[2]:
                         
                         opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_trans}
                         if not opcoes_trans:
-                            st.info("Sem itens.")
+                            st.info("Sem itens para transferir.")
                         else:
-                            item_sel_trans = st.selectbox("Escolha o Item:", options=list(opcoes_trans.keys()))
+                            item_sel_trans = st.selectbox("Escolha o Item a Mudar:", options=list(opcoes_trans.keys()))
                             obj_trans = opcoes_trans[item_sel_trans]
                             mesa_destino = st.text_input("Nova Mesa Destino (Número):")
                             
-                            if st.button("🔄 Executar Transferência", type="primary", use_container_width=True):
+                            if st.button("🔄 Confirmar Transferência", type="primary", use_container_width=True):
                                 if not mesa_destino.strip():
-                                    st.error("Informe a nova mesa!")
+                                    st.error("Informe a mesa de destino!")
                                 else:
                                     cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans['id']))
                                     conn.commit()
-                                    st.success("Item transferido!")
+                                    st.success("Item Transferido de Mesa!")
                                     time.sleep(0.5)
                                     st.rerun()
             conn.close()
