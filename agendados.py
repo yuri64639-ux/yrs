@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime
+from datetime import datetime, timedelta
 import time as time_module
 import requests
 
@@ -101,6 +101,11 @@ def renderizar_painel_agenda_dinamico():
     df_agenda = pd.DataFrame()
     historico_alertas = {}
 
+    # AJUSTE DE FUSO HORÁRIO: Força o horário do Brasil (Horário de Brasília)
+    # Subtrai 3 horas do horário UTC padrão do servidor da nuvem
+    agora = datetime.utcnow() - timedelta(hours=3)
+    data_hoje_str = agora.strftime("%Y-%m-%d")
+
     if conn:
         try:
             df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
@@ -113,18 +118,17 @@ def renderizar_painel_agenda_dinamico():
         finally:
             conn.close()
 
-    # Sistema de Varredura e Disparo Push Repetitivo (5 em 5 minutos)
+    # Sistema de Varredura e Disparo Push Correto por Fuso Horário do Brasil
     if not df_agenda.empty:
-        data_hoje_str = datetime.now().strftime("%Y-%m-%d")
         df_hoje = df_agenda[df_agenda["data_agenda"] == data_hoje_str]
         
         if not df_hoje.empty:
-            agora = datetime.now()
             for _, row in df_hoje.iterrows():
                 try:
                     horario_cliente = datetime.strptime(f"{data_hoje_str} {row['horario']}", "%Y-%m-%d %H:%M")
                     diferenca_minutos = (horario_cliente - agora).total_seconds() / 60
                     
+                    # Se o cliente estiver na janela dos 15 minutos até a hora do início do corte
                     if 0 <= diferenca_minutos <= 15:
                         id_cli = row['id']
                         deve_enviar = False
@@ -133,9 +137,10 @@ def renderizar_painel_agenda_dinamico():
                             deve_enviar = True
                         else:
                             ultimo_envio = historico_alertas[id_cli]
+                            # Calcula diferença baseada no relógio sincronizado do Brasil
                             tempo_decorrido = (agora - ultimo_envio.replace(tzinfo=None)).total_seconds() / 60
                             if tempo_decorrido >= 4.9:
-                                deve_enviar = True
+                                debe_enviar = True
                         
                         if deve_enviar:
                             enviar_notificacao_celular(row['nome'], row['horario'], row['servico'], id_cli, diferenca_minutos)
@@ -208,4 +213,4 @@ st.write("---")
 renderizar_painel_agenda_dinamico()
 
 st.markdown("---")
-st.caption("🔄 Monitor Recorrente Ativo. O celular receberá bipes a cada 5 minutos dentro da janela do cliente.")
+st.caption("🔄 Sincronização de Fuso Horário Sincronizada (Brasília). Notificações ativas de 5 em 5 minutos.")
