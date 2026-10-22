@@ -6,7 +6,7 @@ import time
 # Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# INJEÇÃO DE CSS: Oculta Share, Lápis, Estrela e os 3 Pontinhos
+# INJEÇÃO DE CSS: Oculta Share, Lápis, Estrela, 3 Pontinhos e Avisos do Rodapé
 st.markdown(
     """
     <style>
@@ -24,6 +24,10 @@ st.markdown(
     .stAppDeployButton, button[title="View source code"], button[title="Edit this app"] {
         display: none !important;
     }
+    /* OCULTA O RODAPÉ / BALÃO VERMELHO DE AVISO INFERIOR */
+    .stAppViewFooter, footer {
+        display: none !important;
+    }
     /* Ajusta o espaçamento do topo para compensar a remoção do cabeçalho */
     .main .block-container {
         padding-top: 1.5rem;
@@ -32,7 +36,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 def init_connection():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -103,7 +106,7 @@ if not st.session_state.usuario_autenticado:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row[0] for row in cur.fetchall()]
+                lista_garcons_db += [row for row in cur.fetchall()]
             except:
                 pass
         conn.close()
@@ -146,6 +149,7 @@ if not st.session_state.usuario_autenticado:
                 else:
                     st.error("Senha Incorreta para o garçom selecionado!")
     st.stop()
+
 tempo_atual = time.time()
 if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
     conn = init_connection()
@@ -171,7 +175,6 @@ with col_logout:
 
 st.markdown("---")
 tabs = st.tabs(["🛍️ Lançar Pedidos", "🗂️ Mesas Abertas", "🔐 Gerência"])
-
 # ABA 1: OPERAÇÃO DE LANÇAMENTO (ÍNDICE 0)
 with tabs[0]:
     st.subheader("👤 Identificação do Atendimento")
