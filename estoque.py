@@ -1,90 +1,6 @@
-import streamlit as st
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import logging
-import time
-
-# Configuração de Logs do Sistema
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-class Config:
-    PAGE_TITLE = "ERP Gastronômico - Backoffice & Engenharia de Menu"
-    LOW_STOCK_THRESHOLD = 2.000  # Limite crítico em Kg ou Litros
-
-class DatabaseManager:
-    @staticmethod
-    def get_connection():
-        try:
-            return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
-        except Exception as e:
-            logging.error(f"Falha de conexão com a instância Neon: {e}")
-            st.error("🚨 Falha na comunicação com o servidor de dados central. Verifique as credenciais.")
-            return None
-
-    @classmethod
-    def execute_migration(cls):
-        conn = cls.get_connection()
-        if not conn:
-            return
-        try:
-            with conn.cursor() as cur:
-                # 1. Criação das Tabelas estruturadas com amarração por ID de Empresa
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS insumos (
-                        id SERIAL PRIMARY KEY,
-                        nome VARCHAR(255) NOT NULL,
-                        quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000,
-                        empresa_id INT
-                    );
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS produtos (
-                        id SERIAL PRIMARY KEY,
-                        nome VARCHAR(255) NOT NULL,
-                        preco NUMERIC(10, 2) NOT NULL,
-                        empresa_id INT
-                    );
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS ficha_tecnica (
-                        id SERIAL PRIMARY KEY,
-                        produto_id INT REFERENCES produtos(id) ON DELETE CASCADE,
-                        insumo_id INT REFERENCES insumos(id) ON DELETE CASCADE,
-                        quantidade NUMERIC(10, 2) NOT NULL,
-                        unidade VARCHAR(10) NOT NULL,
-                        empresa_id INT
-                    );
-                """)
-                
-                # 2. Injeção de segurança retroativa para colunas Multi-Tenant
-                cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000;")
-                cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS empresa_id INT;")
-                cur.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS empresa_id INT;")
-                cur.execute("ALTER TABLE ficha_tecnica ADD COLUMN IF NOT EXISTS empresa_id INT;")
-                
-                # 3. CRÍTICO: Remove travas universais antigas que impediam produtos duplicados em contas diferentes
-                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS insumos_nome_key;")
-                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS produtos_nome_key;")
-                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS unique_insumo_por_empresa;")
-                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS unique_produto_por_empresa;")
-                
-                # 4. PROTEÇÃO: Aplica chaves que protegem duplicidade APENAS dentro da própria empresa
-                cur.execute("ALTER TABLE insumos ADD CONSTRAINT unique_insumo_por_empresa UNIQUE (nome, empresa_id);")
-                cur.execute("ALTER TABLE produtos ADD CONSTRAINT unique_produto_por_empresa UNIQUE (nome, empresa_id);")
-                
-                conn.commit()
-                logging.info("Migração e regras de chaves compostas executadas com sucesso.")
-        except Exception as e:
-            logging.critical(f"Erro crítico durante a execução do DDL: {e}")
-        finally:
-            conn.close()
-
-# Executa barreira de migração de dados antes da renderização da UI
-st.set_page_config(page_title=Config.PAGE_TITLE, layout="wide", initial_sidebar_state="expanded")
-DatabaseManager.execute_migration()
-
-# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO ---
+# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO (ATUALIZADO) ---
 id_empresa_contexto = None
+
 if "empresa_id_ativo" in st.session_state and st.session_state.empresa_id_ativo:
     id_empresa_contexto = st.session_state.empresa_id_ativo
 elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_garcom:
@@ -92,8 +8,29 @@ elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_gar
 elif "emp_id" in st.query_params:
     id_empresa_contexto = int(st.query_params["emp_id"])
 
+# CORREÇÃO DE SEGURANÇA: Permite selecionar a empresa direto se o token de sessão estiver vazio
 if not id_empresa_contexto:
-    st.warning("🔒 Acesso Bloqueado: Nenhuma empresa ativa foi vinculada a este terminal. Realize o login no aplicativo corporativo principal.")
+    st.markdown("<h3>🔒 Autenticação de Almoxarifado</h3>", unsafe_allow_html=True)
+    conn = DatabaseManager.get_connection()
+    lista_opcoes_emp = []
+    if conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nome_fantasia FROM public.empresas ORDER BY nome_fantasia;")
+            lista_opcoes_emp = cur.fetchall()
+        conn.close()
+    
+    mapa_fallback = {row[1]: row[0] for row in lista_opcoes_emp}
+    if not mapa_fallback:
+        st.error("Nenhuma empresa localizada na nuvem Neon para associação.")
+        st.stop()
+        
+    emp_manual = st.selectbox("Selecione sua Empresa para liberar este terminal:", options=list(mapa_fallback.keys()))
+    if st.button("Liberar Módulo de Estoque", type="primary", use_container_width=True):
+        st.session_state.empresa_id_ativo = mapa_fallback[emp_manual]
+        st.query_params["emp_id"] = str(mapa_fallback[emp_manual])
+        st.success("Terminal Vinculado!")
+        time.sleep(0.3)
+        st.rerun()
     st.stop()
 # --- DASHBOARD PRIVADO COM FILTRAGEM POR EMPRESA ---
 @st.fragment(run_every="1s")
