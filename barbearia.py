@@ -1,41 +1,28 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import datetime, date, time
-from banco import init_db
+from datetime import datetime, timedelta
+import os
 
-# 1. CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando Streamlit)
-st.set_page_config(page_title="marinote club", layout="centered")
+# Configuração de Identidade Visual na Aba do Navegador
+st.set_page_config(page_title="Marinote club", page_icon="💈", layout="centered")
 
-# Inicializa o banco de dados (tabelas e sementes se necessário)
-init_db()
-
-# 2. INICIALIZAÇÃO DO ESTADO DA SESSÃO (Session State)
-for k, v in [("aut", False), ("usr", ""), ("car", [])]:
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-# 3. INJEÇÃO DE CSS PREMIUM (Carbono & Dourado Metálico)
-st.markdown("""
+# --- INJEÇÃO DE ARTWORK CSS PREMIUM (PRETO CARBONO & DOURADO METÁLICO) ---
+st.markdown(
+    """
     <style>
-    [data-testid="stHeader"], [data-testid="stAppToolbar"], header, .stAppDeployDropdown {
-        visibility: hidden !important;
-        display: none !important;
-    }
-    [data-testid="collapsedControl"] { display: none !important; }
-    
+    /* Configuração do fundo dark de alto padrão */
     .stApp {
         background-color: #121212 !important;
         color: #E5E5E5 !important;
     }
     
-    h1, h2, h3, h4, h5, h6 {
+    /* Estilização da Tipografia e Cabeçalhos */
+    h1, h2, h3, h4, h5, h6, label {
         color: #D4AF37 !important;
         font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 700 !important;
-        letter-spacing: 1px;
     }
-    
+
+    /* Caixa de Inputs, Dropdowns e Date Pickers Personalizados */
     div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div {
         background-color: #1E1E1E !important;
         border: 1px solid #D4AF37 !important;
@@ -44,11 +31,8 @@ st.markdown("""
     input, select, textarea {
         color: #FFFFFF !important;
     }
-    label, p {
-        color: #CCCCCC !important;
-        font-weight: 500 !important;
-    }
-    
+
+    /* Botão Principal Dourado com Fonte Escura e Efeito Hover */
     .stButton>button {
         width: 100%;
         height: 3.2rem;
@@ -66,152 +50,109 @@ st.markdown("""
         box-shadow: 0px 6px 15px rgba(212, 175, 55, 0.4);
         transform: translateY(-2px);
     }
+
+    /* Estilização do Logo Metálico Centralizado */
+    .logo-container {
+        text-align: center;
+        padding: 20px;
+        margin-bottom: 10px;
+    }
+    .logo-text {
+        font-family: 'Cinzel', 'Playfair Display', serif;
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-transform: uppercase;
+    }
+    .sub-logo {
+        font-size: 13px;
+        color: #8A8A8A;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        margin-top: -5px;
+        font-weight: 300;
+    }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-# 4. BUSCA DE DADOS INICIAIS
-with sqlite3.connect("barber.db") as conn:
-    df_s = pd.read_sql("SELECT id, nome, preco FROM servicos ORDER BY nome", conn)
-    df_b = pd.read_sql("SELECT nome FROM barbeiros ORDER BY nome", conn)
+# Base de Dados Local em CSV
+DB_FILE = "agendamentos_barber.csv"
 
-# 5. ROTEADOR DE AMBIENTE (PÚBLICO VS AUTENTICADO)
-if not st.session_state.aut:
-    menu = st.radio("Selecione uma opção de acesso:", ["📅 Sou Cliente (Agendar Horário)", "💈 Sou da Equipe (Painel Interno)"], horizontal=True)
+def carregar_dados():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
+    return pd.DataFrame(columns=["Nome", "WhatsApp", "Servico", "Data", "Horario"])
+
+def salvar_agendamento(nome, whatsapp, servico, data, horario):
+    df = carregar_dados()
+    novo_registro = pd.DataFrame([{
+        "Nome": nome,
+        "WhatsApp": whatsapp,
+        "Servico": servico,
+        "Data": str(data),
+        "Horario": horario
+    }])
+    df = pd.concat([df, novo_registro], ignore_index=True)
+    df.to_csv(DB_FILE, index=False)
+
+# --- EXIBIÇÃO DO LOGO BRANDING ---
+st.markdown(
+    """
+    <div class="logo-container">
+        <div class="logo-text">Marinote club</div>
+        <div class="sub-logo">Agendamento de Horários</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.write("---")
+
+# Formulário de Entrada do Cliente
+nome = st.text_input("Seu Nome Completo:")
+whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999")
+
+# Filtro de Serviços Demandado
+servicos = [
+    "Cabelo",
+    "Barba",
+    "Cabelo e Barba"
+]
+servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos)
+
+# Seleção Dinâmica de Datas (Próximas 2 semanas disponíveis)
+data_atual = datetime.now().date()
+data_limite = data_atual + timedelta(days=14)
+data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite)
+
+# Lista Estruturada de Horários Disponíveis por Turno
+horarios_disponiveis = [
+    "09:00", "09:40", "10:20", "11:00", "11:40", 
+    "13:30", "14:10", "14:50", "15:30", "16:10", "16:50", "17:30"
+]
+
+# Varredura e Bloqueio de Choque de Horários Duplicados
+df_agendados = carregar_dados()
+horarios_ocupados = df_agendados[df_agendados["Data"] == str(data_selecionada)]["Horario"].tolist()
+horarios_livres = [h for h in horarios_disponiveis if h not in horarios_ocupados]
+
+# Exibição e validação do Horário
+if len(horarios_livres) > 0:
+    horario_selecionado = st.selectbox("Escolha o Horário Livre:", horarios_livres)
     
-    # --- INTERFACE DO CLIENTE ---
-    if menu == "📅 Sou Cliente (Agendar Horário)":
-        st.title("💈 marinote club")
-        st.markdown("### 📅 Agende seu Horário Conosco")
-        
-        c_nome = st.text_input("Seu Nome Completo:").strip()
-        
-        lista_barbeiros = df_b['nome'].tolist() if not df_b.empty else ["Artur"]
-        b_agenda = st.selectbox("Escolha o Barbeiro:", lista_barbeiros)
-        
-        lista_servicos = df_s['nome'].tolist() if not df_s.empty else ["Nenhum cadastrado"]
-        s_agenda = st.selectbox("Escolha o Serviço:", lista_servicos)
-        
-        col_d, col_h = st.columns(2)
-        d_sel = col_d.date_input("Data desejada:", min_value=date.today())
-        h_sel = col_h.time_input("Horário desejado:", value=time(9, 0))
-        
-        if st.button("💾 Confirmar Meu Agendamento"):
-            if not c_nome:
-                st.error("❌ Por favor, digite seu nome completo.")
-            elif s_agenda == "Nenhum cadastrado":
-                st.error("❌ Não é possível agendar sem um serviço válido selecionado.")
-            else:
-                d_str = d_sel.strftime("%Y-%m-%d")
-                h_str = h_sel.strftime("%H:%M")
-                
-                with sqlite3.connect("barber.db") as conn:
-                    cur = conn.cursor()
-                    # Verifica conflito de horário
-                    cur.execute("SELECT id FROM agenda WHERE barbeiro = ? AND data = ? AND horario = ? AND status = 'Agendado'", (b_agenda, d_str, h_str))
-                    if cur.fetchone():
-                        st.error("❌ Este horário já está ocupado com este profissional. Escolha outro!")
-                    else:
-                        cur.execute("SELECT id FROM servicos WHERE nome = ?", (s_agenda,))
-                        s_id = cur.fetchone()[0]
-                        cur.execute("INSERT INTO agenda (cliente, servico_id, barbeiro, data, horario) VALUES (?, ?, ?, ?, ?)", (c_nome, s_id, b_agenda, d_str, h_str))
-                        conn.commit()
-                        st.success(f"🎉 Tudo certo, {c_nome}! Seu horário foi agendado para o dia {d_sel.strftime('%d/%m/%Y')} às {h_str}.")
-
-    # --- LOGIN DA EQUIPE ---
-    else:
-        st.title("💈 marinote club")
-        with st.form("l_f"):
-            st.subheader("🔒 Acesso Restrito — Painel Interno")
-            u = st.text_input("Barbeiro / Usuário:").strip()
-            p = st.text_input("Senha:", type="password").strip()
-            
-            if st.form_submit_button("Entrar no Sistema"):
-                with sqlite3.connect("barber.db") as conn:
-                    cur = conn.cursor()
-                    cur.execute("SELECT nome FROM barbeiros WHERE LOWER(nome) = ? AND senha = ?", (u.lower(), p))
-                    res = cur.fetchone()
-                if res:
-                    st.session_state.aut = True
-                    st.session_state.usr = res[0]
-                    st.rerun()
-                else:
-                    st.error("❌ Credenciais incorretas.")
-
-# --- AMBIENTE LOGADO (PAINEL DA EQUIPE) ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("Confirmar Meu Agendamento"):
+        if nome.strip() == "" or whatsapp.strip() == "":
+            st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
+        else:
+            salvar_agendamento(nome, whatsapp, servico_selecionado, data_selecionada, horario_selecionado)
+            st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}.")
+            st.balloons()
 else:
-    # Botão de Logoff na barra lateral
-    if st.sidebar.button("🔒 Sair do Painel", type="primary"):
-        st.session_state.aut = False
-        st.session_state.usr = ""
-        st.session_state.car = []
-        st.rerun()
-        
-    tab_operacional, tab_gerencial = st.tabs(["📱 Terminal do Barbeiro", "⚙️ Painel Admin"])
-    
-    # ==================== TERMINAL DO BARBEIRO ====================
-    with tab_operacional:
-        st.subheader(f"💈 Terminal de Atendimento — Profissional: {st.session_state.usr}")
-        
-        aba_interna = st.radio(
-            "Selecione a ação de trabalho:", 
-            ["➕ Atendimento em Cadeira", "🧾 Caixa & Agenda Ativa"], 
-            horizontal=True
-        )
-        
-        # 1. Atendimento Direto da Cadeira
-        if aba_interna == "➕ Atendimento em Cadeira":
-            cliente_cadeira = st.text_input("Identificação do Cliente / Cadeira:", value="Cadeira 01").strip()
-            
-            if df_s.empty:
-                st.warning("⚠️ Nenhum serviço cadastrado no catálogo administrativo.")
-            else:
-                filtro_busca = st.text_input("🔍 Buscar Serviço por Nome:").strip()
-                df_serv_filtrado = df_s.copy()
-                
-                if filtro_busca:
-                    df_serv_filtrado = df_serv_filtrado[df_serv_filtrado['nome'].str.contains(filtro_busca, case=False, na=False)]
-                
-                mapeamento_servicos = {f"{row['nome']} - R$ {row['preco']:.2f}": (row['id'], row['nome'], row['preco']) for _, row in df_serv_filtrado.iterrows()}
-                
-                if mapeamento_servicos:
-                    servico_selecionado_string = st.selectbox("Escolha o Serviço:", list(mapeamento_servicos.keys()))
-                    
-                    if st.button("➕ Adicionar ao Atendimento", use_container_width=True):
-                        id_s, nome_s, preco_s = mapeamento_servicos[servico_selecionado_string]
-                        st.session_state.car.append({"id": id_s, "nome": nome_s, "preco": preco_s})
-                        st.toast(f"✅ {nome_s} adicionado ao rascunho!")
-                
-                if st.session_state.car:
-                    st.markdown("---")
-                    st.markdown("### 🛒 Resumo dos Serviços do Cliente")
-                    
-                    total_atendimento = sum(item['preco'] for item in st.session_state.car)
-                    for item in st.session_state.car:
-                        st.write(f"▪ *{item['nome']}* — R$ {item['preco']:.2f}")
-                    
-                    st.markdown(f"**Total Acumulado:** R$ {total_atendimento:.2f}")
-                    checkbox_conferido = st.checkbox("✅ Confirmo que os serviços descritos foram realizados.")
-                    
-                    col_limpa, col_envia = st.columns(2)
-                    if col_limpa.button("🗑️ Limpar Rascunho", use_container_width=True):
-                        st.session_state.car = []
-                        st.rerun()
-                        
-                    if col_envia.button("🚀 Confirmar e Enviar ao Caixa", type="primary", use_container_width=True):
-                        if not checkbox_conferido:
-                            st.error("🔒 Marque o campo de confirmação antes de lançar o pedido!")
-                        elif not cliente_cadeira:
-                            st.error("❌ Digite uma identificação para o cliente / cadeira.")
-                        else:
-                            data_string_hoje = datetime.now().strftime("%Y-%m-%d")
-                            with sqlite3.connect("barber.db") as conn:
-                                cur = conn.cursor()
-                                for item in st.session_state.car:
-                                    cur.execute("INSERT INTO comandas (cliente, servico_id, barbeiro, valor, data) VALUES (?, ?, ?, ?, ?)", (cliente_cadeira, item['id'], st.session_state.usr, item['preco'], data_string_hoje))
-                                conn.commit()
-                            st.success("🚀 Atendimento enviado com sucesso para a fila do caixa!")
-                            st.session_state.car = []
-                            st.rerun()
-        
-        # 2. Caixa e Agenda Ativa
-        elif aba_interna == "🧾 Caixa & Agenda Ativa":
+    st.warning("❌ Desculpe, todos os horários para este dia já estão preenchidos. Por favor, selecione outra data!")
