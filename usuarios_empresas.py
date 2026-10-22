@@ -52,7 +52,7 @@ def criar_estrutura_multi_tenant():
     if conn:
         try:
             with conn.cursor() as cur:
-                # 1. Cria a tabela básica caso ela não exista de forma alguma
+                # 1. Cria a tabela básica caso ela não exista
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS public.empresas (
                     id SERIAL PRIMARY KEY,
@@ -63,16 +63,25 @@ def criar_estrutura_multi_tenant():
                 );
                 """)
                 
-                # 2. GARANTIA: Força a injeção caso as colunas tenham sumido
+                # 2. GARANTIA: Injeta as colunas caso a tabela antiga no Neon esteja incompleta
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS nome_fantasia VARCHAR(255) UNIQUE;")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS usuario_admin VARCHAR(100);")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS senha_master VARCHAR(255);")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
                 
-                # 3. HIGIENIZAÇÃO: Remove travas NOT NULL de colunas antigas que possam quebrar o comando INSERT
-                cur.execute("ALTER TABLE public.empresas ALTER COLUMN nome_fantasia DROP NOT NULL;")
-                cur.execute("ALTER TABLE public.empresas ALTER COLUMN usuario_admin DROP NOT NULL;")
-                cur.execute("ALTER TABLE public.empresas ALTER COLUMN senha_master DROP NOT NULL;")
+                # 3. HIGIENIZAÇÃO PROFUNDA: Descobre TODAS as colunas da tabela e remove o NOT NULL delas (exceto a chave primária 'id')
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' AND table_name = 'empresas' AND column_name != 'id';
+                """)
+                todas_colunas = [row[0] for row in cur.fetchall()]
+                
+                for coluna in todas_colunas:
+                    try:
+                        cur.execute(f"ALTER TABLE public.empresas ALTER COLUMN {coluna} DROP NOT NULL;")
+                    except:
+                        pass
                 
                 conn.commit()
         except Exception as e:
