@@ -1,6 +1,9 @@
 import streamlit as st
+import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from datetime import datetime
+import time as time_module
 import requests
 
 def obter_conexao():
@@ -71,55 +74,8 @@ def enviar_notificacao_celular(nome_cliente, horario, servico, id_agendamento, m
     except:
         pass
     return False
-import streamlit as st
-import pandas as pd
-from psycopg2.extras import RealDictCursor
-from datetime import datetime
-import time as time_module
 
-# Importando a lógica do banco criada no outro arquivo
-from banco import obter_conexao, garantir_tabelas_existem, enviar_notificacao_celular
-
-# Configuração de Ambiente para o Painel de Controle Privado Mobile
-st.set_page_config(page_title="marinote club", page_icon="✂️", layout="wide")
-
-st.markdown(
-    """
-    <style>
-    header, [data-testid="stHeader"], [data-testid="stAppToolbar"] { display: none !important; visibility: hidden !important; height: 0px !important; }
-    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.4rem !important; padding-right: 0.4rem !important; max-width: 100% !important; }
-    .stApp { background-color: #121212 !important; color: #E5E5E5 !important; }
-    h1, h2, h3, h4, h5, h6, label, p { color: #D4AF37 !important; font-family: 'Helvetica Neue', sans-serif; white-space: normal !important; word-break: break-word !important; }
-    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div { background-color: #1E1E1E !important; border: 1px solid #D4AF37 !important; border-radius: 8px !important; }
-    input, select { color: #FFFFFF !important; }
-    .stButton>button { width: 100%; height: 3.4rem; font-weight: bold; font-size: 16px !important; border-radius: 8px !important; border: none !important; transition: all 0.3s ease; margin-top: 8px !important; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# Roda a inicialização automática das tabelas
-garantir_tabelas_existem()
-
-@st.fragment(run_every="5s")
-def renderizar_painel_agenda_dinamico():
-    conn = obter_conexao()
-    df_agenda = pd.DataFrame()
-    historico_alertas = {}
-
-    if conn:
-        try:
-            df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id_agendamento, ultimo_envio FROM public.historico_alertas;")
-                for rows in cur.fetchall():
-                    historico_alertas[rows['id_agendamento']] = rows['ultimo_envio']
-        except Exception as e:
-            st.error(f"Erro ao ler os dados do banco: {e}")
-        finally:
-            conn.close()
-
-    # Sistema de Varredura e Disparo Push Repetitivo (5 em 5 minutos)
+def gerenciar_sistema_alertas(df_agenda, historico_alertas):
     if not df_agenda.empty:
         data_hoje_str = datetime.now().strftime("%Y-%m-%d")
         df_hoje = df_agenda[df_agenda["data_agenda"] == data_hoje_str]
@@ -148,8 +104,58 @@ def renderizar_painel_agenda_dinamico():
                             st.toast(f"📱 Alerta push enviado ao celular!", icon="🔔")
                 except:
                     pass
+import streamlit as st
+import pandas as pd
+from psycopg2.extras import RealDictCursor
+from datetime import datetime
+import time as time_module
 
-    # Exibição da Interface Mobile
+# Importação limpa e segura do backend unificado
+import banco
+
+# Configuração de Ambiente para o Painel de Controle Privado Mobile
+st.set_page_config(page_title="marinote club", page_icon="✂️", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    header, [data-testid="stHeader"], [data-testid="stAppToolbar"] { display: none !important; visibility: hidden !important; height: 0px !important; }
+    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.4rem !important; padding-right: 0.4rem !important; max-width: 100% !important; }
+    .stApp { background-color: #121212 !important; color: #E5E5E5 !important; }
+    h1, h2, h3, h4, h5, h6, label, p { color: #D4AF37 !important; font-family: 'Helvetica Neue', sans-serif; white-space: normal !important; word-break: break-word !important; }
+    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div { background-color: #1E1E1E !important; border: 1px solid #D4AF37 !important; border-radius: 8px !important; }
+    input, select { color: #FFFFFF !important; }
+    .stButton>button { width: 100%; height: 3.4rem; font-weight: bold; font-size: 16px !important; border-radius: 8px !important; border: none !important; transition: all 0.3s ease; margin-top: 8px !important; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Inicializa as tabelas no Neon
+banco.garantir_tabelas_existem()
+
+@st.fragment(run_every="5s")
+def renderizar_painel_agenda_dinamico():
+    conn = banco.obter_conexao()
+    df_agenda = pd.DataFrame()
+    historico_alertas = {}
+
+    if conn:
+        try:
+            df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id_agendamento, ultimo_envio FROM public.historico_alertas;")
+                for rows in cur.fetchall():
+                    historico_alertas[rows['id_agendamento']] = rows['ultimo_envio']
+        except Exception as e:
+            st.error(f"Erro ao ler os dados do banco: {e}")
+        finally:
+            conn.close()
+
+    # Dispara a varredura automática recorrente
+    banco.gerenciar_sistema_alertas(df_agenda, historico_alertas)
+
+    # Exibição da Grade Mobile
     if df_agenda.empty:
         st.info("ℹ️ Nenhum agendamento ativo localizado na nuvem.")
     else:
@@ -166,7 +172,7 @@ def renderizar_painel_agenda_dinamico():
         id_registro = opcoes_baixa[selecionado_para_baixa]
         
         if st.button("🏁 Concluir Atendimento", type="primary", use_container_width=True, key="btn_concluir_mobile"):
-            conn = obter_conexao()
+            conn = banco.obter_conexao()
             if conn:
                 try:
                     with conn:
@@ -183,7 +189,7 @@ def renderizar_painel_agenda_dinamico():
                     conn.close()
                     
         if st.button("❌ Cancelar Agendamento", type="secondary", use_container_width=True, key="btn_cancelar_mobile"):
-            conn = obter_conexao()
+            conn = banco.obter_conexao()
             if conn:
                 try:
                     with conn:
@@ -199,7 +205,7 @@ def renderizar_painel_agenda_dinamico():
                 finally:
                     conn.close()
 
-# Cabeçalho Visual da Página
+# Cabeçalho Visual da Marca
 st.markdown(
     """
     <div style='text-align: center; padding: 15px 0px;'>
