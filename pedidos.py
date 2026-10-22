@@ -6,77 +6,6 @@ import time
 # Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# 1. INJEÇÃO DE CSS: Ocultação direcionada para telas de celulares e maquininhas
-st.markdown(
-    """
-    <style>
-    /* Oculta os botões superiores direito (share, star, 3 pontinhos) e cabeçalhos nativos */
-    div[data-testid="stToolbar"], [data-testid="stHeader"], header, #MainMenu {
-        visibility: hidden !important;
-        display: none !important;
-        height: 0px !important;
-    }
-    
-    /* Oculta o botão/ícone de edição/deploy (Lápis) */
-    .stAppDeployButton, button[title="View source code"], button[title="Edit this app"] {
-        display: none !important;
-    }
-    
-    /* Ajusta o espaçamento do topo para compensar a remoção do cabeçalho */
-    .main .block-container {
-        padding-top: 1.5rem;
-    }
-
-    /* REGRAS EXCLUSIVAS PARA TELAS DE CELULAR (MÁXIMO 768px) */
-    @media (max-width: 768px) {
-        footer, .stAppViewFooter, .stFooter, [data-testid="stFooterBlock"], .stAppFooter, 
-        [data-testid="stStatusWidget"], .viewerBadge, div[class*="viewerBadge"], a[href*="streamlit.io"] {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            height: 0px !important;
-            width: 0px !important;
-            margin: 0px !important;
-            padding: 0px !important;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# 2. INJEÇÃO DE JAVASCRIPT: Remove fisicamente do HTML caso o dispositivo seja móvel
-st.components.v1.html(
-    """
-    <script>
-    function removerSeloNoCelular() {
-        // Verifica se a largura da tela corresponde a um celular
-        if (window.parent.innerWidth <= 768) {
-            // Remove links que apontam para o site do Streamlit
-            var linksStreamlit = window.parent.document.querySelectorAll('a[href*="streamlit.io"]');
-            linksStreamlit.forEach(function(link) {
-                var container = link.closest('div[style*="position: fixed"]') || link.parentElement;
-                if (container) {
-                    container.remove();
-                }
-            });
-
-            // Apaga classes dinâmicas e rodapés do Community Cloud
-            var badges = window.parent.document.querySelectorAll('[class*="viewerBadge"], [data-testid="stStatusWidget"], footer');
-            badges.forEach(function(badge) {
-                badge.remove();
-            });
-        }
-    }
-
-    // Executa e monitora continuamente em segundo plano
-    removerSeloNoCelular();
-    setInterval(removerSeloNoCelular, 500);
-    </script>
-    """,
-    height=0,
-    width=0
-)
 def init_connection():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -119,6 +48,7 @@ def upgrade_db_silencioso():
         conn.close()
 
 upgrade_db_silencioso()
+
 # Inicialização de memória de alto desempenho (Evita lentidão ao alternar abas)
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
@@ -275,7 +205,7 @@ with tabs[0]:
             with col_c_del:
                 if st.button("Tirar", key=f"del_item_cart_{k}", use_container_width=True):
                     itens_remover.append(k)
-        
+                    
         for k in itens_remover:
             del st.session_state.carrinho[k]
             st.rerun()
@@ -344,6 +274,7 @@ with tabs[0]:
             if st.button("🗑️ Limpar Toda a Bandeja", use_container_width=True):
                 st.session_state.carrinho = {}
                 st.rerun()
+
 # ABA 2: CONSULTA DE CONSUMO DAS MESAS ATIVAS (ÍNDICE 1)
 with tabs[1]:
     st.subheader("🗂️ Painel de Acompanhamento de Mesas Ativas")
@@ -358,7 +289,7 @@ with tabs[1]:
                 for m in mesas_abertas:
                     with st.expander(f"🪑 {m['mesa_numero']} (Toque para Carregar Conta)"):
                         cur.execute("""
-                            SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro 
+                            SELECT produto_nome, comanda_codigo, garcao_nome, SUM(quantidade_pedida) as total_qtd, SUM(valor_total) as total_financeiro
                             FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta' GROUP BY produto_nome, comanda_codigo, garcao_nome ORDER BY produto_nome;
                         """, (m['mesa_numero'],))
                         itens_mesa = cur.fetchall()
@@ -370,7 +301,6 @@ with tabs[1]:
                             for it in itens_mesa:
                                 st.markdown(f"- **{it['total_qtd']}x** {it['produto_nome']} — R\$ {float(it['total_financeiro']):.2f} *(Por: {it['garcao_nome']})*")
         conn.close()
-
 # ABA 3: DIRETORIA E FECHAMENTO MASTER RESTREITO (ÍNDICE 2)
 with tabs[2]:
     if not st.session_state.gerente_autenticado:
@@ -389,7 +319,7 @@ with tabs[2]:
         if st.button("🔒 Trancar Painel Administrativo", use_container_width=True):
             st.session_state.gerente_autenticado = False
             st.rerun()
-        
+            
         g_tab1, g_tab2, g_tab3 = st.tabs(["💰 Fechar Conta", "❌ Cancelar Lançamento", "🔄 Transferir de Mesa"])
         
         conn = init_connection()
@@ -419,14 +349,14 @@ with tabs[2]:
                             ids_fechar = [item['id'] for item in itens_f]
                             cur.execute("""
                                 UPDATE pedidos_realizados 
-                                SET status_conta = 'Fechada', forma_pagamento = %s, valor_total = valor_total * %s, total = valor_total * %s, taxa_inclusa = %s 
+                                SET status_conta = 'Fechada', forma_pagamento = %s, valor_total = valor_total * %s, total = valor_total * %s, taxa_inclusa = %s
                                 WHERE id = ANY(%s);
                             """, (forma_p, 1.10 if aplicar_10 else 1.0, 1.10 if aplicar_10 else 1.0, aplicar_10, ids_fechar))
                             conn.commit()
                             st.success(f"Conta fechada e registrada sob o método: {forma_p}!")
                             time.sleep(0.4)
                             st.rerun()
-                
+
                 with g_tab2:
                     if not lista_mesas_gerencia:
                         st.info("Nenhum ativo disponível para estorno.")
@@ -460,7 +390,7 @@ with tabs[2]:
                                 st.success("Transação desfeita e inventário estornado!")
                                 time.sleep(0.4)
                                 st.rerun()
-                
+
                 with g_tab3:
                     if not lista_mesas_gerencia:
                         st.info("Nenhum ativo disponível para transferência.")
