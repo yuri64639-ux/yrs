@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 import time as time_module
+import re
 
 # Configuração de Identidade Visual na Aba do Navegador
 st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
@@ -34,8 +35,8 @@ st.markdown(
         font-family: 'Helvetica Neue', sans-serif;
     }
 
-    /* Caixa de Inputs, Dropdowns, Relógio e Date Pickers Personalizados */
-    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div, div[data-baseweb="timepicker"] {
+    /* Caixa de Inputs, Dropdowns e Date Pickers Personalizados */
+    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div {
         background-color: #1E1E1E !important;
         border: 1px solid #D4AF37 !important;
         border-radius: 8px !important;
@@ -145,15 +146,23 @@ data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
 data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite)
 
-horario_entrada = st.time_input("Escolha ou Digite o Horário Desejado:", value=time(14, 0))
-horario_selecionado_str = horario_entrada.strftime("%H:%M")
+# 🕒 CORREÇÃO: Substituído por campo de texto livre digitável para não travar no celular
+horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 if st.button("Confirmar Meu Agendamento"):
+    # 1. Validação inicial de campos vazios
     if nome.strip() == "" or whatsapp.strip() == "":
         st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
+    # 2. Validação do formato do horário via Expressão Regular (Regex)
+    elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
+        st.error("⚠️ Formato de horário inválido! Por favor, digite o horário usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
     else:
+        # Padroniza a string digitada (adiciona o zero à esquerda se o cliente digitar "9:30" vira "09:30")
+        partes_hora = horario_digitado.split(":")
+        horario_selecionado_str = f"{int(partes_hora[0]):02d}:{partes_hora[1]}"
+
         # 🕒 REGRA DOS 40 MINUTOS: Busca todos os horários já agendados naquele dia para validar o intervalo
         conn = obter_conexao()
         conflito_horario = False
@@ -166,7 +175,6 @@ if st.button("Confirmar Meu Agendamento"):
                     cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
                     agendados_dia = cur.fetchall()
                     
-                    # Converte o horário escolhido pelo cliente corrente para objeto datetime de cálculo
                     data_base_str = str(data_selecionada)
                     dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
                     
@@ -176,7 +184,6 @@ if st.button("Confirmar Meu Agendamento"):
                         # Calcula a diferença absoluta em minutos entre os dois horários
                         diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
                         
-                        # Se a diferença for menor que 40 minutos, bloqueia o lançamento
                         if diferenca < 40:
                             conflito_horario = True
                             proximo_cliente_info = f"{agendamento['horario']}"
@@ -185,7 +192,7 @@ if st.button("Confirmar Meu Agendamento"):
                 if conn: conn.rollback()
         
         if conflito_horario:
-            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, ajuste o relógio para mais cedo ou mais tarde.")
+            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, digite um horário mais cedo ou mais tarde.")
         else:
             conn = obter_conexao()
             if conn:
