@@ -6,21 +6,26 @@ from datetime import datetime, timedelta
 import time as time_module
 import re
 
-# Configuração de Identidade Visual na Aba do Navegador
+# Configuração e injeção de CSS responsivo focado em telas de celulares
 st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
 
-# --- INJEÇÃO DE ARTWORK CSS PREMIUM (PRETO CARBONO & DOURADO METÁLICO) ---
 st.markdown(
     """
     <style>
     /* Oculta os cabeçalhos nativos e menus de deploy do Streamlit */
     [data-testid="stHeader"], [data-testid="stAppToolbar"], header {
-        visibility: hidden !important;
         display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
     }
+    
+    /* COMPACTAÇÃO MOBILE: Remove margens exageradas que esmagam o conteúdo no celular */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        max-width: 100% !important;
     }
     
     /* Configuração do fundo dark de alto padrão */
@@ -29,10 +34,12 @@ st.markdown(
         color: #E5E5E5 !important;
     }
     
-    /* Estilização da Tipografia e Cabeçalhos */
+    /* Estilização da Tipografia Responsiva */
     h1, h2, h3, h4, h5, h6, label {
         color: #D4AF37 !important;
         font-family: 'Helvetica Neue', sans-serif;
+        white-space: normal !important; /* Impede o texto de ser cortado */
+        word-break: break-word !important;
     }
 
     /* Caixa de Inputs, Dropdowns e Date Pickers Personalizados */
@@ -45,10 +52,10 @@ st.markdown(
         color: #FFFFFF !important;
     }
 
-    /* Botão Principal Dourado com Fonte Escura e Efeito Hover */
+    /* Botão Principal Adaptado para o Polegar no Smartphone */
     .stButton>button {
         width: 100%;
-        height: 3.2rem;
+        height: 3.4rem;
         background-color: #D4AF37 !important;
         color: #121212 !important;
         font-weight: bold !important;
@@ -57,33 +64,32 @@ st.markdown(
         border: none !important;
         transition: all 0.3s ease;
         box-shadow: 0px 4px 10px rgba(212, 175, 55, 0.2);
+        margin-top: 10px !important;
     }
     .stButton>button:hover {
         background-color: #AA8226 !important;
-        box-shadow: 0px 6px 15px rgba(212, 175, 55, 0.4);
-        transform: translateY(-2px);
     }
     .logo-container {
         text-align: center;
-        padding: 20px;
-        margin-bottom: 10px;
+        padding: 10px 0px;
+        margin-bottom: 5px;
     }
     .logo-text {
         font-family: 'Cinzel', 'Playfair Display', serif;
-        font-size: 48px;
+        font-size: 38px; /* Reduzido ligeiramente para não cortar em telas finas */
         font-weight: 700;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
         background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-transform: uppercase;
     }
     .sub-logo {
-        font-size: 13px;
+        font-size: 11px;
         color: #8A8A8A;
-        letter-spacing: 6px;
+        letter-spacing: 4px;
         text-transform: uppercase;
-        margin-top: -5px;
+        margin-top: -2px;
         font-weight: 300;
     }
     </style>
@@ -91,7 +97,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- FUNÇÃO DE CONEXÃO DINÂMICA (SEM CACHE - ABRE REMOTAMENTE TODA VEZ) ---
 def obter_conexao():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -122,10 +127,8 @@ def inicializar_banco():
         finally:
             conn.close()
 
-# Inicializa o banco de dados de forma protegida
 inicializar_banco()
 
-# --- EXIBIÇÃO DO LOGO BRANDING ---
 st.markdown(
     """
     <div class="logo-container">
@@ -138,7 +141,6 @@ st.markdown(
 
 st.write("---")
 
-# Formulário de Entrada do Cliente
 nome = st.text_input("Seu Nome Completo:", key="input_nome_cliente")
 whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999", key="input_whatsapp_cliente")
 
@@ -149,7 +151,6 @@ data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
 data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# Campo de texto livre para digitação do horário no smartphone
 horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -165,7 +166,6 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
         minuto_ajustada = int(partes_hora[1])
         horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
 
-        # 🕒 REGRA DOS 40 MINUTOS
         agendados_dia = []
         conn = obter_conexao()
         if conn:
@@ -195,7 +195,7 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
                 break
         
         if conflito_horario:
-            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, digite um horário mais cedo ou mais tarde.")
+            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}.")
         else:
             conn = obter_conexao()
             if conn:
@@ -208,7 +208,7 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
                                 VALUES (%s, %s, %s, %s, %s);
                             """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
                             conn.commit()
-                    st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
+                    st.success(f"🎉 Pronto! Horário agendado para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
                     st.balloons()
                     time_module.sleep(0.8)
                     st.rerun()
