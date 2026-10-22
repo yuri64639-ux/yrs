@@ -36,19 +36,30 @@ def init_connection():
 def criar_estrutura_multi_tenant():
     conn = init_connection()
     if conn:
-        with conn.cursor() as cur:
-            # 1. Tabela mestra de empresas inquilinas
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS public.empresas (
-                id SERIAL PRIMARY KEY,
-                nome_fantasia VARCHAR(255) UNIQUE NOT NULL,
-                usuario_admin VARCHAR(100) NOT NULL,
-                senha_master VARCHAR(255) NOT NULL,
-                data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """)
-            conn.commit()
-        conn.close()
+        try:
+            with conn.cursor() as cur:
+                # 1. Cria a tabela básica se ela não existir
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.empresas (
+                    id SERIAL PRIMARY KEY,
+                    nome_fantasia VARCHAR(255) UNIQUE NOT NULL,
+                    usuario_admin VARCHAR(100) NOT NULL,
+                    senha_master VARCHAR(255) NOT NULL,
+                    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+                
+                # 2. GARANTIA: Adiciona cada coluna caso a tabela antiga não as possua
+                cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS nome_fantasia VARCHAR(255) UNIQUE;")
+                cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS usuario_admin VARCHAR(100);")
+                cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS senha_master VARCHAR(255);")
+                cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+                
+                conn.commit()
+        except Exception as e:
+            st.error(f"Erro ao sincronizar colunas da tabela: {e}")
+        finally:
+            conn.close()
 
 criar_estrutura_multi_tenant()
 # Fluxo de autenticação caso nenhuma empresa esteja conectada neste terminal
