@@ -39,40 +39,11 @@ st.markdown(
     .stButton>button {
         width: 100%;
         height: 3.2rem;
-        background-color: #D4AF37 !important;
-        color: #121212 !important;
         font-weight: bold;
         font-size: 16px !important;
         border-radius: 8px !important;
         border: none !important;
         transition: all 0.3s ease;
-        box-shadow: 0px 4px 10px rgba(212, 175, 55, 0.2);
-    }
-    .stButton>button:hover {
-        background-color: #AA8226 !important;
-    }
-    .logo-container {
-        text-align: center;
-        padding: 20px;
-        margin-bottom: 10px;
-    }
-    .logo-text {
-        font-family: 'Cinzel', 'Playfair Display', serif;
-        font-size: 48px;
-        font-weight: 700;
-        letter-spacing: 2px;
-        background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-transform: uppercase;
-    }
-    .sub-logo {
-        font-size: 13px;
-        color: #8A8A8A;
-        letter-spacing: 6px;
-        text-transform: uppercase;
-        margin-top: -5px;
-        font-weight: 300;
     }
     </style>
     """,
@@ -88,7 +59,6 @@ def obter_conexao():
         st.error(f"Erro de conexão com o banco Neon: {e}")
         return None
 
-# 🛠️ CORREÇÃO DE SEGURANÇA: try/except com rollback para limpar transações pendentes
 def garantir_tabela_existe():
     conn = obter_conexao()
     if conn:
@@ -106,11 +76,9 @@ def garantir_tabela_existe():
                     );
                 """)
                 conn.commit()
-        except Exception as e:
-            # Destrava o banco imediatamente liberando o canal abortado
-            conn.rollback()
+        except Exception:
+            if conn: conn.rollback()
 
-# Executa a verificação estrutural blindada
 garantir_tabela_existe()
 
 # --- MONITOR DE ALERTA EM SEGUNDO PLANO ---
@@ -136,16 +104,16 @@ def checar_proximidade_clientes_oculto():
                         except:
                             pass
         except Exception:
-            conn.rollback()
+            if conn: conn.rollback()
 
 checar_proximidade_clientes_oculto()
 
 # --- EXIBIÇÃO DO LOGO BRANDING IDENTICO ---
 st.markdown(
     """
-    <div class="logo-container">
-        <div class="logo-text">marinote club</div>
-        <div class="sub-logo">Painel de Controle Interno</div>
+    <div style='text-align: center; padding: 20px; margin-bottom: 10px;'>
+        <div style="font-family: 'Cinzel', serif; font-size: 48px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">marinote club</div>
+        <div style='font-size: 13px; color: #8A8A8A; letter-spacing: 6px; text-transform: uppercase; margin-top: -5px; font-weight: 300;'>Painel de Controle Interno</div>
     </div>
     """,
     unsafe_allow_html=True
@@ -172,25 +140,45 @@ else:
     st.dataframe(df_visual[["Horário Marcado", "Data do Atendimento", "Nome do Cliente", "Serviço Solicitado", "WhatsApp"]], use_container_width=True, hide_index=True)
     
     st.write("---")
-    st.subheader("🛠️ Gerenciamento de Vagas e Baixas")
+    st.subheader("🛠️ Gerenciamento de Vagas e Ações")
     
     opcoes_baixa = {f"{row['data_agenda']} às {row['horario']} - {row['nome']} ({row['servico']})": row['id'] for _, row in df_agenda.iterrows()}
-    selecionado_para_baixa = st.selectbox("Escolha um atendimento para encerrar e liberar a grade:", list(opcoes_baixa.keys()))
+    selecionado_para_baixa = st.selectbox("Escolha um atendimento para gerenciar:", list(opcoes_baixa.keys()))
     
-    if st.button("🗑️ Concluir e Dar Baixa no Atendimento", use_container_width=True):
-        id_registro = opcoes_baixa[selecionado_para_baixa]
-        conn = obter_conexao()
-        if conn:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SET search_path TO public;")
-                    cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
-                    conn.commit()
-                st.success("Atendimento concluído com sucesso e vaga liberada na nuvem!")
-                time_module.sleep(0.5)
-                st.rerun()
-            except Exception:
-                conn.rollback()
+    id_registro = opcoes_baixa[selecionado_para_baixa]
+    
+    # Divisão em duas colunas organizadas para as ações de baixa e cancelamento
+    col_concluir, col_cancelar = st.columns(2)
+    
+    with col_concluir:
+        if st.button("🏁 Concluir Atendimento", type="primary", use_container_width=True):
+            conn = obter_conexao()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
+                        conn.commit()
+                    st.success("Atendimento concluído com sucesso e faturamento registrado!")
+                    time_module.sleep(0.5)
+                    st.rerun()
+                except Exception:
+                    if conn: conn.rollback()
+                    
+    with col_cancelar:
+        if st.button("❌ Cancelar Agendamento", type="secondary", use_container_width=True):
+            conn = obter_conexao()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
+                        conn.commit()
+                    st.warning("Agendamento cancelado. A vaga foi reaberta na grade dos clientes!")
+                    time_module.sleep(0.5)
+                    st.rerun()
+                except Exception:
+                    if conn: conn.rollback()
 
 st.markdown("---")
 st.caption("🔄 Sincronização em nuvem ativa. O monitor interno atualiza o fluxo da tabela a cada 5 segundos de forma silenciosa.")
