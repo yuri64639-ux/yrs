@@ -1,7 +1,24 @@
 import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import time
 
+# Configuração e Injeção de CSS responsivo para dispositivos móveis
+st.set_page_config(page_title="Caixa Mobile", layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+    <style>
+    /* Otimizações fundamentais para telas de celulares e maquininhas */
+    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    h1 { font-size: 1.8rem !important; }
+    h2 { font-size: 1.4rem !important; }
+    h3 { font-size: 1.1rem !important; }
+    [data-testid="column"] { padding: 0.2rem 0rem !important; }
+    div.stButton > button { margin-top: 0px !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- FUNÇÕES DE BANCO DE DADOS ---
 def init_connection():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -33,73 +50,106 @@ def upgrade_db_silencioso():
             """)
             conn.commit()
         conn.close()
-import streamlit as st
-import time
-from database import init_connection
 
-def gerenciar_login():
-    if "garcao" in st.query_params:
-        st.session_state.usuario_autenticado = True
-        st.session_state.garcao_atual = st.query_params["garcao"]
-    else:
-        if "usuario_autenticado" not in st.session_state:
-            st.session_state.usuario_autenticado = False
-        if "garcao_atual" not in st.session_state:
-            st.session_state.garcao_atual = ""
+upgrade_db_silencioso()
+# --- INICIALIZAÇÃO DE MEMÓRIA E ESTADOS ---
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = {}
+if "produtos_cache" not in st.session_state:
+    st.session_state.produtos_cache = []
+if "ultimo_carregamento_produtos" not in st.session_state:
+    st.session_state.ultimo_carregamento_produtos = 0.0
+if "gerente_autenticado" not in st.session_state:
+    st.session_state.gerente_autenticado = False
+if "input_mesa_salva" not in st.session_state:
+    st.session_state.input_mesa_salva = ""
+if "input_comanda_salva" not in st.session_state:
+    st.session_state.input_comanda_salva = ""
 
-    if not st.session_state.usuario_autenticado:
-        lista_garcons_db = ["Gerente"]
-        conn = init_connection()
-        if conn:
-            with conn.cursor() as cur:
-                try:
-                    cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                    lista_garcons_db += [row[0] for row in cur.fetchall()]
-                except:
-                    pass
-            conn.close()
+# Sistema Anti-F5
+if "garcao" in st.query_params:
+    st.session_state.usuario_autenticado = True
+    st.session_state.garcao_atual = st.query_params["garcao"]
+else:
+    if "usuario_autenticado" not in st.session_state:
+        st.session_state.usuario_autenticado = False
+    if "garcao_atual" not in st.session_state:
+        st.session_state.garcao_atual = ""
 
-        st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
-        nome_input = st.selectbox("Selecione seu Nome:", options=lista_garcons_db)
-        senha_input = st.text_input("Senha / Código Operacional:", type="password")
-        
-        if st.button("Entrar no Sistema", type="primary", use_container_width=True):
-            if nome_input == "Gerente" and senha_input == "admin":
+# --- FLUXO DE LOGIN DINÂMICO ---
+if not st.session_state.usuario_autenticado:
+    lista_garcons_db = ["Gerente"]
+    conn = init_connection()
+    if conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
+                lista_garcons_db += [row for row in cur.fetchall()]
+            except:
+                pass
+        conn.close()
+
+    st.markdown("<h2 style='text-align: center;'>🔐 Login Operador</h2>", unsafe_allow_html=True)
+    nome_input = st.selectbox("Selecione seu Nome:", options=lista_garcons_db)
+    senha_input = st.text_input("Senha / Código Operacional:", type="password")
+    
+    if st.button("Entrar no Sistema", type="primary", use_container_width=True):
+        if nome_input == "Gerente" and senha_input == "admin":
+            st.session_state.usuario_autenticado = True
+            st.session_state.garcao_atual = nome_input
+            st.query_params["garcao"] = nome_input
+            st.success("Acesso Autorizado!")
+            time.sleep(0.3)
+            st.rerun()
+        else:
+            conn = init_connection()
+            autenticado_db = False
+            if conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute("SELECT nome FROM cadastros_garcons WHERE nome = %s AND codigo_operacional = %s;", (nome_input, senha_input.strip()))
+                        if cur.fetchone():
+                            autenticado_db = True
+                    except:
+                        pass
+                conn.close()
+            
+            if autenticado_db:
                 st.session_state.usuario_autenticado = True
                 st.session_state.garcao_atual = nome_input
                 st.query_params["garcao"] = nome_input
-                st.success("Acesso Autorizado!")
+                st.success(f"Bem-vindo, {nome_input}!")
                 time.sleep(0.3)
                 st.rerun()
             else:
-                conn = init_connection()
-                autenticado_db = False
-                if conn:
-                    with conn.cursor() as cur:
-                        try:
-                            cur.execute("SELECT nome FROM cadastros_garcons WHERE nome = %s AND codigo_operacional = %s;", (nome_input, senha_input.strip()))
-                            if cur.fetchone():
-                                autenticado_db = True
-                        except:
-                            pass
-                    conn.close()
-                
-                if autenticado_db:
-                    st.session_state.usuario_autenticado = True
-                    st.session_state.garcao_atual = nome_input
-                    st.query_params["garcao"] = nome_input
-                    st.success(f"Bem-vindo, {nome_input}!")
-                    time.sleep(0.3)
-                    st.rerun()
-                else:
-                    st.error("Senha Incorreta!")
-        st.stop()
-import streamlit as st
-import time
-from database import init_connection
-from psycopg2.extras import RealDictCursor
+                st.error("Senha Incorreta!")
+    st.stop()
 
-def render_aba_pedidos():
+# Renovação automática do cache de produtos (30 segundos)
+tempo_atual = time.time()
+if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
+    conn = init_connection()
+    if conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
+            st.session_state.produtos_cache = cur.fetchall()
+        conn.close()
+        st.session_state.ultimo_carregamento_produtos = tempo_atual
+
+# Cabeçalho Fixo do topo
+col_header_1, col_header_2 = st.columns([0.6, 0.4])
+with col_header_1:
+    st.markdown(f"📱 **{st.session_state.garcao_atual}**")
+with col_header_2:
+    if st.button("🚪 Sair", type="secondary", use_container_width=True):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+
+# Criação das Abas Mobile Compactas
+tabs = st.tabs(["🛍️ Lançar", "🗂️ Mesas", "🔐 ADM"])
+# --- ABA 1: OPERAÇÃO DE LANÇAMENTO ---
+with tabs[0]:
     st.markdown("### 👤 Atendimento")
     input_mesa = st.text_input("🪑 Mesa:", value=st.session_state.input_mesa_salva, placeholder="Ex: 04", key="input_mesa_real")
     st.session_state.input_mesa_salva = input_mesa
@@ -221,15 +271,11 @@ def render_aba_pedidos():
                     finally:
                         conn.close()
                         
-        if st.button("🗑️ Esvaziar Carrinho", type="secondary", use_container_width=True):
+        if st.button("🗑 Limpar Tudo", key="btn_limpar_bandeja_master", type="secondary", use_container_width=True):
             st.session_state.carrinho = {}
             st.rerun()
-import streamlit as st
-import time
-from database import init_connection
-from psycopg2.extras import RealDictCursor
-
-def render_aba_mesas():
+# --- ABA 2: PAINEL DE MESAS ATIVAS ---
+with tabs[1]:
     st.markdown("### 🗂️ Painel Móvel de Mesas")
     conn = init_connection()
     if conn:
@@ -253,8 +299,8 @@ def render_aba_mesas():
                             for it in itens_mesa:
                                 st.markdown(f"• **{it['total_qtd']}x** {it['produto_nome']} — `R$ {float(it['total_financeiro']):.2f}`")
         conn.close()
-
-def render_aba_gerencia():
+# --- ABA 3: GESTÃO MASTER RESTREITA ---
+with tabs[2]:
     if not st.session_state.gerente_autenticado:
         st.markdown("### 🔐 Painel Master Gerencial")
         senha_gerencia = st.text_input("Credencial Master:", type="password", key="senha_master_gerencia")
@@ -289,14 +335,14 @@ def render_aba_gerencia():
                         itens_f = cur.fetchall()
                         
                         sub_f = sum(float(i['valor_total']) for i in itens_f)
-                        st.write(f"Consumo Original: R\$ {sub_f:.2f}")
+                        st.write(f"Consumo Original: R$ {sub_f:.2f}")
                         
                         aplicar_10 = st.checkbox("Adicionar Taxa de 10%", value=True, key="chk_taxa_10_gerencia")
                         forma_p = st.selectbox("Forma de Pagamento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
                         
                         fator_multiplicador = 1.10 if aplicar_10 else 1.00
                         valor_final_f = sub_f * fator_multiplicador
-                        st.markdown(f"### Total Final: **R\$ {valor_final_f:.2f}**")
+                        st.markdown(f"### Total Final: **R$ {valor_final_f:.2f}**")
                         
                         if st.button("🖨️ Registrar Baixa e Fechar", type="primary", use_container_width=True):
                             ids_fechar = [item['id'] for item in itens_f]
@@ -374,77 +420,3 @@ def render_aba_gerencia():
                                     time.sleep(0.5)
                                     st.rerun()
             conn.close()
-import streamlit as st
-import time
-from database import init_connection, upgrade_db_silencioso
-from auth import gerenciar_login
-from pedidos import render_aba_pedidos
-from gerencia import render_aba_mesas, render_aba_gerencia
-from psycopg2.extras import RealDictCursor
-
-# Configuração e Injeção de CSS responsivo para dispositivos móveis
-st.set_page_config(page_title="Caixa Mobile", layout="wide", initial_sidebar_state="collapsed")
-
-st.markdown("""
-    <style>
-    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    h1 { font-size: 1.8rem !important; }
-    h2 { font-size: 1.4rem !important; }
-    h3 { font-size: 1.1rem !important; }
-    [data-testid="column"] { padding: 0.2rem 0rem !important; }
-    div.stButton > button { margin-top: 0px !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Rodar migrações silenciosas do Neon
-upgrade_db_silencioso()
-
-# Inicialização de memória do ecossistema de dados
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = {}
-if "produtos_cache" not in st.session_state:
-    st.session_state.produtos_cache = []
-if "ultimo_carregamento_produtos" not in st.session_state:
-    st.session_state.ultimo_carregamento_produtos = 0.0
-if "gerente_autenticado" not in st.session_state:
-    st.session_state.gerente_autenticado = False
-if "input_mesa_salva" not in st.session_state:
-    st.session_state.input_mesa_salva = ""
-if "input_comanda_salva" not in st.session_state:
-    st.session_state.input_comanda_salva = ""
-
-# Loop de autenticação de operadores
-gerenciar_login()
-
-# Renovação automática do cache de produtos (30s)
-tempo_atual = time.time()
-if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo_carregamento_produtos > 30):
-    conn = init_connection()
-    if conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
-            st.session_state.produtos_cache = cur.fetchall()
-        conn.close()
-        st.session_state.ultimo_carregamento_produtos = tempo_atual
-
-# Layout de Topo Fixo
-col_header_1, col_header_2 = st.columns([0.6, 0.4])
-with col_header_1:
-    st.markdown(f"📱 **{st.session_state.garcao_atual}**")
-with col_header_2:
-    if st.button("🚪 Sair", type="secondary", use_container_width=True):
-        st.session_state.clear()
-        st.query_params.clear()
-        st.rerun()
-
-# Criação das Abas Compactas Móveis
-tabs = st.tabs(["🛍️ Lançar", "🗂️ Mesas", "🔐 ADM"])
-
-with tabs[0]:
-    render_aba_pedidos()
-
-with tabs[1]:
-    render_aba_mesas()
-
-with tabs[2]:
-    render_aba_gerencia()
