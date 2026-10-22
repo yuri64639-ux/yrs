@@ -18,23 +18,96 @@ def init_db_funcionarios():
     conn = init_connection()
     if conn:
         with conn.cursor() as cur:
+            # Estrutura base Multi-Tenant integrada com a tabela global do ecossistema Neon
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS cadastros_garcons (
+                CREATE TABLE IF NOT EXISTS public.cadastros_garcons (
                     id SERIAL PRIMARY KEY,
-                    nome VARCHAR(255) UNIQUE NOT NULL,
+                    nome VARCHAR(255) NOT NULL,
                     codigo_operacional VARCHAR(100) NOT NULL,
-                    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    empresa_id INT
                 );
             """)
+            # Injeção de segurança retroativa para a coluna de isolamento empresarial
+            cur.execute("ALTER TABLE public.cadastros_garcons ADD COLUMN IF NOT EXISTS empresa_id INT;")
+            cur.execute("ALTER TABLE public.pedidos_realizados ADD COLUMN IF NOT EXISTS empresa_id INT;")
+            
+            # Remove a restrição única antiga que impedia nomes iguais em empresas diferentes
+            cur.execute("ALTER TABLE public.cadastros_garcons DROP CONSTRAINT IF EXISTS cadastros_garcons_nome_key;")
+            cur.execute("ALTER TABLE public.cadastros_garcons DROP CONSTRAINT IF EXISTS unique_garcom_por_empresa;")
+            
+            # Aplica nova regra que protege duplicidade APENAS dentro da mesma empresa
+            cur.execute("ALTER TABLE public.cadastros_garcons ADD CONSTRAINT unique_garcom_por_empresa UNIQUE (nome, empresa_id);")
             conn.commit()
         conn.close()
 
 init_db_funcionarios()
 
-st.title("👥 Dashboard de Garçons & Performance de Vendas")
-st.caption("Controle centralizado de colaboradores e auditoria de faturamento analítico")
+# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO COM PORTÃO DE SEGURANÇA ---
+id_empresa_contexto = None
+
+if "empresa_id_ativo" in st.session_state and st.session_state.empresa_id_ativo:
+    id_empresa_contexto = st.session_state.empresa_id_ativo
+elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_garcom:
+    id_empresa_contexto = st.session_state.empresa_id_garcom
+elif "emp_id" in st.query_params:
+    id_empresa_contexto = int(st.query_params["emp_id"])
+
+# BARREIRA DE AUTENTICAÇÃO: Exige login corporativo se o app for aberto isoladamente
+if not id_empresa_contexto:
+    st.markdown("<h2 style='text-align: center;'>🔒 Autenticação de Auditoria e Relatórios</h2>", unsafe_allow_html=True)
+    conn = init_connection()
+    lista_opcoes_emp = []
+    if conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nome_fantasia FROM public.empresas ORDER BY nome_fantasia;")
+            lista_opcoes_emp = cur.fetchall()
+        conn.close()
+    
+    mapa_fallback = {row: row for row in lista_opcoes_emp}
+    if not mapa_fallback:
+        st.error("Nenhuma empresa localizada na nuvem Neon para associação.")
+        st.stop()
+        
+    with st.form("login_relatorios_seguro"):
+        emp_manual = st.selectbox("Selecione sua Empresa para liberar este terminal:", options=list(mapa_fallback.keys()))
+        senha_comercial = st.text_input("Senha Master da Empresa:", type="password")
+        
+        if st.form_submit_button("Liberar Módulo de Auditoria", type="primary", use_container_width=True):
+            id_selecionado = mapa_fallback[emp_manual]
+            
+            conn = init_connection()
+            autenticado = False
+            if conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM public.empresas WHERE id = %s AND senha_master = %s;", (id_selecionado, senha_comercial.strip()))
+                    if cur.fetchone():
+                        autenticado = True
+                conn.close()
+                
+            if autenticado:
+                st.session_state.empresa_id_ativo = id_selecionado
+                st.query_params["emp_id"] = str(id_selecionado)
+                st.success("Terminal Vinculado e Protegido!")
+                time.sleep(0.3)
+                st.rerun()
+            else:
+                st.error("❌ Senha incorreta para o estabelecimento selecionado!")
+    st.stop()
+# Interface Principal de Business Intelligence
+col_titulo, col_logoff = st.columns([0.8, 0.2])
+with col_titulo:
+    st.title("👥 Dashboard de Garçons & Performance de Vendas")
+    st.caption("Controle centralizado de colaboradores e auditoria de faturamento analítico")
+with col_logoff:
+    if st.button("🔒 Bloquear Painel", use_container_width=True, key="btn_lock_relatorios"):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
 
 tabs = st.tabs(["📝 Cadastrar Novo Garçom", "📊 Relatório e Performance de Vendas"])
+
+# ==================== ABA 1: REGISTRO DE FUNCIONÁRIOS DA UNIDADE ====================
 with tabs[0]:
     st.subheader("📝 Registrar Colaborador no Sistema")
     
@@ -52,7 +125,12 @@ with tabs[0]:
             if conn:
                 try:
                     with conn.cursor() as cur:
-                        cur.execute("INSERT INTO cadastros_garcons (nome, codigo_operacional) VALUES (%s, %s) ON CONFLICT DO NOTHING;", (novo_garcao.strip(), cod_garcao.strip()))
+                        # INSERT COM AMARRAÇÃO DE TENANT: Salva o colaborador amarrado à empresa logada
+                        cur.execute("""
+                            INSERT INTO public.cadastros_garcons (nome, codigo_operacional, empresa_id) 
+                            VALUES (%s, %s, %s) 
+                            ON CONFLICT (nome, empresa_id) DO NOTHING;
+                        """, (novo_garcao.strip(), cod_garcao.strip(), id_empresa_contexto))
                         conn.commit()
                     st.success(f"Funcionário '{novo_garcao}' homologado e ativo no banco Neon!")
                     time.sleep(0.4)
@@ -63,18 +141,20 @@ with tabs[0]:
                     conn.close()
 
     st.markdown("---")
-    st.subheader("👥 Equipe Ativa e Cadastrada")
+    st.subheader("👥 Equipe Ativa da Empresa")
     conn = init_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT nome, data_cadastro FROM cadastros_garcons ORDER BY nome;")
+            # FILTRO CRÍTICO: Lista apenas os funcionários que pertencem a empresa logada
+            cur.execute("SELECT nome, data_cadastro FROM public.cadastros_garcons WHERE empresa_id = %s ORDER BY nome;", (id_empresa_contexto,))
             equipe = cur.fetchall()
         conn.close()
         if equipe:
             for f in equipe:
                 st.markdown(f"- 🟢 **{f['nome']}** *(Admitido em: {f['data_cadastro'].strftime('%d/%m/%Y')})*")
         else:
-            st.info("Nenhum garçom cadastrado até o momento.")
+            st.info("Nenhum garçom cadastrado até o momento para o seu estabelecimento.")
+# ==================== ABA 2: ANÁLISE DE MÉTRICAS E PERFORMANCE EXCLUSIVA ====================
 with tabs[1]:
     st.subheader("🔍 Filtro de Fechamento por Período e Garçom")
     
@@ -83,7 +163,8 @@ with tabs[1]:
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             try:
-                cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
+                # FILTRO CRÍTICO: Carrega no seletor apenas a equipe da empresa ativa
+                cur.execute("SELECT nome FROM public.cadastros_garcons WHERE empresa_id = %s ORDER BY nome;", (id_empresa_contexto,))
                 for row in cur.fetchall():
                     lista_busca_garcons.append(row['nome'])
             except:
@@ -102,8 +183,9 @@ with tabs[1]:
     with c_f4:
         dia_sel = st.selectbox("Dia:", options=["Todos os Dias"] + list(range(1, 32)), key="f_sel_dia")
 
-    query = "SELECT produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo, garcao_nome, data_hora FROM pedidos_realizados WHERE 1=1"
-    parametros = []
+    # VALIDAÇÃO MULTI-TENANT OBRIGATÓRIA: O filtro inicial 'empresa_id = %s' blinda as informações contra outras empresas
+    query = "SELECT produto_nome, quantidade_pedida, valor_total, taxa_inclusa, mesa_numero, comanda_codigo, garcao_nome, data_hora FROM pedidos_realizados WHERE empresa_id = %s"
+    parametros = [id_empresa_contexto]
 
     if sel_garcao_filtro != "Todos os Garçons":
         query += " AND garcao_nome = %s"
@@ -147,7 +229,7 @@ with tabs[1]:
             st.metric("Comissão Acumulada (10% Garçom)", f"R$ {comissao_total:.2f}")
             
         st.markdown("---")
-        st.write("**Extrato de Lançamentos do Período:**")
+        st.write("**Extrato de Lançamentos Privado do Período:**")
         
         df_exibir = df.copy()
         df_exibir['data_hora'] = pd.to_datetime(df_exibir['data_hora']).dt.strftime('%d/%m/%Y %H:%M')
@@ -159,4 +241,4 @@ with tabs[1]:
         
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
     else:
-        st.info("Nenhum lançamento de venda registrado para os filtros selecionados.")
+        st.info("Nenhum lançamento de venda registrado para os filtros selecionados no ambiente desta empresa.")
