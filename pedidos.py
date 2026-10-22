@@ -6,56 +6,76 @@ import time
 # Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# INJEÇÃO DE CSS: Alvo direto no selo vermelho "Hosted with Streamlit" e barras nativas
+# 1. INJEÇÃO DE CSS: Ocultação direcionada para telas de celulares e maquininhas
 st.markdown(
     """
     <style>
-    /* 1. Oculta os botões superiores direito (share, star, 3 pontinhos) e cabeçalhos */
+    /* Oculta os botões superiores direito (share, star, 3 pontinhos) e cabeçalhos nativos */
     div[data-testid="stToolbar"], [data-testid="stHeader"], header, #MainMenu {
         visibility: hidden !important;
         display: none !important;
         height: 0px !important;
     }
     
-    /* 2. Oculta o botão/ícone de edição/deploy (Lápis) */
+    /* Oculta o botão/ícone de edição/deploy (Lápis) */
     .stAppDeployButton, button[title="View source code"], button[title="Edit this app"] {
         display: none !important;
-    }
-    
-    /* 3. ALVO DEFINITIVO: REMOVE O RETÂNGULO VERMELHO DO "HOSTED WITH STREAMLIT" */
-    .viewerBadge_container__1QSob, 
-    .styles_viewerBadge__1yB5_, 
-    .viewerBadge_link__1S137, 
-    .viewerBadge_text__1JaDK,
-    .viewerBadge_container__3664s,
-    [data-testid="stStatusWidget"],
-    div[class*="viewerBadge"],
-    a[href*="streamlit.io"],
-    .css-1jc7ptx, 
-    .e1ewe7hr3 {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        height: 0px !important;
-        width: 0px !important;
-        pointer-events: none !important;
-    }
-    
-    /* 4. Bloqueio genérico de rodapés estruturais */
-    footer, .stAppViewFooter, .stFooter, [data-testid="stFooterBlock"], .stAppFooter, div[class^="st-emotion-cache"] footer {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0px !important;
-        padding: 0px !important;
     }
     
     /* Ajusta o espaçamento do topo para compensar a remoção do cabeçalho */
     .main .block-container {
         padding-top: 1.5rem;
     }
+
+    /* REGRAS EXCLUSIVAS PARA TELAS DE CELULAR (MÁXIMO 768px) */
+    @media (max-width: 768px) {
+        footer, .stAppViewFooter, .stFooter, [data-testid="stFooterBlock"], .stAppFooter, 
+        [data-testid="stStatusWidget"], .viewerBadge, div[class*="viewerBadge"], a[href*="streamlit.io"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0px !important;
+            width: 0px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True
+)
+
+# 2. INJEÇÃO DE JAVASCRIPT: Remove fisicamente do HTML caso o dispositivo seja móvel
+st.components.v1.html(
+    """
+    <script>
+    function removerSeloNoCelular() {
+        // Verifica se a largura da tela corresponde a um celular
+        if (window.parent.innerWidth <= 768) {
+            // Remove links que apontam para o site do Streamlit
+            var linksStreamlit = window.parent.document.querySelectorAll('a[href*="streamlit.io"]');
+            linksStreamlit.forEach(function(link) {
+                var container = link.closest('div[style*="position: fixed"]') || link.parentElement;
+                if (container) {
+                    container.remove();
+                }
+            });
+
+            // Apaga classes dinâmicas e rodapés do Community Cloud
+            var badges = window.parent.document.querySelectorAll('[class*="viewerBadge"], [data-testid="stStatusWidget"], footer');
+            badges.forEach(function(badge) {
+                badge.remove();
+            });
+        }
+    }
+
+    // Executa e monitora continuamente em segundo plano
+    removerSeloNoCelular();
+    setInterval(removerSeloNoCelular, 500);
+    </script>
+    """,
+    height=0,
+    width=0
 )
 def init_connection():
     try:
@@ -127,7 +147,7 @@ if not st.session_state.usuario_autenticado:
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT nome FROM cadastros_garcons ORDER BY nome;")
-                lista_garcons_db += [row for row in cur.fetchall()]
+                lista_garcons_db += [row[0] for row in cur.fetchall()]
             except:
                 pass
         conn.close()
