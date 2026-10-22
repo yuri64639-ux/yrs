@@ -146,7 +146,7 @@ data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
 data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# 🕒 SOLUÇÃO COMPLETA: st.text_input com chave estática limpa para liberar o teclado touch screen
+# 🕒 Campo de texto livre corrigido e destravado para celular
 horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -159,11 +159,11 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
     elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
         st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
     else:
-        # 🛠️ CORREÇÃO DE SINTAXE: Fatiamento correto baseado nos índices da lista gerada pelo split
+        # 🛠️ CORREÇÃO DE LOGICA: Fatiamento explícito dos índices da lista de strings da hora
         partes_hora = horario_digitado.split(":")
         hora_ajustada = int(partes_hora[0])
-        minuto_ajustado = int(partes_hora[1])
-        horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustado:02d}"
+        minuto_ajustada = int(partes_hora[1])
+        horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
 
         # 🕒 REGRA DOS 40 MINUTOS
         conn = obter_conexao()
