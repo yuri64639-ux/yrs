@@ -91,8 +91,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- CONEXÃO COM O BANCO DE DADOS NEON CENTRAL ---
-@st.cache_resource
+# --- FUNÇÃO DE CONEXÃO DINÂMICA (ABRE E FECHA NO MOMENTO DO USO) ---
 def obter_conexao():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -104,22 +103,26 @@ def inicializar_banco():
     conn = obter_conexao()
     if conn:
         try:
-            with conn.cursor() as cur:
-                cur.execute("SET search_path TO public;")
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS public.agendamentos_marinote (
-                        id SERIAL PRIMARY KEY,
-                        nome TEXT NOT NULL,
-                        whatsapp TEXT NOT NULL,
-                        servico TEXT NOT NULL,
-                        data_agenda TEXT NOT NULL,
-                        horario TEXT NOT NULL
-                    );
-                """)
-                conn.commit()
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS public.agendamentos_marinote (
+                            id SERIAL PRIMARY KEY,
+                            nome TEXT NOT NULL,
+                            whatsapp TEXT NOT NULL,
+                            servico TEXT NOT NULL,
+                            data_agenda TEXT NOT NULL,
+                            horario TEXT NOT NULL
+                        );
+                    """)
+                    conn.commit()
         except Exception:
-            if conn: conn.rollback()
+            pass
+        finally:
+            conn.close()
 
+# Garante que a estrutura da tabela está ok ao carregar a página
 inicializar_banco()
 
 # --- EXIBIÇÃO DO LOGO BRANDING ---
@@ -146,7 +149,7 @@ data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
 data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# 🕒 Campo de texto livre corrigido e destravado para celular
+# 🕒 Campo de texto livre para digitação livre sem travar no smartphone
 horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -159,37 +162,41 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
     elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
         st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
     else:
-        # 🛠️ CORREÇÃO DE LOGICA: Fatiamento explícito dos índices da lista de strings da hora
+        # Fatiamento e tratamento dos índices de strings coletados
         partes_hora = horario_digitado.split(":")
         hora_ajustada = int(partes_hora[0])
         minuto_ajustada = int(partes_hora[1])
         horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
 
-        # 🕒 REGRA DOS 40 MINUTOS
+        # 🕒 REGRA DOS 40 MINUTOS: Abre e fecha a conexão de forma isolada
+        agendados_dia = []
         conn = obter_conexao()
-        conflito_horario = False
-        proximo_cliente_info = ""
-        
         if conn:
             try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SET search_path TO public;")
-                    cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
-                    agendados_dia = cur.fetchall()
-                    
-                    data_base_str = str(data_selecionada)
-                    dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
-                    
-                    for agendamento in agendados_dia:
-                        dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
-                        diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
-                        
-                        if diferenca < 40:
-                            conflito_horario = True
-                            proximo_cliente_info = f"{agendamento['horario']}"
-                            break
+                with conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
+                        agendados_dia = cur.fetchall()
             except Exception:
-                if conn: conn.rollback()
+                pass
+            finally:
+                conn.close()
+
+        # Validação matemática de colisão de minutos
+        conflito_horario = False
+        proximo_cliente_info = ""
+        data_base_str = str(data_selecionada)
+        dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
+        
+        for agendamento in agendados_dia:
+            dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
+            diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
+            
+            if diferenca < 40:
+                conflito_horario = True
+                proximo_cliente_info = f"{agendamento['horario']}"
+                break
         
         if conflito_horario:
             st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, digite um horário mais cedo ou mais tarde.")
@@ -197,16 +204,19 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
             conn = obter_conexao()
             if conn:
                 try:
-                    with conn.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("""
-                            INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
-                            VALUES (%s, %s, %s, %s, %s);
-                        """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
-                        conn.commit()
+                    with conn:
+                        with conn.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("""
+                                INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
+                                VALUES (%s, %s, %s, %s, %s);
+                            """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
+                            conn.commit()
                     st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
                     st.balloons()
                     time_module.sleep(0.8)
                     st.rerun()
                 except Exception:
-                    if conn: conn.rollback()
+                    pass
+                finally:
+                    conn.close()
