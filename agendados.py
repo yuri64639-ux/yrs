@@ -2,64 +2,104 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime
+from datetime import datetime, timedelta, time
 import time as time_module
 
-# Configuração de Ambiente para o Painel de Controle Privado
-st.set_page_config(page_title="Agenda Interna - marinote club", page_icon="✂️", layout="wide")
+# Configuração de Identidade Visual na Aba do Navegador
+st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
 
 # --- INJEÇÃO DE ARTWORK CSS PREMIUM (PRETO CARBONO & DOURADO METÁLICO) ---
 st.markdown(
     """
     <style>
-    header, [data-testid="stHeader"], [data-testid="stAppToolbar"] {
-        display: none !important;
+    /* Oculta os cabeçalhos nativos e menus de deploy do Streamlit */
+    [data-testid="stHeader"], [data-testid="stAppToolbar"], header {
         visibility: hidden !important;
+        display: none !important;
     }
     .block-container {
-        padding-top: 1.5rem !important;
-        padding-bottom: 1.5rem !important;
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
     }
+    
+    /* Configuração do fundo dark de alto padrão */
     .stApp {
         background-color: #121212 !important;
         color: #E5E5E5 !important;
     }
-    h1, h2, h3, h4, h5, h6, label, p {
+    
+    /* Estilização da Tipografia e Cabeçalhos */
+    h1, h2, h3, h4, h5, h6, label {
         color: #D4AF37 !important;
         font-family: 'Helvetica Neue', sans-serif;
     }
-    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div {
+
+    /* Caixa de Inputs, Dropdowns, Relógio e Date Pickers Personalizados */
+    div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div, div[data-baseweb="timepicker"] {
         background-color: #1E1E1E !important;
         border: 1px solid #D4AF37 !important;
         border-radius: 8px !important;
     }
-    input, select {
+    input, select, textarea {
         color: #FFFFFF !important;
     }
+
+    /* Botão Principal Dourado com Fonte Escura e Efeito Hover */
     .stButton>button {
         width: 100%;
         height: 3.2rem;
-        font-weight: bold;
+        background-color: #D4AF37 !important;
+        color: #121212 !important;
+        font-weight: bold !important;
         font-size: 16px !important;
         border-radius: 8px !important;
         border: none !important;
         transition: all 0.3s ease;
+        box-shadow: 0px 4px 10px rgba(212, 175, 55, 0.2);
+    }
+    .stButton>button:hover {
+        background-color: #AA8226 !important;
+        box-shadow: 0px 6px 15px rgba(212, 175, 55, 0.4);
+        transform: translateY(-2px);
+    }
+    .logo-container {
+        text-align: center;
+        padding: 20px;
+        margin-bottom: 10px;
+    }
+    .logo-text {
+        font-family: 'Cinzel', 'Playfair Display', serif;
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-transform: uppercase;
+    }
+    .sub-logo {
+        font-size: 13px;
+        color: #8A8A8A;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        margin-top: -5px;
+        font-weight: 300;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- CONEXÃO SEGURA COM O BANCO DE DADOS NEON CENTRAL ---
+# --- CONEXÃO COM O BANCO DE DADOS NEON CENTRAL ---
 @st.cache_resource
 def obter_conexao():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
     except Exception as e:
-        st.error(f"Erro de conexão com o banco Neon: {e}")
+        st.error(f"Erro ao conectar ao banco Neon: {e}")
         return None
 
-def garantir_tabela_existe():
+def inicializar_banco():
     conn = obter_conexao()
     if conn:
         try:
@@ -79,100 +119,87 @@ def garantir_tabela_existe():
         except Exception:
             if conn: conn.rollback()
 
-garantir_tabela_existe()
+inicializar_banco()
 
-# --- EXIBIÇÃO DO LOGO BRANDING IDENTICO ---
+# --- EXIBIÇÃO DO LOGO BRANDING ---
 st.markdown(
     """
-    <div style='text-align: center; padding: 20px; margin-bottom: 10px;'>
-        <div style="font-family: 'Cinzel', serif; font-size: 48px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">marinote club</div>
-        <div style='font-size: 13px; color: #8A8A8A; letter-spacing: 6px; text-transform: uppercase; margin-top: -5px; font-weight: 300;'>Painel de Controle Interno</div>
+    <div class="logo-container">
+        <div class="logo-text">marinote club</div>
+        <div class="sub-logo">Agendamento de Horários</div>
     </div>
     """,
     unsafe_allow_html=True
 )
+
 st.write("---")
 
-# --- BLOCO PRINCIPAL ATUALIZÁVEL (FRAGMENTADO) ---
-# Executa a busca no banco e redesenha a tabela e ações sozinhos a cada 5 segundos
-@st.fragment(run_every="5s")
-def renderizar_painel_agenda_dinamico():
-    conn = obter_conexao()
-    df_agenda = pd.DataFrame()
+# Formulário de Entrada do Cliente
+nome = st.text_input("Seu Nome Completo:")
+whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999")
 
-    if conn:
-        try:
-            df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
-        except Exception:
-            if conn: conn.rollback()
+servicos = ["Cabelo", "Barba", "Cabelo e Barba"]
+servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos)
 
-    # --- CHECAGEM OCULTA DE NOTIFICAÇÃO ---
-    if not df_agenda.empty:
-        data_hoje_str = datetime.now().strftime("%Y-%m-%d")
-        df_hoje = df_agenda[df_agenda["data_agenda"] == data_hoje_str]
-        if not df_hoje.empty:
-            agora = datetime.now()
-            for _, row in df_hoje.iterrows():
-                try:
-                    horario_cliente = datetime.strptime(f"{data_hoje_str} {row['horario']}", "%Y-%m-%d %H:%M")
-                    diferenca_minutos = (horario_cliente - agora).total_seconds() / 60
-                    if 0 <= diferenca_minutos <= 30:
-                        st.toast(f"🚨 **ATENÇÃO BARBEIRO:** {row['nome']} agendado às {row['horario']} ({row['servico']}) está próximo!", icon="💈")
-                except:
-                    pass
+data_atual = datetime.now().date()
+data_limite = data_atual + timedelta(days=14)
+data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite)
 
-    # --- EXIBIÇÃO DA TABELA ---
-    if df_agenda.empty:
-        st.info("ℹ️ Nenhum agendamento ativo ou pendente foi localizado na base de dados em nuvem.")
+horario_entrada = st.time_input("Escolha ou Digite o Horário Desejado:", value=time(14, 0))
+horario_selecionado_str = horario_entrada.strftime("%H:%M")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if st.button("Confirmar Meu Agendamento"):
+    if nome.strip() == "" or whatsapp.strip() == "":
+        st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
     else:
-        st.subheader("🗓️ Grade Geral de Horários Ativos")
+        # 🕒 REGRA DOS 40 MINUTOS: Busca todos os horários já agendados naquele dia para validar o intervalo
+        conn = obter_conexao()
+        conflito_horario = False
+        proximo_cliente_info = ""
         
-        df_visual = df_agenda.copy()
-        df_visual.columns = ["ID Ref", "Nome do Cliente", "WhatsApp", "Serviço Solicitado", "Data do Atendimento", "Horário Marcado"]
-        st.dataframe(df_visual[["Horário Marcado", "Data do Atendimento", "Nome do Cliente", "Serviço Solicitado", "WhatsApp"]], use_container_width=True, hide_index=True)
-        
-        st.write("---")
-        st.subheader("🛠️ Gerenciamento de Vagas e Ações")
-        
-        opcoes_baixa = {f"{row['data_agenda']} às {row['horario']} - {row['nome']} ({row['servico']})": row['id'] for _, row in df_agenda.iterrows()}
-        selecionado_para_baixa = st.selectbox("Escolha um atendimento para gerenciar:", list(opcoes_baixa.keys()))
-        
-        id_registro = opcoes_baixa[selecionado_para_baixa]
-        
-        col_concluir, col_cancelar = st.columns(2)
-        
-        with col_concluir:
-            if st.button("🏁 Concluir Atendimento", type="primary", use_container_width=True):
-                conn = obter_conexao()
-                if conn:
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
-                            conn.commit()
-                        st.success("Atendimento concluído com sucesso!")
-                        time_module.sleep(0.5)
-                        st.rerun()
-                    except Exception:
-                        if conn: conn.rollback()
+        if conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SET search_path TO public;")
+                    cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
+                    agendados_dia = cur.fetchall()
+                    
+                    # Converte o horário escolhido pelo cliente corrente para objeto datetime de cálculo
+                    data_base_str = str(data_selecionada)
+                    dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
+                    
+                    for agendamento in agendados_dia:
+                        dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
                         
-        with col_cancelar:
-            if st.button("❌ Cancelar Agendamento", type="secondary", use_container_width=True):
-                conn = obter_conexao()
-                if conn:
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
-                            conn.commit()
-                        st.warning("Agendamento cancelado!")
-                        time_module.sleep(0.5)
-                        st.rerun()
-                    except Exception:
-                        if conn: conn.rollback()
-
-# Inicializa o painel inteligente auto-atualizável
-renderizar_painel_agenda_dinamico()
-
-st.markdown("---")
-st.caption("🔄 Sincronização automática de 5 segundos ativa. Os novos horários surgem na tabela sem precisar dar F5.")
+                        # Calcula a diferença absoluta em minutos entre os dois horários
+                        diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
+                        
+                        # Se a diferença for menor que 40 minutos, bloqueia o lançamento
+                        if diferenca < 40:
+                            conflito_horario = True
+                            proximo_cliente_info = f"{agendamento['horario']}"
+                            break
+            except Exception:
+                if conn: conn.rollback()
+        
+        if conflito_horario:
+            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos, sua escolha conflita com o horário das {proximo_cliente_info}. Por favor, ajuste o relógio para mais cedo ou mais tarde.")
+        else:
+            conn = obter_conexao()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SET search_path TO public;")
+                        cur.execute("""
+                            INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
+                            VALUES (%s, %s, %s, %s, %s);
+                        """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
+                        conn.commit()
+                    st.success(f"🎉 Pronto, {nome}! Seu horário para '{servico_selecionado}' foi agendado com sucesso para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
+                    st.balloons()
+                    time_module.sleep(0.8)
+                    st.rerun()
+                except Exception:
+                    if conn: conn.rollback()
