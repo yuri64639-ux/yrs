@@ -6,28 +6,33 @@ import time
 # Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# INJEÇÃO DE CSS: Oculta Share, Lápis, Estrela, 3 Pontinhos e Avisos do Rodapé
+# INJEÇÃO DE CSS: Oculta de forma agressiva menus, barras e qualquer elemento de rodapé do Streamlit
 st.markdown(
     """
     <style>
     /* Oculta os botões superiores direito (share, star, 3 pontinhos) */
     div[data-testid="stToolbar"] {
-        visibility: hidden;
-        display: none;
+        visibility: hidden !important;
+        display: none !important;
     }
     /* Oculta a barra decorativa e os menus de gerenciamento superiores */
-    header {
-        visibility: hidden;
-        display: none;
+    header, #MainMenu {
+        visibility: hidden !important;
+        display: none !important;
     }
     /* Oculta o botão/ícone de edição/deploy (Lápis) */
     .stAppDeployButton, button[title="View source code"], button[title="Edit this app"] {
         display: none !important;
     }
-    /* OCULTA O RODAPÉ / BALÃO VERMELHO DE AVISO INFERIOR */
-    .stAppViewFooter, footer {
+    
+    /* BLOQUEIO TOTAL E FORÇADO DO RODAPÉ (BALÃO INFERIOR) */
+    footer, .stAppViewFooter, .stFooter, [data-testid="stFooterBlock"], .stAppFooter, div[class^="st-emotion-cache"] footer {
         display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+        padding: 0px !important;
     }
+    
     /* Ajusta o espaçamento do topo para compensar a remoção do cabeçalho */
     .main .block-container {
         padding-top: 1.5rem;
