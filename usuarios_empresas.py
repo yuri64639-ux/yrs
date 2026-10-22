@@ -52,22 +52,27 @@ def criar_estrutura_multi_tenant():
     if conn:
         try:
             with conn.cursor() as cur:
-                # 1. Cria a tabela básica se ela não existir
+                # 1. Cria a tabela básica caso ela não exista de forma alguma
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS public.empresas (
                     id SERIAL PRIMARY KEY,
-                    nome_fantasia VARCHAR(255) UNIQUE NOT NULL,
-                    usuario_admin VARCHAR(100) NOT NULL,
-                    senha_master VARCHAR(255) NOT NULL,
+                    nome_fantasia VARCHAR(255) UNIQUE,
+                    usuario_admin VARCHAR(100),
+                    senha_master VARCHAR(255),
                     data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """)
                 
-                # 2. GARANTIA: Injeta as colunas caso a tabela antiga no Neon esteja incompleta
+                # 2. GARANTIA: Força a injeção caso as colunas tenham sumido
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS nome_fantasia VARCHAR(255) UNIQUE;")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS usuario_admin VARCHAR(100);")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS senha_master VARCHAR(255);")
                 cur.execute("ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+                
+                # 3. HIGIENIZAÇÃO: Remove travas NOT NULL de colunas antigas que possam quebrar o comando INSERT
+                cur.execute("ALTER TABLE public.empresas ALTER COLUMN nome_fantasia DROP NOT NULL;")
+                cur.execute("ALTER TABLE public.empresas ALTER COLUMN usuario_admin DROP NOT NULL;")
+                cur.execute("ALTER TABLE public.empresas ALTER COLUMN senha_master DROP NOT NULL;")
                 
                 conn.commit()
         except Exception as e:
@@ -174,7 +179,7 @@ with col_header_botao:
 st.markdown("---")
 
 # Layout de Dashboard Corporativo dividido em Abas Largas para o Navegador do PC
-tab_dados, tab_estatisticas, tab_configuracoes = st.st.tabs(["📊 Dados Operacionais", "📈 Métricas do Negócio", "⚙️ Segurança da Nuvem"])
+tab_dados, tab_estatisticas, tab_configuracoes = st.tabs(["📊 Dados Operacionais", "📈 Métricas do Negócio", "⚙️ Segurança da Nuvem"])
 
 with tab_dados:
     st.subheader("Informações Cadastrais Isoladas")
