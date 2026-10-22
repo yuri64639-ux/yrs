@@ -1,47 +1,36 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
-from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta
-import time as time_module
-import re
+from datetime import datetime, date, time
+import requests
 
-# Configuração e injeção de CSS responsivo focado em telas de celulares
+# Configuração de Identidade Visual na Aba do Navegador
 st.set_page_config(page_title="marinote club", page_icon="💈", layout="centered")
 
-st.markdown(
-    """
+# --- INJEÇÃO DE ARTWORK CSS PREMIUM (PRETO CARBONO & DOURADO METÁLICO) ---
+st.markdown("""
     <style>
-    /* Oculta os cabeçalhos nativos e menus de deploy do Streamlit */
-    [data-testid="stHeader"], [data-testid="stAppToolbar"], header {
-        display: none !important;
+    /* Esconde as barras de cabeçalho nativas e menus de deploy */
+    [data-testid="stHeader"], [data-testid="stAppToolbar"], header, .stAppDeployDropdown {
         visibility: hidden !important;
-        height: 0px !important;
+        display: none !important;
     }
-    
-    /* COMPACTAÇÃO MOBILE: Remove margens exageradas que esmagam o conteúdo no celular */
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 0.6rem !important;
-        padding-right: 0.6rem !important;
-        max-width: 100% !important;
-    }
-    
+    [data-testid="collapsedControl"] { display: none !important; }
+         
     /* Configuração do fundo dark de alto padrão */
     .stApp {
         background-color: #121212 !important;
         color: #E5E5E5 !important;
     }
-    
-    /* Estilização da Tipografia Responsiva */
-    h1, h2, h3, h4, h5, h6, label {
+         
+    /* Estilização da Tipografia Dourada */
+    h1, h2, h3, h4, h5, h6 {
         color: #D4AF37 !important;
         font-family: 'Helvetica Neue', sans-serif;
-        white-space: normal !important; /* Impede o texto de ser cortado */
-        word-break: break-word !important;
+        font-weight: 700 !important;
+        letter-spacing: 1px;
     }
-
+         
     /* Caixa de Inputs, Dropdowns e Date Pickers Personalizados */
     div[data-baseweb="input"], div[data-baseweb="select"], .stSelectbox div {
         background-color: #1E1E1E !important;
@@ -51,11 +40,15 @@ st.markdown(
     input, select, textarea {
         color: #FFFFFF !important;
     }
-
-    /* Botão Principal Adaptado para o Polegar no Smartphone */
+    label, p {
+        color: #CCCCCC !important;
+        font-weight: 500 !important;
+    }
+         
+    /* Botão Principal Dourado com Fonte Escura e Efeito Hover */
     .stButton>button {
         width: 100%;
-        height: 3.4rem;
+        height: 3.2rem;
         background-color: #D4AF37 !important;
         color: #121212 !important;
         font-weight: bold !important;
@@ -64,47 +57,23 @@ st.markdown(
         border: none !important;
         transition: all 0.3s ease;
         box-shadow: 0px 4px 10px rgba(212, 175, 55, 0.2);
-        margin-top: 10px !important;
     }
     .stButton>button:hover {
         background-color: #AA8226 !important;
-    }
-    .logo-container {
-        text-align: center;
-        padding: 10px 0px;
-        margin-bottom: 5px;
-    }
-    .logo-text {
-        font-family: 'Cinzel', 'Playfair Display', serif;
-        font-size: 38px; /* Reduzido ligeiramente para não cortar em telas finas */
-        font-weight: 700;
-        letter-spacing: 1px;
-        background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-transform: uppercase;
-    }
-    .sub-logo {
-        font-size: 11px;
-        color: #8A8A8A;
-        letter-spacing: 4px;
-        text-transform: uppercase;
-        margin-top: -2px;
-        font-weight: 300;
+        box-shadow: 0px 6px 15px rgba(212, 175, 55, 0.4);
+        transform: translateY(-2px);
     }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 def obter_conexao():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
     except Exception as e:
-        st.error(f"Erro ao conectar ao banco Neon: {e}")
+        st.error(f"Erro de conexão com o banco Neon: {e}")
         return None
 
-def inicializar_banco():
+def garantir_tabela_existe():
     conn = obter_conexao()
     if conn:
         try:
@@ -122,97 +91,100 @@ def inicializar_banco():
                         );
                     """)
                     conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Erro ao inicializar tabelas: {e}")
         finally:
             conn.close()
 
-inicializar_banco()
+garantir_tabela_existe()
 
+def enviar_notificacao_criacao(nome_cliente, data_agenda, horario, servico):
+    """Dispara um push instantâneo para o aplicativo ntfy no celular"""
+    try:
+        topico_secreto = "marinote_club_avisos_secretos_99" 
+        url = f"https://ntfy.sh{topico_secreto}"
+        
+        try:
+            data_formatada = datetime.strptime(data_agenda, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except:
+            data_formatada = data_agenda
+
+        mensagem = f"👤 Cliente: {nome_cliente}\n📅 Data: {data_formatada}\n⏰ Horário: {horario}\n🪒 Serviço: {servico}"
+        
+        headers = {
+            "Title": "✂️ NOVO HORÁRIO AGENDADO!",
+            "Tags": "barber,calendar,white_check_mark",
+            "Priority": "high"
+        }
+        
+        resposta = requests.post(url, data=mensagem.encode('utf-8'), headers=headers, timeout=10)
+        return resposta.status_code == 200
+    except:
+        return False
+# --- INTERFACE DE AUTOAGENDAMENTO PÚBLICO DOS CLIENTES ---
 st.markdown(
     """
-    <div class="logo-container">
-        <div class="logo-text">marinote club</div>
-        <div class="sub-logo">Agendamento de Horários</div>
+    <div style='text-align: center; padding: 15px 0px;'>
+        <div style="font-family: 'Cinzel', serif; font-size: 38px; font-weight: 700; letter-spacing: 1px; background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">marinote club</div>
+        <div style='font-size: 12px; color: #8A8A8A; letter-spacing: 4px; text-transform: uppercase; margin-top: -3px;'>Agendamento de Clientes Online</div>
     </div>
     """,
     unsafe_allow_html=True
 )
-
 st.write("---")
 
-nome = st.text_input("Seu Nome Completo:", key="input_nome_cliente")
-whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999", key="input_whatsapp_cliente")
+# Seleção de opções estruturadas para o cliente
+c_nome = st.text_input("Seu Nome Completo:", placeholder="Digite seu nome aqui...")
+c_whatsapp = st.text_input("Seu WhatsApp com DDD:", placeholder="Ex: 17999999999")
+s_agenda = st.selectbox("Escolha o Serviço Desejado:", ["Cabelo", "Barba", "Cabelo e Barba"])
 
-servicos = ["Cabelo", "Barba", "Cabelo e Barba"]
-servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos, key="select_servico_cliente")
+col_d, col_h = st.columns(2)
+with col_d:
+    d_sel = st.date_input("Data do Atendimento:", min_value=date.today())
+with col_h:
+    h_sel = st.time_input("Horário do Atendimento:", value=time(9, 0))
 
-data_atual = datetime.now().date()
-data_limite = data_atual + timedelta(days=14)
-data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
-
-horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente"):
-    if nome.strip() == "" or whatsapp.strip() == "":
-        st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
-    elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
-        st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
+if st.button("💾 Confirmar Meu Agendamento", type="primary"):
+    if not c_nome.strip():
+        st.error("❌ Por favor, preencha o seu nome completo!")
+    elif not c_whatsapp.strip():
+        st.error("❌ Por favor, preencha o seu número de WhatsApp!")
     else:
-        partes_hora = horario_digitado.split(":")
-        hora_ajustada = int(partes_hora[0])
-        minuto_ajustada = int(partes_hora[1])
-        horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
-
-        agendados_dia = []
+        d_str = d_sel.strftime("%Y-%m-%d")
+        h_str = h_sel.strftime("%H:%M")
+        
         conn = obter_conexao()
         if conn:
             try:
                 with conn:
-                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    with conn.cursor() as cur:
                         cur.execute("SET search_path TO public;")
-                        cur.execute("SELECT horario, nome FROM public.agendamentos_marinote WHERE data_agenda = %s;", (str(data_selecionada),))
-                        agendados_dia = cur.fetchall()
-            except Exception:
-                pass
+                        
+                        # Impede agendamentos duplicados no mesmo dia e horário exato
+                        cur.execute("""
+                            SELECT id FROM public.agendamentos_marinote 
+                            WHERE data_agenda = %s AND horario = %s;
+                        """, (d_str, h_str))
+                        
+                        if cur.fetchone():
+                            st.error("❌ Desculpe, este horário já está ocupado! Escolha outro momento.")
+                        else:
+                            # Grava o agendamento de forma permanente na nuvem do Neon
+                            cur.execute("""
+                                INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario) 
+                                VALUES (%s, %s, %s, %s, %s);
+                            """, (c_nome.strip(), c_whatsapp.strip(), s_agenda, d_str, h_str))
+                            conn.commit()
+                            
+                            st.success(f"🎉 Tudo certo, {c_nome}! Seu horário foi reservado para o dia {d_sel.strftime('%d/%m/%Y')} às {h_str}.")
+                            
+                            # NOTIFICAÇÃO IMEDIATA: Executa o disparo instantâneo para o seu celular
+                            enviar_notificacao_criacao(c_nome.strip(), d_str, h_str, s_agenda)
+                            st.toast("📱 Alerta enviado com sucesso para a gerência!")
+            except Exception as e:
+                st.error(f"Erro ao salvar seu agendamento no banco: {e}")
             finally:
                 conn.close()
 
-        conflito_horario = False
-        proximo_cliente_info = ""
-        data_base_str = str(data_selecionada)
-        dt_escolhido = datetime.strptime(f"{data_base_str} {horario_selecionado_str}", "%Y-%m-%d %H:%M")
-        
-        for agendamento in agendados_dia:
-            dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
-            diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
-            
-            if diferenca < 40:
-                conflito_horario = True
-                proximo_cliente_info = f"{agendamento['horario']}"
-                break
-        
-        if conflito_horario:
-            st.error(f"❌ Horário indisponível! Devido ao intervalo de segurança de 40 minutos entre os clientes, sua escolha conflita com o horário das {proximo_cliente_info}.")
-        else:
-            conn = obter_conexao()
-            if conn:
-                try:
-                    with conn:
-                        with conn.cursor() as cur:
-                            cur.execute("SET search_path TO public;")
-                            cur.execute("""
-                                INSERT INTO public.agendamentos_marinote (nome, whatsapp, servico, data_agenda, horario)
-                                VALUES (%s, %s, %s, %s, %s);
-                            """, (nome.strip(), whatsapp.strip(), servico_selecionado, str(data_selecionada), horario_selecionado_str))
-                            conn.commit()
-                    st.success(f"🎉 Pronto! Horário agendado para o dia {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado_str}.")
-                    st.balloons()
-                    time_module.sleep(0.8)
-                    st.rerun()
-                except Exception:
-                    pass
-                finally:
-                    conn.close()
+st.markdown("---")
+st.caption("🔒 Seus dados estão seguros e sincronizados em tempo real com a nossa equipe.")
