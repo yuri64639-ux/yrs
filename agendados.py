@@ -81,33 +81,6 @@ def garantir_tabela_existe():
 
 garantir_tabela_existe()
 
-# --- MONITOR DE ALERTA EM SEGUNDO PLANO ---
-@st.fragment(run_every="5s")
-def checar_proximidade_clientes_oculto():
-    conn = obter_conexao()
-    if conn:
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SET search_path TO public;")
-                data_hoje_str = datetime.now().strftime("%Y-%m-%d")
-                cur.execute("SELECT nome, horario, servico FROM public.agendamentos_marinote WHERE data_agenda = %s;", (data_hoje_str,))
-                agendamentos_hoje = cur.fetchall()
-                
-                if agendamentos_hoje:
-                    agora = datetime.now()
-                    for row in agendamentos_hoje:
-                        try:
-                            horario_cliente = datetime.strptime(f"{data_hoje_str} {row['horario']}", "%Y-%m-%d %H:%M")
-                            diferenca_minutos = (horario_cliente - agora).total_seconds() / 60
-                            if 0 <= diferenca_minutos <= 30:
-                                st.toast(f"🚨 **ATENÇÃO BARBEIRO:** {row['nome']} agendado às {row['horario']} ({row['servico']}) está próximo!", icon="💈")
-                        except:
-                            pass
-        except Exception:
-            if conn: conn.rollback()
-
-checar_proximidade_clientes_oculto()
-
 # --- EXIBIÇÃO DO LOGO BRANDING IDENTICO ---
 st.markdown(
     """
@@ -120,65 +93,86 @@ st.markdown(
 )
 st.write("---")
 
-# --- CONEXÃO E RENDERIZAÇÃO DA TABELA ---
-conn = obter_conexao()
-df_agenda = pd.DataFrame()
+# --- BLOCO PRINCIPAL ATUALIZÁVEL (FRAGMENTADO) ---
+# Executa a busca no banco e redesenha a tabela e ações sozinhos a cada 5 segundos
+@st.fragment(run_every="5s")
+def renderizar_painel_agenda_dinamico():
+    conn = obter_conexao()
+    df_agenda = pd.DataFrame()
 
-if conn:
-    try:
-        df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
-    except Exception:
-        if conn: conn.rollback()
+    if conn:
+        try:
+            df_agenda = pd.read_sql("SELECT id, nome, whatsapp, servico, data_agenda, horario FROM public.agendamentos_marinote ORDER BY data_agenda, horario;", conn)
+        except Exception:
+            if conn: conn.rollback()
 
-if df_agenda.empty:
-    st.info("ℹ️ Nenhum agendamento ativo ou pendente foi localizado na base de dados em nuvem.")
-else:
-    st.subheader("🗓️ Grade Geral de Horários Ativos")
-    
-    df_visual = df_agenda.copy()
-    df_visual.columns = ["ID Ref", "Nome do Cliente", "WhatsApp", "Serviço Solicitado", "Data do Atendimento", "Horário Marcado"]
-    st.dataframe(df_visual[["Horário Marcado", "Data do Atendimento", "Nome do Cliente", "Serviço Solicitado", "WhatsApp"]], use_container_width=True, hide_index=True)
-    
-    st.write("---")
-    st.subheader("🛠️ Gerenciamento de Vagas e Ações")
-    
-    opcoes_baixa = {f"{row['data_agenda']} às {row['horario']} - {row['nome']} ({row['servico']})": row['id'] for _, row in df_agenda.iterrows()}
-    selecionado_para_baixa = st.selectbox("Escolha um atendimento para gerenciar:", list(opcoes_baixa.keys()))
-    
-    id_registro = opcoes_baixa[selecionado_para_baixa]
-    
-    # Divisão em duas colunas organizadas para as ações de baixa e cancelamento
-    col_concluir, col_cancelar = st.columns(2)
-    
-    with col_concluir:
-        if st.button("🏁 Concluir Atendimento", type="primary", use_container_width=True):
-            conn = obter_conexao()
-            if conn:
+    # --- CHECAGEM OCULTA DE NOTIFICAÇÃO ---
+    if not df_agenda.empty:
+        data_hoje_str = datetime.now().strftime("%Y-%m-%d")
+        df_hoje = df_agenda[df_agenda["data_agenda"] == data_hoje_str]
+        if not df_hoje.empty:
+            agora = datetime.now()
+            for _, row in df_hoje.iterrows():
                 try:
-                    with conn.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
-                        conn.commit()
-                    st.success("Atendimento concluído com sucesso e faturamento registrado!")
-                    time_module.sleep(0.5)
-                    st.rerun()
-                except Exception:
-                    if conn: conn.rollback()
-                    
-    with col_cancelar:
-        if st.button("❌ Cancelar Agendamento", type="secondary", use_container_width=True):
-            conn = obter_conexao()
-            if conn:
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("SET search_path TO public;")
-                        cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
-                        conn.commit()
-                    st.warning("Agendamento cancelado. A vaga foi reaberta na grade dos clientes!")
-                    time_module.sleep(0.5)
-                    st.rerun()
-                except Exception:
-                    if conn: conn.rollback()
+                    horario_cliente = datetime.strptime(f"{data_hoje_str} {row['horario']}", "%Y-%m-%d %H:%M")
+                    diferenca_minutos = (horario_cliente - agora).total_seconds() / 60
+                    if 0 <= diferenca_minutos <= 30:
+                        st.toast(f"🚨 **ATENÇÃO BARBEIRO:** {row['nome']} agendado às {row['horario']} ({row['servico']}) está próximo!", icon="💈")
+                except:
+                    pass
+
+    # --- EXIBIÇÃO DA TABELA ---
+    if df_agenda.empty:
+        st.info("ℹ️ Nenhum agendamento ativo ou pendente foi localizado na base de dados em nuvem.")
+    else:
+        st.subheader("🗓️ Grade Geral de Horários Ativos")
+        
+        df_visual = df_agenda.copy()
+        df_visual.columns = ["ID Ref", "Nome do Cliente", "WhatsApp", "Serviço Solicitado", "Data do Atendimento", "Horário Marcado"]
+        st.dataframe(df_visual[["Horário Marcado", "Data do Atendimento", "Nome do Cliente", "Serviço Solicitado", "WhatsApp"]], use_container_width=True, hide_index=True)
+        
+        st.write("---")
+        st.subheader("🛠️ Gerenciamento de Vagas e Ações")
+        
+        opcoes_baixa = {f"{row['data_agenda']} às {row['horario']} - {row['nome']} ({row['servico']})": row['id'] for _, row in df_agenda.iterrows()}
+        selecionado_para_baixa = st.selectbox("Escolha um atendimento para gerenciar:", list(opcoes_baixa.keys()))
+        
+        id_registro = opcoes_baixa[selecionado_para_baixa]
+        
+        col_concluir, col_cancelar = st.columns(2)
+        
+        with col_concluir:
+            if st.button("🏁 Concluir Atendimento", type="primary", use_container_width=True):
+                conn = obter_conexao()
+                if conn:
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
+                            conn.commit()
+                        st.success("Atendimento concluído com sucesso!")
+                        time_module.sleep(0.5)
+                        st.rerun()
+                    except Exception:
+                        if conn: conn.rollback()
+                        
+        with col_cancelar:
+            if st.button("❌ Cancelar Agendamento", type="secondary", use_container_width=True):
+                conn = obter_conexao()
+                if conn:
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SET search_path TO public;")
+                            cur.execute("DELETE FROM public.agendamentos_marinote WHERE id = %s;", (id_registro,))
+                            conn.commit()
+                        st.warning("Agendamento cancelado!")
+                        time_module.sleep(0.5)
+                        st.rerun()
+                    except Exception:
+                        if conn: conn.rollback()
+
+# Inicializa o painel inteligente auto-atualizável
+renderizar_painel_agenda_dinamico()
 
 st.markdown("---")
-st.caption("🔄 Sincronização em nuvem ativa. O monitor interno atualiza o fluxo da tabela a cada 5 segundos de forma silenciosa.")
+st.caption("🔄 Sincronização automática de 5 segundos ativa. Os novos horários surgem na tabela sem precisar dar F5.")
