@@ -6,26 +6,32 @@ import time
 # Configuração de ambiente para dispositivos móveis e maquininhas
 st.set_page_config(page_title="Frente de Caixa & Pedidos", layout="wide")
 
-# INJEÇÃO DE CSS: Oculta de forma agressiva menus, barras e qualquer elemento de rodapé do Streamlit
+# INJEÇÃO DE CSS: Remove de forma absoluta o selo "Hosted with Streamlit" e barras nativas
 st.markdown(
     """
     <style>
-    /* Oculta os botões superiores direito (share, star, 3 pontinhos) */
-    div[data-testid="stToolbar"] {
+    /* 1. Oculta os botões superiores direito (share, star, 3 pontinhos) e cabeçalhos */
+    div[data-testid="stToolbar"], [data-testid="stHeader"], header, #MainMenu {
         visibility: hidden !important;
         display: none !important;
+        height: 0px !important;
     }
-    /* Oculta a barra decorativa e os menus de gerenciamento superiores */
-    header, #MainMenu {
-        visibility: hidden !important;
-        display: none !important;
-    }
-    /* Oculta o botão/ícone de edição/deploy (Lápis) */
+    
+    /* 2. Oculta o botão/ícone de edição/deploy (Lápis) */
     .stAppDeployButton, button[title="View source code"], button[title="Edit this app"] {
         display: none !important;
     }
     
-    /* BLOQUEIO TOTAL E FORÇADO DO RODAPÉ (BALÃO INFERIOR) */
+    /* 3. ASSINATURA AGRESSIVA CONTRA O RETÂNGULO VERMELHO "HOSTED WITH STREAMLIT" */
+    .viewerBadge_container__1QSob, .viewerBadge_link__28m6G, [data-testid="stStatusWidget"], .viewerBadge, div[class*="viewerBadge"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0px !important;
+        width: 0px !important;
+    }
+    
+    /* 4. Bloqueio genérico de rodapés estruturais */
     footer, .stAppViewFooter, .stFooter, [data-testid="stFooterBlock"], .stAppFooter, div[class^="st-emotion-cache"] footer {
         display: none !important;
         visibility: hidden !important;
