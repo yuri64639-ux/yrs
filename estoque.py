@@ -28,20 +28,22 @@ class DatabaseManager:
             return
         try:
             with conn.cursor() as cur:
-                # Esquema de Banco de Dados Relacional Correto e Normalizado
+                # 1. Criação das Tabelas estruturadas com amarração por ID de Empresa
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS insumos (
                         id SERIAL PRIMARY KEY,
-                        nome VARCHAR(255) UNIQUE NOT NULL,
-                        quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000
+                        nome VARCHAR(255) NOT NULL,
+                        quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000,
+                        empresa_id INT
                     );
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS produtos (
                         id SERIAL PRIMARY KEY,
-                        nome VARCHAR(255) UNIQUE NOT NULL,
-                        preco NUMERIC(10, 2) NOT NULL
-                );
+                        nome VARCHAR(255) NOT NULL,
+                        preco NUMERIC(10, 2) NOT NULL,
+                        empresa_id INT
+                    );
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS ficha_tecnica (
@@ -49,13 +51,29 @@ class DatabaseManager:
                         produto_id INT REFERENCES produtos(id) ON DELETE CASCADE,
                         insumo_id INT REFERENCES insumos(id) ON DELETE CASCADE,
                         quantidade NUMERIC(10, 2) NOT NULL,
-                        unidade VARCHAR(10) NOT NULL
+                        unidade VARCHAR(10) NOT NULL,
+                        empresa_id INT
                     );
                 """)
-                # Garante integridade de migrações antigas sem perda de dados
+                
+                # 2. Injeção de segurança retroativa para colunas Multi-Tenant
                 cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_atual NUMERIC(10,3) NOT NULL DEFAULT 100.000;")
+                cur.execute("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                cur.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                cur.execute("ALTER TABLE ficha_tecnica ADD COLUMN IF NOT EXISTS empresa_id INT;")
+                
+                # 3. CRÍTICO: Remove travas universais antigas que impediam produtos duplicados em contas diferentes
+                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS insumos_nome_key;")
+                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS produtos_nome_key;")
+                cur.execute("ALTER TABLE insumos DROP CONSTRAINT IF EXISTS unique_insumo_por_empresa;")
+                cur.execute("ALTER TABLE produtos DROP CONSTRAINT IF EXISTS unique_produto_por_empresa;")
+                
+                # 4. PROTEÇÃO: Aplica chaves que protegem duplicidade APENAS dentro da própria empresa
+                cur.execute("ALTER TABLE insumos ADD CONSTRAINT unique_insumo_por_empresa UNIQUE (nome, empresa_id);")
+                cur.execute("ALTER TABLE produtos ADD CONSTRAINT unique_produto_por_empresa UNIQUE (nome, empresa_id);")
+                
                 conn.commit()
-                logging.info("Migração de esquema SQL executada com sucesso.")
+                logging.info("Migração e regras de chaves compostas executadas com sucesso.")
         except Exception as e:
             logging.critical(f"Erro crítico durante a execução do DDL: {e}")
         finally:
@@ -65,14 +83,26 @@ class DatabaseManager:
 st.set_page_config(page_title=Config.PAGE_TITLE, layout="wide", initial_sidebar_state="expanded")
 DatabaseManager.execute_migration()
 
-# --- COMPONENTE COMPARTILHADO: MONITOR REAL-TIME DE ATIVOS ---
+# --- RECONHECIMENTO AUTOMÁTICO DO INQUILINO ---
+id_empresa_contexto = None
+if "empresa_id_ativo" in st.session_state and st.session_state.empresa_id_ativo:
+    id_empresa_contexto = st.session_state.empresa_id_ativo
+elif "empresa_id_garcom" in st.session_state and st.session_state.empresa_id_garcom:
+    id_empresa_contexto = st.session_state.empresa_id_garcom
+elif "emp_id" in st.query_params:
+    id_empresa_contexto = int(st.query_params["emp_id"])
+
+if not id_empresa_contexto:
+    st.warning("🔒 Acesso Bloqueado: Nenhuma empresa ativa foi vinculada a este terminal. Realize o login no aplicativo corporativo principal.")
+    st.stop()
+# --- DASHBOARD PRIVADO COM FILTRAGEM POR EMPRESA ---
 @st.fragment(run_every="1s")
 def render_dashboard_estoque():
     st.subheader("📊 Indicadores de Volume de Estoque Bruto")
     conn = DatabaseManager.get_connection()
     if conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT nome, quantidade_atual FROM insumos ORDER BY nome;")
+            cur.execute("SELECT nome, quantidade_atual FROM insumos WHERE empresa_id = %s ORDER BY nome;", (id_empresa_contexto,))
             items = cur.fetchall()
         conn.close()
         
@@ -85,23 +115,23 @@ def render_dashboard_estoque():
                     st.metric(
                         label=f"{item['nome']} ({label_status})",
                         value=f"{qtd:.3f} Unidades",
-                        delta=f"{qtd - Config.LOW_STOCK_THRESHOLD:.3f} acima do limite" if qtd > Config.LOW_STOCK_THRESHOLD else "Abaixo da Margem de Segurança",
+                        delta=f"{qtd - Config.LOW_STOCK_THRESHOLD:.3f} acima" if qtd > Config.LOW_STOCK_THRESHOLD else "Abaixo da Margem",
                         delta_color="normal" if qtd > Config.LOW_STOCK_THRESHOLD else "inverse"
                     )
         else:
-            st.info("Nenhum ativo de insumo registrado no almoxarifado.")
+            st.info("Nenhum ativo de insumo cadastrado na base de dados desta empresa.")
 
-# Renderização da Interface Administrativa Principal
+# Interface Principal do Administrador
 st.title("💼 Enterprise Resource Planning (ERP) - Inteligência Operacional")
 render_dashboard_estoque()
 st.markdown("---")
 
 menu_tabs = st.tabs(["📥 Entrada de Insumos (Lote)", "🏗️ Engenharia de Fichas Técnicas", "📋 Auditoria e Controle de Cardápio"])
 
-# ABA 1: INGESTÃO DE MATÉRIA-PRIMA EM MASSA
+# ==================== ABA 1: INGESTÃO DE MATÉRIA-PRIMA INDIVIDUAL ====================
 with menu_tabs[0]:
     st.header("📥 Ingestão de Matéria-Prima em Lote")
-    st.markdown("Utilize esta interface para cadastrar novos insumos comerciais por linha. O estoque base é parametrizado em **Quilos (Kg)** ou **Litros (L)**.")
+    st.markdown("Cadastre novos insumos comerciais por linha. O estoque é indexado à sua conta corporativa.")
     
     txt_carga = st.text_area(
         "Massa de Dados para Importação (Um insumo por linha):",
@@ -119,20 +149,25 @@ with menu_tabs[0]:
                 try:
                     with db_conn.cursor() as cur:
                         for item_nome in ativos_linhas:
-                            cur.execute("INSERT INTO insumos (nome) VALUES (%s) ON CONFLICT DO NOTHING;", (item_nome,))
+                            # ON CONFLICT DO NOTHING baseado na nova restrição composta nome + empresa_id
+                            cur.execute("""
+                                INSERT INTO insumos (nome, empresa_id) 
+                                VALUES (%s, %s) 
+                                ON CONFLICT (nome, empresa_id) DO NOTHING;
+                            """, (item_nome, id_empresa_contexto))
                             if cur.rowcount > 0:
                                 novos_ativos += 1
                         db_conn.commit()
-                    st.success(f"Carga finalizada com sucesso. Incorporados {novos_ativos} novos ativos ao inventário.")
+                    st.success(f"Ação executada. Adicionados {novos_ativos} novos insumos ao inventário exclusivo da sua empresa.")
                     time.sleep(1)
                     st.rerun()
                 except Exception as ex:
-                    st.error(f"Erro operacional durante a carga: {ex}")
+                    st.error(f"Erro operacional durante o processamento: {ex}")
                 finally:
                     db_conn.close()
         else:
-            st.warning("Validação Recusada: O campo de entrada de dados textual está vazio.")
-# ABA 2: ENGENHARIA DE PRODUTOS E MATRIZ DE COMPOSIÇÃO (FICHAS TÉCNICAS)
+            st.warning("O campo de texto está vazio.")
+# ==================== ABA 2: ENGENHARIA DE PRODUTOS E MATRIZ DE COMPOSIÇÃO ====================
 with menu_tabs[1]:
     st.header("🏗️ Engenharia de Fichas Técnicas")
     
@@ -140,7 +175,7 @@ with menu_tabs[1]:
     lista_ativos_insumos = []
     if db_conn:
         with db_conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, nome FROM insumos ORDER BY nome;")
+            cur.execute("SELECT id, nome FROM insumos WHERE empresa_id = %s ORDER BY nome;", (id_empresa_contexto,))
             lista_ativos_insumos = cur.fetchall()
         db_conn.close()
         
@@ -156,12 +191,11 @@ with menu_tabs[1]:
         
     st.markdown("---")
     st.subheader("📋 Matriz de Formulação (Limite de 1 a 6 Insumos por SKU)")
-    componentes_ficha = []
     
-    # Grid Simétrico de Formulação Comercial (3 Linhas x 2 Colunas)
+    componentes_selecionados = []
+    
     for index_row in range(3):
         col_esq, col_dir = st.columns(2)
-        
         idx_esq = index_row * 2
         with col_esq:
             st.markdown(f"**Componente Operacional {idx_esq + 1}**")
@@ -172,111 +206,85 @@ with menu_tabs[1]:
                 qtd_ins_l = st.number_input(f"Consumo Proporcional {idx_esq + 1}", min_value=0.01, value=100.00, step=10.00, key=f"matriz_qtd_{idx_esq}")
             with sc3:
                 uni_ins_l = st.selectbox(f"Unidade de Medida {idx_esq + 1}", options=["g", "ml"], key=f"matriz_uni_{idx_esq}")
-            
-            if sel_ins_l not in ["- Nenhum -", "- Cadastre insumos primeiro -"]:
-                componentes_ficha.append({"insumo_id": mapeamento_insumos[sel_ins_l], "quantidade": qtd_ins_l, "unidade": uni_ins_l})
-                
-        idx_dir = (index_row * 2) + 1
+                if sel_ins_l != "- Nenhum -" and sel_ins_l != "- Cadastre insumos primeiro -":
+                    componentes_selecionados.append({"nome": sel_ins_l, "quantidade": qtd_ins_l, "unidade": uni_ins_l})
+                    
+        idx_dir = idx_esq + 1
         with col_dir:
             st.markdown(f"**Componente Operacional {idx_dir + 1}**")
-            sc1, sc2, sc3 = st.columns(3)
-            with sc1:
-                sel_ins_r = st.selectbox(f"Insumo Ativo {idx_dir + 1} (Opcional)", options=opcoes_opcionais, key=f"matriz_ins_{idx_dir}")
-            with sc2:
+            sc4, sc5, sc6 = st.columns(3)
+            with sc4:
+                sel_ins_r = st.selectbox(f"Insumo Ativo {idx_dir + 1}", options=opcoes_opcionais, key=f"matriz_ins_{idx_dir}")
+            with sc5:
                 qtd_ins_r = st.number_input(f"Consumo Proporcional {idx_dir + 1}", min_value=0.01, value=100.00, step=10.00, key=f"matriz_qtd_{idx_dir}")
-            with sc3:
+            with sc6:
                 uni_ins_r = st.selectbox(f"Unidade de Medida {idx_dir + 1}", options=["g", "ml"], key=f"matriz_uni_{idx_dir}")
-            
-            if sel_ins_r not in ["- Nenhum -"]:
-                componentes_ficha.append({"insumo_id": mapeamento_insumos[sel_ins_r], "quantidade": qtd_ins_r, "unidade": uni_ins_r})
+                if sel_ins_r != "- Nenhum -":
+                    componentes_selecionados.append({"nome": sel_ins_r, "quantidade": qtd_ins_r, "unidade": uni_ins_r})
 
-    st.markdown("")
-    if st.button("Homologar Engenharia de Produto", type="primary", use_container_width=True):
-        ids_validacao = [comp["insumo_id"] for comp in componentes_ficha]
-        
-        if not lista_ativos_insumos:
-            st.error("Validação Recusada: Banco de dados de insumos vazio. Realize a importação na Aba 1.")
-        elif not componentes_ficha:
-            st.error("Validação Recusada: Selecione ao menos 1 insumo válido para compor a receita.")
-        elif len(set(ids_validacao)) < len(componentes_ficha):
-            st.error("Validação Recusada: Foram detectados insumos duplicados na mesma matriz. Escolha itens distintos.")
-        elif not input_nome_sku.strip():
-            st.error("Validação Recusada: O identificador SKU do produto não pode ser nulo.")
-        elif input_preco_sku <= 0:
-            st.error("Validação Recusada: O preço comercial do SKU deve ser superior a zero.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Gravar Produto & Ficha Técnica", type="primary", use_container_width=True):
+        if not input_nome_sku.strip() or input_preco_sku <= 0:
+            st.error("Insira informações válidas de nome e preço de venda.")
+        elif not componentes_selecionados:
+            st.error("Vincule insumos para salvar a composição.")
         else:
             db_conn = DatabaseManager.get_connection()
             if db_conn:
                 try:
                     with db_conn.cursor() as cur:
-                        cur.execute("INSERT INTO produtos (nome, preco) VALUES (%s, %s) RETURNING id;", (input_nome_sku.strip(), input_preco_sku))
-                        id_gerado_produto = cur.fetchone()
+                        # Insere o produto respeitando a restrição de unicidade por empresa
+                        cur.execute("""
+                            INSERT INTO produtos (nome, preco, empresa_id) 
+                            VALUES (%s, %s, %s) 
+                            ON CONFLICT (nome, empresa_id) DO UPDATE SET preco = EXCLUDED.preco 
+                            RETURNING id;
+                        """, (input_nome_sku.strip(), input_preco_sku, id_empresa_contexto))
+                        id_novo_produto = cur.fetchone()[0]
                         
-                        for item_associado in componentes_ficha:
-                            cur.execute(
-                                "INSERT INTO ficha_tecnica (produto_id, insumo_id, quantidade, unidade) VALUES (%s, %s, %s, %s);",
-                                (id_gerado_produto, item_associado["insumo_id"], item_associado["quantidade"], item_associado["unidade"])
-                            )
+                        # Limpa composições antigas para evitar resíduos se o produto já existia
+                        cur.execute("DELETE FROM ficha_tecnica WHERE produto_id = %s AND empresa_id = %s;", (id_novo_produto, id_empresa_contexto))
+                        
+                        for comp in componentes_selecionados:
+                            id_insumo_alvo = mapeamento_insumos.get(comp["nome"])
+                            if id_insumo_alvo:
+                                cur.execute("""
+                                    INSERT INTO ficha_tecnica (produto_id, insumo_id, quantidade, unidade, empresa_id) 
+                                    VALUES (%s, %s, %s, %s, %s);
+                                """, (id_novo_produto, id_insumo_alvo, comp["quantidade"], comp["unidade"], id_empresa_contexto))
                         db_conn.commit()
-                    st.success(f"Sucesso: SKU '{input_nome_sku}' homologado com {len(componentes_ficha)} amarrações operacionais.")
+                    st.success(f"Produto '{input_nome_sku}' integrado e blindado para sua empresa!")
                     time.sleep(1)
                     st.rerun()
-                except Exception as err:
-                    st.error(f"Erro durante a transação relacional: {err}")
+                except Exception as ex:
+                    st.error(f"Erro ao salvar produto no Neon: {ex}")
                 finally:
                     db_conn.close()
 
-# ABA 3: AUDITORIA E EXCLUSÃO SELETIVA EM LOTE DO CARDÁPIO
+# ==================== ABA 3: AUDITORIA E CARDÁPIO PRIVADO ====================
 with menu_tabs[2]:
     st.header("📋 Auditoria e Controle de Cardápio")
-    st.markdown("Abaixo estão listados todos os SKUs comercializados. Selecione múltiplos itens para exclusão imediata em lote do servidor central.")
-    
-    db_conn = DatabaseManager.get_connection()
-    if db_conn:
-        with db_conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, nome, preco FROM produtos ORDER BY nome;")
-            todos_skus = cur.fetchall()
+    conn = DatabaseManager.get_connection()
+    if conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, nome, preco FROM produtos WHERE empresa_id = %s ORDER BY nome;", (id_empresa_contexto,))
+            produtos_auditoria = cur.fetchall()
             
-            if not todos_skus:
-                st.info("Nenhum produto cadastrado no catálogo comercial até o momento.")
+            if not produtos_auditoria:
+                st.info("Nenhum produto cadastrado no ambiente logado.")
             else:
-                fila_exclusao_lote = []
-                
-                for sku in todos_skus:
-                    c_check, c_expand = st.columns([0.04, 0.96])
-                    with c_check:
-                        marcado = st.checkbox("", key=f"chk_auditoria_{sku['id']}")
-                        if marcado:
-                            fila_exclusao_lote.append(sku['id'])
-                    with c_expand:
-                        with st.expander(f"🍽️ {sku['nome']} — Preço de Venda: R$ {sku['preco']:.2f}"):
-                            cur.execute("""
-                                SELECT f.quantidade, f.unidade, i.nome as insumo_nome 
-                                FROM ficha_tecnica f
-                                JOIN insumos i ON f.insumo_id = i.id
-                                WHERE f.produto_id = %s;
-                            """, (sku['id'],))
-                            elementos_receita = cur.fetchall()
-                            
-                            st.write("**Detalhamento de Engenharia de Custo (Ficha Técnica):**")
-                            for component in elementos_receita:
-                                equivalencia_estoque = float(component['quantidade']) / 1000.0
-                                unidade_estoque_global = "Kg" if component['unidade'] == "g" else "L"
-                                st.markdown(f"- **{component['insumo_nome']}**: {float(component['quantidade']):.1f}{component['unidade']} *(Baixa calculada por porção: **{equivalencia_estoque:.3f} {unidade_estoque_global}**)*")
-                
-                st.markdown("---")
-                if fila_exclusao_lote:
-                    total_selecionados = len(fila_exclusao_lote)
-                    if st.button(f"🗑️ Expurgar {total_selecionados} SKU(s) Selecionado(s)", type="primary", use_container_width=True):
-                        try:
-                            with db_conn.cursor() as cur:
-                                cur.execute("DELETE FROM produtos WHERE id = ANY(%s);", (fila_exclusao_lote,))
-                                db_conn.commit()
-                            st.success(f"Auditoria Concluída: {total_selecionados} SKUs removidos do ecossistema.")
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as err:
-                            st.error(f"Falha na deleção em lote do banco: {err}")
-                else:
-                    st.button("🗑️ Expurgar Selecionados", disabled=True, use_container_width=True, key="btn_expurgo_disabled")
-        db_conn.close()
+                for p in produtos_auditoria:
+                    with st.expander(f"🍔 {p['nome']} — R$ {float(p['preco']):.2f}"):
+                        cur.execute("""
+                            SELECT i.nome, f.quantidade, f.unidade 
+                            FROM ficha_tecnica f
+                            JOIN insumos i ON f.insumo_id = i.id
+                            WHERE f.produto_id = %s AND f.empresa_id = %s;
+                        """, (p["id"], id_empresa_contexto))
+                        detalhes_ficha = cur.fetchall()
+                        if detalhes_ficha:
+                            for linha in detalhes_ficha:
+                                st.write(f"• **{linha['nome']}**: {float(linha['quantidade'])} {linha['unidade']}")
+                        else:
+                            st.caption("Nenhum insumo atrelado a este item.")
+        conn.close()
