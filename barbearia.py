@@ -91,7 +91,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- FUNÇÃO DE CONEXÃO DINÂMICA (ABRE E FECHA NO MOMENTO DO USO) ---
+# --- FUNÇÃO DE CONEXÃO DINÂMICA (SEM CACHE - ABRE REMOTAMENTE TODA VEZ) ---
 def obter_conexao():
     try:
         return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
@@ -122,7 +122,7 @@ def inicializar_banco():
         finally:
             conn.close()
 
-# Garante que a estrutura da tabela está ok ao carregar a página
+# Inicializa o banco de dados de forma protegida
 inicializar_banco()
 
 # --- EXIBIÇÃO DO LOGO BRANDING ---
@@ -149,26 +149,23 @@ data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
 data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# 🕒 Campo de texto livre para digitação livre sem travar no smartphone
+# Campo de texto livre para digitação do horário no smartphone
 horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente"):
-    # 1. Validação de campos vazios
     if nome.strip() == "" or whatsapp.strip() == "":
         st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
-    # 2. Validação estrutural do formato digitado
     elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
         st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
     else:
-        # Fatiamento e tratamento dos índices de strings coletados
         partes_hora = horario_digitado.split(":")
         hora_ajustada = int(partes_hora[0])
         minuto_ajustada = int(partes_hora[1])
         horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustada:02d}"
 
-        # 🕒 REGRA DOS 40 MINUTOS: Abre e fecha a conexão de forma isolada
+        # 🕒 REGRA DOS 40 MINUTOS
         agendados_dia = []
         conn = obter_conexao()
         if conn:
@@ -183,7 +180,6 @@ if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente
             finally:
                 conn.close()
 
-        # Validação matemática de colisão de minutos
         conflito_horario = False
         proximo_cliente_info = ""
         data_base_str = str(data_selecionada)
