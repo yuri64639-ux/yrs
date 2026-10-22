@@ -136,34 +136,36 @@ st.markdown(
 st.write("---")
 
 # Formulário de Entrada do Cliente
-nome = st.text_input("Seu Nome Completo:")
-whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999")
+nome = st.text_input("Seu Nome Completo:", key="input_nome_cliente")
+whatsapp = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: (17) 99999-9999", key="input_whatsapp_cliente")
 
 servicos = ["Cabelo", "Barba", "Cabelo e Barba"]
-servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos)
+servico_selecionado = st.selectbox("Escolha o Serviço Essencial:", servicos, key="select_servico_cliente")
 
 data_atual = datetime.now().date()
 data_limite = data_atual + timedelta(days=14)
-data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite)
+data_selecionada = st.date_input("Escolha o Dia do Atendimento:", value=data_atual, min_value=data_atual, max_value=data_limite, key="date_dia_cliente")
 
-# 🕒 CORREÇÃO: Substituído por campo de texto livre digitável para não travar no celular
-horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30").strip()
+# 🕒 SOLUÇÃO COMPLETA: st.text_input com chave estática limpa para liberar o teclado touch screen
+horario_digitado = st.text_input("Digite o Horário Desejado (Formato 24h):", placeholder="Ex: 14:30", key="campo_horario_livre").strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("Confirmar Meu Agendamento"):
-    # 1. Validação inicial de campos vazios
+if st.button("Confirmar Meu Agendamento", key="btn_confirmar_agendamento_cliente"):
+    # 1. Validação de campos vazios
     if nome.strip() == "" or whatsapp.strip() == "":
         st.error("⚠️ Atenção: Por favor, preencha os campos de Nome e WhatsApp para concluir.")
-    # 2. Validação do formato do horário via Expressão Regular (Regex)
+    # 2. Validação estrutural do formato digitado
     elif not re.match(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", horario_digitado):
-        st.error("⚠️ Formato de horário inválido! Por favor, digite o horário usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
+        st.error("⚠️ Formato inválido! Por favor, digite usando duas casas e dois pontos. Exemplo: 09:30, 14:00, 17:15.")
     else:
-        # Padroniza a string digitada (adiciona o zero à esquerda se o cliente digitar "9:30" vira "09:30")
+        # 🛠️ CORREÇÃO DE SINTAXE: Fatiamento correto baseado nos índices da lista gerada pelo split
         partes_hora = horario_digitado.split(":")
-        horario_selecionado_str = f"{int(partes_hora[0]):02d}:{partes_hora[1]}"
+        hora_ajustada = int(partes_hora[0])
+        minuto_ajustado = int(partes_hora[1])
+        horario_selecionado_str = f"{hora_ajustada:02d}:{minuto_ajustado:02d}"
 
-        # 🕒 REGRA DOS 40 MINUTOS: Busca todos os horários já agendados naquele dia para validar o intervalo
+        # 🕒 REGRA DOS 40 MINUTOS
         conn = obter_conexao()
         conflito_horario = False
         proximo_cliente_info = ""
@@ -180,8 +182,6 @@ if st.button("Confirmar Meu Agendamento"):
                     
                     for agendamento in agendados_dia:
                         dt_existente = datetime.strptime(f"{data_base_str} {agendamento['horario']}", "%Y-%m-%d %H:%M")
-                        
-                        # Calcula a diferença absoluta em minutos entre os dois horários
                         diferenca = abs((dt_escolhido - dt_existente).total_seconds() / 60)
                         
                         if diferenca < 40:
