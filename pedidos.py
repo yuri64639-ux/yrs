@@ -74,7 +74,6 @@ def upgrade_db_silencioso():
         conn.close()
 
 upgrade_db_silencioso()
-
 # --- INICIALIZAÇÃO DE MEMÓRIA E ESTADOS ---
 if "carrinho" not in st.session_state:
     st.session_state.carrinho = {}
@@ -159,16 +158,15 @@ if not st.session_state.produtos_cache or (tempo_atual - st.session_state.ultimo
         conn.close()
         st.session_state.ultimo_carregamento_produtos = tempo_atual
 
-# Cabeçalho limpo apenas com a identificação do operador
+# Cabeçalho compacto para celular
 st.markdown(f"👤 Operador: **{st.session_state.garcao_atual}**")
 
 st.markdown("---")
-# Criação das Abas Compactas Mobile
+# Criação das Abas em formato amigável para telas touch screen
 tabs = st.tabs(["🛍️ Lançar", "🗂️ Mesas", "🔐 ADM"])
 # --- ABA 1: OPERAÇÃO DE LANÇAMENTO VERTICALIZADO ---
 with tabs[0]:
     st.markdown("### 👤 Atendimento")
-    # No celular, as entradas de Mesa e Comanda ficam uma embaixo da outra para preservar legibilidade
     input_mesa = st.text_input("🪑 Número da Mesa:", value=st.session_state.input_mesa_salva, placeholder="Ex: 04", key="input_mesa_real")
     st.session_state.input_mesa_salva = input_mesa
     
@@ -184,14 +182,12 @@ with tabs[0]:
     if not produtos_filtrados:
         st.warning("Produto não encontrado.")
     else:
-        # Transforma a listagem de produtos em CARDS verticais fáceis de tocar com o polegar
         for prod in produtos_filtrados:
             p_base = float(prod['preco'])
             with st.container(border=True):
                 st.markdown(f"**{prod['nome']}**")
                 st.markdown(f"Preço: `R$ {p_base:.2f}`")
                 
-                # Input de quantidade e botão lado a lado ocupando toda a base do card
                 col_m_qtd, col_m_btn = st.columns([0.4, 0.6])
                 with col_m_qtd:
                     qtd_p = st.number_input("Qtd", min_value=1, value=1, key=f"caixa_qtd_{prod['id']}", label_visibility="collapsed")
@@ -214,7 +210,6 @@ with tabs[0]:
         total_geral_carrinho = 0.0
         itens_remover = []
         
-        # Exibição do carrinho em formato de lista empilhada
         for k, item in st.session_state.carrinho.items():
             sub_total_item = item["preco"] * item["qtd"]
             total_geral_carrinho += sub_total_item
@@ -234,7 +229,6 @@ with tabs[0]:
             
         st.markdown(f"#### 💰 Total Acumulado: **R\$ {total_geral_carrinho:.2f}**")
         
-        # Botões de fechamento grandes e fáceis de clicar
         if st.button("✅ Enviar Pedido", type="primary", use_container_width=True):
             if not input_mesa.strip():
                 st.error("Informe a Mesa!")
@@ -309,7 +303,6 @@ with tabs[1]:
             if not mesas_abertas:
                 st.info("Nenhuma mesa aberta no momento.")
             else:
-                # Cada mesa vira uma linha vertical expansível fácil de clicar na tela touch
                 for m in mesas_abertas:
                     with st.expander(f"🪑 {m['mesa_numero']}"):
                         cur.execute("""
@@ -326,21 +319,21 @@ with tabs[1]:
                                 st.markdown(f"• **{it['total_qtd']}x** {it['produto_nome']} — `R$ {float(it['total_financeiro']):.2f}`")
         conn.close()
 # --- ABA 3: GERÊNCIA E AUDITORIA PARA DISPOSITIVOS MÓVEIS ---
-with tabs:
+with tabs[2]:
     if not st.session_state.gerente_autenticado:
-        st.markdown("### 🔐 Área Restrita")
-        senha_gerencia = st.text_input("Credencial Administrativa:", type="password", key="senha_master_gerencia")
-        if st.button("Liberar Módulo ADM", type="primary", use_container_width=True):
+        st.markdown("### 🔐 Painel Master Gerencial")
+        senha_gerencia = st.text_input("Credencial Master:", type="password", key="senha_master_gerencia")
+        if st.button("Liberar Painel", type="primary", use_container_width=True):
             if senha_gerencia == "admin":
                 st.session_state.gerente_autenticado = True
-                st.success("Painel Liberado!")
+                st.success("Módulo Liberado!")
                 time.sleep(0.3)
                 st.rerun()
             else:
-                st.error("Senha Master Incorreta!")
+                st.error("Senha Incorreta!")
     else:
-        st.markdown("### 🚀 Painel de Auditoria")
-        if st.button("🔒 Trancar Acesso Master", use_container_width=True):
+        st.markdown("### 🚀 Operações Especiais")
+        if st.button("🔒 Trancar Painel ADM", use_container_width=True):
             st.session_state.gerente_autenticado = False
             st.rerun()
         
@@ -354,9 +347,9 @@ with tabs:
                 
                 if opcao_adm == "💰 Fechar":
                     if not lista_mesas_gerencia:
-                        st.info("Nenhuma conta pendente de baixa.")
+                        st.info("Nenhuma comanda para faturamento.")
                     else:
-                        mesa_fechar = st.selectbox("Escolha a Mesa:", options=lista_mesas_gerencia, key="sel_fechar_m")
+                        mesa_fechar = st.selectbox("Selecione a Mesa para Encerrar:", options=lista_mesas_gerencia, key="sel_fechar_m")
                         cur.execute("SELECT id, produto_nome, quantidade_pedida, valor_total FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_fechar,))
                         itens_f = cur.fetchall()
                         
@@ -364,13 +357,13 @@ with tabs:
                         st.write(f"Consumo Original: R$ {sub_f:.2f}")
                         
                         aplicar_10 = st.checkbox("Incluir Taxa de 10%", value=True, key="chk_taxa_10_gerencia")
-                        forma_p = st.selectbox("Método de Faturamento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
+                        forma_p = st.selectbox("Forma de Pagamento:", ["Dinheiro", "Pix", "Crédito", "Débito"], key="sel_forma_p_gerencia")
                         
                         fator_multiplicador = 1.10 if aplicar_10 else 1.00
                         valor_final_f = sub_f * fator_multiplicador
-                        st.markdown(f"### 🧮 Valor Final: **R$ {valor_final_f:.2f}**")
+                        st.markdown(f"### Total Final: **R$ {valor_final_f:.2f}**")
                         
-                        if st.button("🖨️ CONFIRMAR PAGAMENTO", type="primary", use_container_width=True):
+                        if st.button("🖨️ Registrar Baixa e Fechar", type="primary", use_container_width=True):
                             ids_fechar = [item['id'] for item in itens_f]
                             cur.execute("""
                                 UPDATE pedidos_realizados 
@@ -382,26 +375,26 @@ with tabs:
                                 WHERE id = ANY(%s);
                             """, (forma_p, fator_multiplicador, fator_multiplicador, aplicar_10, ids_fechar))
                             conn.commit()
-                            st.success("Conta Fechada e Lançada!")
+                            st.success("Conta Encerrada com Sucesso!")
                             time.sleep(0.4)
                             st.rerun()
 
                 elif opcao_adm == "❌ Cancelar":
                     if not lista_mesas_gerencia:
-                        st.info("Nenhuma mesa com lançamentos ativos.")
+                        st.info("Nenhum item aberto para estorno.")
                     else:
-                        mesa_estorno = st.selectbox("Escolha a Mesa:", options=lista_mesas_gerencia, key="sel_estorno_m")
+                        mesa_estorno = st.selectbox("Selecione a Mesa:", options=lista_mesas_gerencia, key="sel_estorno_m")
                         cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_estorno,))
                         itens_estornar = cur.fetchall()
                         
                         opcoes_estorno = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_estornar}
                         if not opcoes_estorno:
-                            st.info("Sem lançamentos nesta mesa.")
+                            st.info("Mesa sem itens ativos.")
                         else:
-                            item_sel_estorno = st.selectbox("Selecione o Item Incorreto:", options=list(opcoes_estorno.keys()))
+                            item_sel_estorno = st.selectbox("Escolha o Item Incorreto:", options=list(opcoes_estorno.keys()))
                             obj_estorno = opcoes_estorno[item_sel_estorno]
                             
-                            if st.button("❌ APAGAR LANÇAMENTO", type="primary", use_container_width=True):
+                            if st.button("❌ Remover e Devolver Insumo", type="primary", use_container_width=True):
                                 cur.execute("""
                                     SELECT f.insumo_id, f.quantidade 
                                     FROM ficha_tecnica f 
@@ -416,13 +409,13 @@ with tabs:
                                 
                                 cur.execute("DELETE FROM pedidos_realizados WHERE id = %s;", (obj_estorno['id'],))
                                 conn.commit()
-                                st.success("Lançamento Estornado!")
+                                st.success("Lançamento Desfeito!")
                                 time.sleep(0.4)
                                 st.rerun()
 
                 elif opcao_adm == "🔄 Transferir":
                     if not lista_mesas_gerencia:
-                        st.info("Nenhum item ativo no salão.")
+                        st.info("Nenhum item ativo para transferência.")
                     else:
                         mesa_origem = st.selectbox("Mesa de Origem:", options=lista_mesas_gerencia, key="sel_trans_origem")
                         cur.execute("SELECT id, produto_nome, quantidade_pedida FROM pedidos_realizados WHERE mesa_numero = %s AND status_conta = 'Aberta';", (mesa_origem,))
@@ -430,15 +423,15 @@ with tabs:
                         
                         opcoes_trans = {f"{i['quantidade_pedida']}x {i['produto_nome']}": i for i in itens_trans}
                         if not opcoes_trans:
-                            st.info("Esta comanda não possui itens.")
+                            st.info("Sem itens para transferir.")
                         else:
-                            item_sel_trans = st.selectbox("Item Selecionado:", options=list(opcoes_trans.keys()))
+                            item_sel_trans = st.selectbox("Escolha o Item a Mudar:", options=list(opcoes_trans.keys()))
                             obj_trans = opcoes_trans[item_sel_trans]
-                            mesa_destino = st.text_input("Número do Novo Destino:")
+                            mesa_destino = st.text_input("Nova Mesa Destino (Número):")
                             
-                            if st.button("🔄 CONFIRMAR MUDANÇA", type="primary", use_container_width=True):
+                            if st.button("🔄 Confirmar Transferência", type="primary", use_container_width=True):
                                 if not mesa_destino.strip():
-                                    st.error("Insira o número da nova mesa!")
+                                    st.error("Informe a mesa di destino!")
                                 else:
                                     cur.execute("UPDATE pedidos_realizados SET mesa_numero = %s WHERE id = %s;", (mesa_destino.strip(), obj_trans['id']))
                                     conn.commit()
