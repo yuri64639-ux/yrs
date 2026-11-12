@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 from datetime import datetime, date, time
+import time as py_time
 import requests
 
 # Configuração de Identidade Visual na Aba do Navegador
@@ -22,11 +23,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def obter_conexao():
-    try:
-        return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
-    except Exception as e:
-        st.error(f"Erro de conexão com o banco Neon: {e}")
-        return None
+    """Tenta conectar ao banco Neon até 3 vezes caso ele esteja acordando"""
+    tentativas = 3
+    for i in range(tentativas):
+        try:
+            return psycopg2.connect(
+                st.secrets["DATABASE_URL"], 
+                sslmode="require",
+                connect_timeout=10
+            )
+        except Exception as e:
+            if i < tentativas - 1:
+                py_time.sleep(2)
+            else:
+                st.error(f"O sistema está iniciando. Por favor, recarregue a página. ({e})")
+                return None
 
 def garantir_tabela_existe():
     conn = obter_conexao()
@@ -56,21 +67,28 @@ garantir_tabela_existe()
 def enviar_notificacao_criacao(nome_cliente, data_agenda, horario, servico):
     """Dispara o push instantâneo para o celular no momento do clique"""
     try:
-        topico_secreto = "marinote_club_rec_alertas_gold_77" 
+        topico_secreto = "marinote_club_rec_alertas_gold_77"
         url = f"https://ntfy.sh{topico_secreto}"
         
         try:
             data_formatada = datetime.strptime(data_agenda, "%Y-%m-%d").strftime("%d/%m/%Y")
-        except:
+        except Exception:
             data_formatada = data_agenda
 
         mensagem = f"👤 Cliente: {nome_cliente}\n📅 Data: {data_formatada}\n⏰ Horário: {horario}\n🪒 Serviço: {servico}"
-        headers = {"Title": "✂️ NOVO HORÁRIO AGENDADO!", "Tags": "barber,calendar,white_check_mark", "Priority": "high"}
+        
+        headers = {
+            "Title": "NOVO HORARIO AGENDADO!",
+            "Tags": "barber,calendar,white_check_mark",
+            "Priority": "high"
+        }
         
         resposta = requests.post(url, data=mensagem.encode('utf-8'), headers=headers, timeout=10)
         return resposta.status_code == 200
-    except:
+    except Exception as e:
+        st.warning(f"Agendamento salvo, mas houve falha na notificação: {e}")
         return False
+
 st.markdown("""<div style='text-align: center; padding: 15px 0px;'><div style="font-family: 'Cinzel', serif; font-size: 38px; font-weight: 700; letter-spacing: 1px; background: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">marinote club</div><div style='font-size: 12px; color: #8A8A8A; letter-spacing: 4px; text-transform: uppercase; margin-top: -3px;'>Agendamento de Clientes Online</div></div>""", unsafe_allow_html=True)
 st.write("---")
 
@@ -79,8 +97,10 @@ c_whatsapp = st.text_input("Seu WhatsApp com DDD:", placeholder="Ex: 17999999999
 s_agenda = st.selectbox("Escolha o Serviço Desejado:", ["Cabelo", "Barba", "Cabelo e Barba"])
 
 col_d, col_h = st.columns(2)
-with col_d: d_sel = st.date_input("Data do Atendimento:", min_value=date.today())
-with col_h: h_sel = st.time_input("Horário do Atendimento:", value=time(9, 0))
+with col_d:
+    d_sel = st.date_input("Data do Atendimento:", min_value=date.today())
+with col_h:
+    h_sel = st.time_input("Horário do Atendimento:", value=time(9, 0))
 
 if st.button("💾 Confirmar Meu Agendamento", type="primary"):
     if not c_nome.strip() or not c_whatsapp.strip():
@@ -101,5 +121,7 @@ if st.button("💾 Confirmar Meu Agendamento", type="primary"):
                             conn.commit()
                             st.success(f"🎉 Tudo certo, {c_nome}! Seu horário foi reservado!")
                             enviar_notificacao_criacao(c_nome.strip(), d_str, h_str, s_agenda)
-            except Exception as e: st.error(f"Erro ao salvar: {e}")
-            finally: conn.close()
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
+            finally:
+                conn.close()
