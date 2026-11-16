@@ -11,6 +11,34 @@ st.set_page_config(
 def conectar_neon():
     return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
 
+# Bloco automático que cria a tabela e os mundos iniciais no Neon
+def preparar_banco_neon():
+    conn = conectar_neon()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.portal_mundos (
+                    chave TEXT PRIMARY KEY,
+                    titulo TEXT NOT NULL,
+                    icone TEXT NOT NULL,
+                    url_app TEXT NOT NULL
+                );
+            """)
+            mundos_iniciais = [
+                ('portal', 'Portal Principal', '🌍', 'https://streamlit.app'),
+                ('escola', 'Mundo da Escola', '🦆', 'https://streamlit.app'),
+                ('represa', 'Mundo da Represa', '🦫', 'https://streamlit.app'),
+                ('oceano', 'Mundo do Oceano', '🐳', 'https://streamlit.app'),
+                ('espaco', 'Mundo do Espaço', '🚀', 'https://streamlit.app')
+            ]
+            for chave, titulo, icone, url in mundos_iniciais:
+                cur.execute("""
+                    INSERT INTO public.portal_mundos (chave, titulo, icone, url_app)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (chave) DO NOTHING;
+                """, (chave, titulo, icone, url))
+    conn.close()
+
 def buscar_mundos():
     conn = conectar_neon()
     with conn.cursor() as cur:
@@ -25,6 +53,12 @@ def salvar_url_neon(chave, nova_url):
         with conn.cursor() as cur:
             cur.execute("UPDATE public.portal_mundos SET url_app = %s WHERE chave = %s;", (nova_url, chave))
     conn.close()
+
+# Executa a preparação do Neon antes de desenhar a tela
+try:
+    preparar_banco_neon()
+except Exception as e:
+    st.error(f"Erro ao inicializar banco Neon: {e}")
 
 st.markdown("""
     <style>
@@ -57,6 +91,9 @@ st.markdown("""
             color: white !important;
             box-shadow: 0 8px 18px rgba(0,0,0,0.2) !important;
         }
+        div[data-testid="stLinkButton"] > a:hover {
+            transform: scale(1.03) !important;
+        }
     </style>
     <div class="cabecalho">
         <h1>🌍 Portal dos Mundos Mágicos</h1>
@@ -64,6 +101,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# Exibe os botões grandes dos mundos
 try:
     mundos = buscar_mundos()
     col1, col2 = st.columns(2)
@@ -72,18 +110,21 @@ try:
             st.link_button(f"{icone}\n{titulo}", url_app, use_container_width=True)
             st.write("")
 except Exception as e:
-    st.error("Erro ao conectar com o Neon. Verifique o DATABASE_URL nos Secrets do Streamlit.")
+    st.error("Erro ao carregar os botões dos mundos. Verifique o DATABASE_URL nos Secrets.")
 
-# Painel administrativo para colar novos links direto no Neon
+# Painel discreto para atualizar links direto na nuvem
 with st.expander("⚙️ Gerenciar Links na Nuvem (Neon)"):
-    conn = conectar_neon()
-    with conn.cursor() as cur:
-        cur.execute("SELECT chave, titulo, url_app FROM public.portal_mundos;")
-        todos = cur.fetchall()
-    conn.close()
-    for chave, titulo, url_atual in todos:
-        novo_valor = st.text_input(f"Link de {titulo}:", value=url_atual, key=f"txt_{chave}")
-        if st.button(f"Salvar {titulo}", key=f"btn_{chave}"):
-            salvar_url_neon(chave, novo_valor)
-            st.success(f"{titulo} atualizado no Neon!")
-            st.rerun()
+    try:
+        conn = conectar_neon()
+        with conn.cursor() as cur:
+            cur.execute("SELECT chave, titulo, url_app FROM public.portal_mundos ORDER BY titulo;")
+            todos = cur.fetchall()
+        conn.close()
+        for chave, titulo, url_atual in todos:
+            novo_valor = st.text_input(f"Link de {titulo}:", value=url_atual, key=f"txt_{chave}")
+            if st.button(f"Salvar {titulo}", key=f"btn_{chave}"):
+                salvar_url_neon(chave, novo_valor)
+                st.success(f"{titulo} atualizado no Neon!")
+                st.rerun()
+    except Exception as e:
+        st.warning("Aguardando conexão com o banco para exibir o painel.")
