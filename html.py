@@ -1,49 +1,73 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
-if st.button("⬅️ Voltar ao Portal dos Mundos"):
-    st.switch_page("app.py")
+st.set_page_config(
+    page_title="Portal dos Mundos - EM Pato Donald",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-html_escola = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 90vh; overflow: hidden; font-family: 'Comic Sans MS', sans-serif; }
-    #tela { width: 100%; height: 100%; background: linear-gradient(to bottom, #87CEFA 60%, #90EE90 60%); position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 10px; box-sizing: border-box; }
-    .placa { background: #FFD700; color: #003366; border: 2px solid #003366; padding: 5px 15px; border-radius: 12px; font-weight: bold; }
-    .bicho { position: absolute; font-size: 55px; cursor: grab; touch-action: none; user-select: none; }
-    .barra { background: rgba(255,255,255,0.9); padding: 8px; border-radius: 20px; display: flex; gap: 8px; z-index: 10; }
-    button { font-size: 22px; border: none; background: #FFF8DC; border-radius: 12px; padding: 5px 10px; cursor: pointer; }
-</style>
-</head>
-<body>
-<div id="tela">
-    <div class="placa">🏫 EM Pato Donald - São José do Rio Preto</div>
-    <div id="palco"></div>
-    <div class="barra">
-        <button onclick="add('🦆')">🦆</button>
-        <button onclick="add('🛝')">🛝</button>
-        <button onclick="add('📚')">📚</button>
-        <button onclick="add('🎨')">🎨</button>
-        <button onclick="document.getElementById('palco').innerHTML=''" style="font-size:15px; background:#FF6B6B; color:white;">🗑️</button>
-    </div>
-</div>
-<script>
-    function add(emoji) {
-        const el = document.createElement('div');
-        el.className = 'bicho'; el.innerText = emoji;
-        el.style.left = (25 + Math.random()*45) + 'vw'; el.style.top = (25 + Math.random()*30) + 'vh';
-        let drag = false, ox = 0, oy = 0;
-        el.onpointerdown = e => { drag = true; ox = e.clientX - el.offsetLeft; oy = e.clientY - el.offsetTop; el.setPointerCapture(e.pointerId); };
-        el.onpointermove = e => { if(drag){ el.style.left = (e.clientX - ox)+'px'; el.style.top = (e.clientY - oy)+'px'; }};
-        el.onpointerup = e => { drag = false; el.releasePointerCapture(e.pointerId); };
-        document.getElementById('palco').appendChild(el);
-    }
-    add('🦆');
-</script>
-</body>
-</html>
-"""
-components.html(html_escola, height=650)
+def tela_hub():
+    st.markdown("""
+        <style>
+            #MainMenu, header, footer {visibility: hidden;}
+            .stApp {
+                background: linear-gradient(135deg, #87CEFA 0%, #E0F7FA 50%, #FFD54F 100%);
+                font-family: 'Comic Sans MS', sans-serif;
+            }
+            .titulo-hub {
+                text-align: center;
+                color: #003366;
+                background: #FFD700;
+                border: 4px solid #003366;
+                border-radius: 25px;
+                padding: 15px;
+                margin-bottom: 25px;
+                box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+            }
+            div.stButton > button {
+                width: 100%;
+                height: 140px;
+                border-radius: 25px !important;
+                font-size: 24px !important;
+                font-weight: bold !important;
+                border: 4px solid white !important;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.2) !important;
+                transition: transform 0.2s !important;
+            }
+            div.stButton > button:hover {
+                transform: scale(1.04) !important;
+            }
+        </style>
+        <div class="titulo-hub">
+            <h1>🌍 Portal dos Mundos Mágicos</h1>
+            <p style="font-size: 18px; margin: 0;">🏫 EM Pato Donald - São José do Rio Preto | Escolha um mundo para entrar!</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🦆\nMundo da Escola", key="btn_escola", use_container_width=True):
+            st.switch_page("mundos/escola.py")
+        st.write("")
+        if st.button("🐠\nMundo do Oceano", key="btn_oceano", use_container_width=True):
+            st.switch_page("mundos/oceano.py")
+
+    with col2:
+        if st.button("🦫\nMundo da Represa", key="btn_represa", use_container_width=True):
+            st.switch_page("mundos/represa.py")
+        st.write("")
+        if st.button("🚀\nMundo do Espaço", key="btn_espaco", use_container_width=True):
+            st.switch_page("mundos/espaco.py")
+
+# Vincula todos os apps na nuvem do Streamlit
+pg = st.navigation([
+    st.Page(tela_hub, title="Portal Principal", icon="🌍", default=True),
+    st.Page("mundos/escola.py", title="EM Pato Donald", icon="🦆"),
+    st.Page("mundos/represa.py", title="Represa Municipal", icon="🦫"),
+    st.Page("mundos/oceano.py", title="Fundo do Mar", icon="🐠"),
+    st.Page("mundos/espaco.py", title="Espaço Sideral", icon="🚀"),
+], position="hidden")
+
+pg.run()
