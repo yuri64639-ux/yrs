@@ -8,10 +8,10 @@ st.set_page_config(
 )
 
 # 🔗 LINKS DOS APLICATIVOS SEPARADOS NA NUVEM (STREAMLIT CLOUD)
-LINK_ESCOLA  = "https://94btkttj5kuota67ac2bvke.streamlit.app"
-LINK_REPRESA = "https://seu-app-represa.streamlit.app"
-LINK_OCEANO  = "https://seu-app-oceano.streamlit.app"
-LINK_ESPACO  = "https://seu-app-espaco.streamlit.app"
+LINK_ESCOLA  = "https://streamlit.app"
+LINK_REPRESA = "https://streamlit.app"
+LINK_OCEANO  = "https://streamlit.app"
+LINK_ESPACO  = "https://streamlit.app"
 
 st.markdown("""
     <style>
