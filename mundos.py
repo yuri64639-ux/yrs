@@ -9,7 +9,7 @@ st.set_page_config(
 
 # 🔗 LINKS DOS APLICATIVOS SEPARADOS NA NUVEM (STREAMLIT CLOUD)
 # Cole aqui os links reais de cada mundo conforme você for publicando no Streamlit
-LINK_ESCOLA  = "https://streamlit.app"
+LINK_ESCOLA  = kghy7ujjnf8cggk96sgfei
 LINK_REPRESA = "https://streamlit.app"
 LINK_OCEANO  = "https://streamlit.app"
 LINK_ESPACO  = "https://streamlit.app"
