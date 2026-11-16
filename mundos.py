@@ -122,26 +122,25 @@ else:
 
     mundos = {
         "escola": {
-            "titulo": "🏫 EM Pato Donald (Toque na escola para entrar na sala!)",
-            "fundo": "linear-gradient(to bottom, #64B5F6 0%, #B3E5FC 54%, #E6B88A 54%, #558B2F 64%, #33691E 100%)",
+            "titulo": "🏫 EM Pato Donald - Clique na Escola para entrar na Sala!",
+            "fundo": "linear-gradient(to bottom, #64B5F6 0%, #B3E5FC 48%, #E6B88A 48%, #558B2F 60%, #33691E 100%)",
             "placa_bg": "#FFD700", "placa_cor": "#003366",
-            "itens": ["👧", "👦", "🦆", "🐶", "ESCORREGADOR", "BALANCO", "GANGORRA"],
+            "itens": ["MENINA", "MENINO", "🦆", "ESCORREGADOR", "BALANCO", "GANGORRA"],
             "espalhados": [
-                ("👧", 32, 58), ("👦", 44, 58), ("👧", 58, 72), ("👦", 74, 72),
-                ("🦆", 12, 74), ("ESCORREGADOR", 56, 53), ("BALANCO", 77, 53), ("GANGORRA", 30, 72)
+                ("MENINA", 28, 52), ("MENINO", 40, 52), ("MENINA", 68, 72), ("🦆", 10, 74),
+                ("ESCORREGADOR", 52, 48), ("BALANCO", 76, 48), ("GANGORRA", 36, 70)
             ],
             "clima_extra": "chuva_arcoiris"
         },
         "represa": {
-            "titulo": "🌊 Represa Municipal - São José do Rio Preto",
-            "fundo": "linear-gradient(to bottom, #4FC3F7 0%, #E1F5FE 36%, #0288D1 36%, #01579B 66%, #78909C 66%, #607D8B 74%, #388E3C 74%, #1B5E20 100%)",
+            "titulo": "🌊 Represa Municipal - Clique no Ninho para cuidar dos bebês!",
+            "fundo": "linear-gradient(to bottom, #4FC3F7 0%, #E1F5FE 35%, #0288D1 35%, #01579B 64%, #78909C 64%, #607D8B 72%, #388E3C 72%, #1B5E20 100%)",
             "placa_bg": "#00CED1", "placa_cor": "#003366",
-            "itens": ["CAPIVARA", "PEIXE_DOURADO", "PEIXE_TILAPIA", "🦢", "🧼", "🌽"],
+            "itens": ["CAPIVARA", "PEIXE_DOURADO", "CICLISTA", "CAMINHANTE", "🧼", "🌽"],
             "espalhados": [
-                ("🦢", 12, 43), ("PEIXE_DOURADO", 26, 50), ("PEIXE_TILAPIA", 52, 54),
-                ("PEIXE_LAMBARI", 72, 48), ("PEIXE_DOURADO", 40, 44),
-                ("CAPIVARA", 10, 74), ("CAPIVARA", 26, 75), ("ESCORREGADOR", 46, 71),
-                ("🧼", 66, 75), ("🌽", 76, 75)
+                ("🦢", 12, 42), ("PEIXE_DOURADO", 28, 48), ("PEIXE_TILAPIA", 56, 52),
+                ("CICLISTA", 18, 61), ("CAMINHANTE", 52, 62), ("CICLISTA", 76, 61),
+                ("CAPIVARA", 10, 74), ("CAPIVARA", 26, 75), ("🧼", 44, 75), ("🌽", 54, 75)
             ],
             "clima_extra": "chuva_arcoiris"
         },
@@ -182,52 +181,54 @@ else:
     }
     cfg = mundos[st.session_state.tela_atual]
     icones_btn = {
-        "CAPIVARA": '<svg viewBox="0 0 80 56" width="32" height="24" style="vertical-align:middle;"><ellipse cx="38" cy="31" rx="24" ry="15" fill="#795548"/><rect x="48" y="12" width="22" height="17" rx="7" fill="#8D6E63"/><circle cx="60" cy="18" r="2.2" fill="#1A1A1A"/></svg>',
-        "PEIXE_DOURADO": '<svg viewBox="0 0 84 48" width="34" height="22" style="vertical-align:middle;"><ellipse cx="44" cy="24" rx="24" ry="12" fill="#FFA000"/><polygon points="22,24 6,11 11,24 6,37" fill="#D84315"/><circle cx="58" cy="21" r="2.2" fill="#111"/></svg>',
-        "PEIXE_TILAPIA": '<svg viewBox="0 0 84 52" width="34" height="22" style="vertical-align:middle;"><ellipse cx="44" cy="26" rx="23" ry="14" fill="#607D8B"/><polygon points="22,26 6,13 11,26 6,39" fill="#455A64"/><circle cx="58" cy="23" r="2.2" fill="#111"/></svg>',
-        "ESCORREGADOR": '<svg viewBox="0 0 80 70" width="30" height="24" style="vertical-align:middle;"><path d="M14 62 L24 16 L32 16 L22 62" stroke="#1565C0" stroke-width="4" fill="none"/><path d="M30 18 Q44 48 72 58" stroke="#E53935" stroke-width="6" fill="none" stroke-linecap="round"/></svg>',
-        "BALANCO": '<svg viewBox="0 0 80 70" width="30" height="24" style="vertical-align:middle;"><path d="M12 62 L24 14 L56 14 L68 62" stroke="#D32F2F" stroke-width="4" fill="none"/><rect x="30" y="47" width="20" height="5" rx="2" fill="#FFB300"/></svg>',
-        "GANGORRA": '<svg viewBox="0 0 84 60" width="32" height="24" style="vertical-align:middle;"><polygon points="34,52 42,34 50,52" fill="#1565C0"/><line x1="12" y1="44" x2="72" y2="24" stroke="#FFB300" stroke-width="6" stroke-linecap="round"/></svg>'
+        "CAPIVARA": "🐾 Capivara",
+        "PEIXE_DOURADO": "🐟 Peixe",
+        "CICLISTA": "🚴 Ciclista",
+        "CAMINHANTE": "🚶 Pessoa",
+        "MENINA": "👧 Menina",
+        "MENINO": "👦 Menino",
+        "ESCORREGADOR": "🛝 Escorrega",
+        "BALANCO": "⛓️ Balanço",
+        "GANGORRA": "⚖️ Gangorra"
     }
     botoes_itens = "".join([f'<button class="btn-item" onclick="criar(\'{i}\')">{icones_btn.get(i, i)}</button>' for i in cfg["itens"]])
     espalhados_js = "".join([f"criarNaPosicao('{emoji}', {x}, {y});" for emoji, x, y in cfg["espalhados"]])
+
+    ceu_interativo = """
+        <div class="camada-ceu" style="top: 7%;">
+            <span class="item-ceu sol-lua-btn" onclick="alternarDiaNoite(this)">☀️</span>
+            <span class="item-ceu" onclick="interagirNuvem(this, 'chuva')">☁️</span>
+            <span class="item-ceu" onclick="interagirPassaro(this)">🐦</span>
+            <span class="item-ceu" onclick="interagirNuvem(this, 'passaro')">☁️</span>
+            <span class="item-ceu" onclick="interagirPassaro(this)">🕊️</span>
+        </div>
+    """
+
     decoracao_cenario = ""
     if st.session_state.tela_atual == "represa":
-        decoracao_cenario = """
-        <div class="camada-ceu" style="top: 8%;">
-            <span class="item-ceu sol-lua-btn" onclick="alternarDiaNoite(this)">☀️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'nuvem')">☁️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'passaro')">🐦</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'balao')">🎈</span>
-        </div>
+        decoracao_cenario = ceu_interativo + """
         <svg viewBox="0 0 1000 320" preserveAspectRatio="none" style="position:absolute; top:14%; left:0; width:100%; height:44%; pointer-events:none; z-index:2;">
             <path d="M0,190 Q250,175 500,190 T1000,190 L1000,210 L0,210 Z" fill="#1B5E20"/>
             <path d="M 270 198 Q 500 130 730 198" fill="none" stroke="#D32F2F" stroke-width="11" stroke-linecap="round"/>
-            <path d="M 285 198 Q 500 144 715 198" fill="none" stroke="#B71C1C" stroke-width="5"/>
             <rect x="240" y="196" width="520" height="13" rx="4" fill="#E53935"/>
         </svg>
-        <div class="ondulacoes-agua"></div>
-        <div class="chafariz-riopreto"><div class="jato-central"></div><div class="jato-esq"></div><div class="jato-dir"></div><div class="espuma-lago"></div></div>
         <div class="pista-riopreto"><div class="faixa-ciclovia"></div><div class="faixa-pedestre"></div></div>
-        <div id="ninho-capivaras" class="ninho-capivaras">
+        <div id="ninho-capivaras" class="ninho-capivaras" onclick="abrirNinhoCapivaras()" title="Toque para cuidar dos bebês capivaras!">
             <svg viewBox="0 0 180 95" width="100%" height="100%">
                 <ellipse cx="90" cy="68" rx="84" ry="24" fill="#795548" stroke="#3E2723" stroke-width="3"/><ellipse cx="90" cy="66" rx="68" ry="16" fill="#D7CCC8"/>
             </svg>
-            <div class="placa-ninho">🐾 Ninho das Capivaras</div>
+            <div class="placa-ninho">🍼 Ninho dos Bebês (Clique!)</div>
         </div>
-        <div class="elementos-fundo" style="top: 52%;">
+        <div class="elementos-fundo" style="top: 50%;">
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌴</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
+            <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌲</span>
+            <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌴</span>
         </div>
         """
     elif st.session_state.tela_atual == "escola":
-        decoracao_cenario = """
-        <div class="camada-ceu" style="top: 9%;">
-            <span class="item-ceu sol-lua-btn" onclick="alternarDiaNoite(this)">☀️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'nuvem')">☁️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'passaro')">🐦</span>
-        </div>
+        decoracao_cenario = ceu_interativo + """
         <div class="predio-escola-clicavel" onclick="abrirSalaAula()" title="Toque para entrar na sala de aula!">
             <svg viewBox="0 0 360 195" width="100%" height="100%">
                 <polygon points="10,65 180,15 350,65" fill="#D62828" stroke="#8D0801" stroke-width="3"/>
@@ -235,25 +236,23 @@ else:
                 <rect x="45" y="72" width="270" height="24" rx="4" fill="#FFD700" stroke="#003366" stroke-width="2"/>
                 <text x="180" y="88" font-family="Comic Sans MS, sans-serif" font-size="13" font-weight="bold" fill="#003366" text-anchor="middle">EM PATO DONALD</text>
                 <rect x="155" y="115" width="50" height="55" rx="3" fill="#FFD700" stroke="#003366" stroke-width="2"/>
-                <circle cx="195" cy="144" r="3.5" fill="#003366"/>
-                <rect x="55" y="110" width="45" height="35" rx="3" fill="#E3F2FD" stroke="#003366" stroke-width="2"/>
-                <rect x="260" y="110" width="45" height="35" rx="3" fill="#E3F2FD" stroke="#003366" stroke-width="2"/>
             </svg>
             <div class="aviso-entrar-sala">🚪 Entrar na Sala</div>
         </div>
-        <div class="elementos-fundo" style="top: 38%;">
+        <div id="piscina-escola" class="piscina-escola">
+            <div class="agua-piscina"></div>
+            <div class="placa-piscina">🏊 Piscina</div>
+        </div>
+        <div class="elementos-fundo" style="top: 35%;">
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌲</span>
+            <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
+            <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌴</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
         </div>
         """
     elif st.session_state.tela_atual == "aeroporto":
-        decoracao_cenario = """
-        <div class="camada-ceu" style="top: 9%;">
-            <span class="item-ceu sol-lua-btn" onclick="alternarDiaNoite(this)">☀️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'nuvem')">☁️</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'nuvem')">☁️</span>
-        </div>
+        decoracao_cenario = ceu_interativo + """
         <svg viewBox="0 0 800 200" preserveAspectRatio="none" style="position:absolute; top:24%; left:0; width:100%; height:28%; pointer-events:none; z-index:2;">
             <rect x="60" y="90" width="240" height="80" rx="6" fill="#ECEFF1" stroke="#546E7A" stroke-width="3"/>
             <path d="M 55 90 Q 180 40 305 90 Z" fill="#1565C0"/>
@@ -261,10 +260,11 @@ else:
             <polygon points="315,45 381,45 370,15 326,15" fill="#263238"/>
         </svg>
         <div style="position:absolute; top:74%; left:0; width:100%; height:4px; background:repeating-linear-gradient(90deg, #FFFFFF, #FFFFFF 45px, transparent 45px, transparent 85px); pointer-events:none; z-index:2;"></div>
-        <div class="elementos-fundo" style="top: 40%;">
+        <div class="elementos-fundo" style="top: 38%;">
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌴</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌳</span>
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌴</span>
+            <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'folha')">🌲</span>
         </div>
         """
     elif st.session_state.tela_atual == "oceano":
@@ -272,7 +272,7 @@ else:
         <div class="camada-ceu" style="top: 8%;">
             <span class="item-ceu sol-lua-btn" onclick="alternarDiaNoite(this)">☀️</span>
             <span class="item-agua" onclick="interagirAgua(this)">⛵</span>
-            <span class="item-ceu" onclick="interagirCeu(this, 'passaro')">🕊️</span>
+            <span class="item-ceu" onclick="interagirPassaro(this)">🕊️</span>
         </div>
         <div class="elementos-fundo" style="top: 68%;">
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'bolha')">🪸</span>
@@ -293,9 +293,9 @@ else:
             <span class="item-fundo-interativo" onclick="chacoalharFundo(this, 'estrela')">☄️</span>
         </div>
         """
-    sala_aula_html = ""
+    modais_extras_html = ""
     if st.session_state.tela_atual == "escola":
-        sala_aula_html = """
+        modais_extras_html = """
         <div id="modal-sala" style="display:none; position:absolute; inset:0; background:linear-gradient(to bottom, #FFF8E1 0%, #FFE082 78%, #8D6E63 78%, #5D4037 100%); z-index:30; flex-direction:column; justify-content:space-between; align-items:center; padding:10px; border-radius:20px;">
             <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <button onclick="fecharSalaAula()" style="background:#FF6B6B; color:white; border:2px solid white; border-radius:14px; padding:6px 12px; font-weight:bold; font-size:15px; cursor:pointer;">⬅️ Sair para o Pátio</button>
@@ -306,19 +306,41 @@ else:
                 <canvas id="lousa-canvas" style="width:100%; height:100%; display:block; cursor:crosshair; touch-action:none;"></canvas>
                 <div onclick="interagirProfessora(this)" style="position:absolute; bottom:4px; left:8px; display:flex; align-items:flex-end; gap:6px; cursor:pointer; z-index:5;">
                     <span style="font-size:clamp(54px, 11vw, 84px); line-height:1;">👩‍🏫</span>
-                    <div id="fala-professora" style="background:white; color:#003366; border:2px solid #003366; border-radius:14px; padding:5px 10px; font-size:clamp(12px, 2.5vw, 15px); font-weight:bold; margin-bottom:24px; box-shadow:0 3px 8px rgba(0,0,0,0.2);">Desenhe na lousa! ✏️</div>
+                    <div id="fala-professora" style="background:white; color:#003366; border:2px solid #003366; border-radius:14px; padding:5px 10px; font-size:clamp(12px, 2.5vw, 15px); font-weight:bold; margin-bottom:24px;">Desenhe na lousa! ✏️</div>
                 </div>
             </div>
-            <div style="background:rgba(255,255,255,0.95); padding:8px 14px; border-radius:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
+            <div style="background:rgba(255,255,255,0.95); padding:8px 14px; border-radius:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center;">
                 <span style="font-weight:bold; color:#333; font-size:14px;">Giz:</span>
                 <button onclick="mudarCorGiz('#FFFFFF')" style="width:30px; height:30px; border-radius:50%; background:#FFFFFF; border:3px solid #333; cursor:pointer;"></button>
                 <button onclick="mudarCorGiz('#FFEB3B')" style="width:30px; height:30px; border-radius:50%; background:#FFEB3B; border:3px solid #333; cursor:pointer;"></button>
                 <button onclick="mudarCorGiz('#FF5252')" style="width:30px; height:30px; border-radius:50%; background:#FF5252; border:3px solid #333; cursor:pointer;"></button>
                 <button onclick="mudarCorGiz('#40C4FF')" style="width:30px; height:30px; border-radius:50%; background:#40C4FF; border:3px solid #333; cursor:pointer;"></button>
-                <button onclick="mudarCorGiz('#69F0AE')" style="width:30px; height:30px; border-radius:50%; background:#69F0AE; border:3px solid #333; cursor:pointer;"></button>
                 <button onclick="carimbarLousa('⭐')" style="font-size:20px; border:2px solid #FFD700; background:#FFF8DC; border-radius:10px; padding:2px 8px; cursor:pointer;">⭐</button>
                 <button onclick="carimbarLousa('🦆')" style="font-size:20px; border:2px solid #FFD700; background:#FFF8DC; border-radius:10px; padding:2px 8px; cursor:pointer;">🦆</button>
-                <button onclick="carimbarLousa('❤️')" style="font-size:20px; border:2px solid #FFD700; background:#FFF8DC; border-radius:10px; padding:2px 8px; cursor:pointer;">❤️</button>
+            </div>
+        </div>
+        """
+    elif st.session_state.tela_atual == "represa":
+        modais_extras_html = """
+        <div id="modal-ninho" style="display:none; position:absolute; inset:0; background:radial-gradient(circle, #D7CCC8 0%, #8D6E63 55%, #3E2723 100%); z-index:30; flex-direction:column; justify-content:space-between; align-items:center; padding:12px; border-radius:20px;">
+            <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <button onclick="fecharNinhoCapivaras()" style="background:#FF6B6B; color:white; border:2px solid white; border-radius:14px; padding:6px 12px; font-weight:bold; font-size:15px; cursor:pointer;">⬅️ Sair do Ninho</button>
+                <div style="background:#FFD700; color:#3E2723; border:3px solid #3E2723; border-radius:14px; padding:4px 12px; font-weight:bold; font-size:clamp(13px,3vw,17px);">🐾 Berçário das Capivaras</div>
+                <div style="width:70px;"></div>
+            </div>
+            <div style="position:relative; width:92%; height:64%; background:radial-gradient(ellipse at center, #FFF8E1 0%, #EFEBE9 65%, #A1887F 100%); border:8px solid #5D4037; border-radius:50%; box-shadow: inset 0 6px 18px rgba(0,0,0,0.35); display:flex; justify-content:space-around; align-items:center; padding:16px;">
+                <div class="bebe-capivara" id="bebe-1" onclick="acariciarBebe(this)" style="text-align:center; cursor:pointer;">
+                    <svg viewBox="0 0 84 60" width="96" height="68"><ellipse cx="40" cy="34" rx="24" ry="14" fill="#8D6E63" stroke="#3E2723" stroke-width="1.5"/><rect x="50" y="15" width="22" height="17" rx="7" fill="#A1887F" stroke="#3E2723" stroke-width="1.5"/><circle cx="61" cy="21" r="2.2" fill="#1A1A1A"/><path d="M22 30 Q34 26 42 36 L24 44 Z" fill="#FFFFFF" stroke="#90CAF9" stroke-width="1.5"/></svg>
+                    <div class="status-bebe" style="background:white; border:2px solid #5D4037; border-radius:10px; padding:2px 8px; font-size:12px; font-weight:bold; color:#3E2723;">🍼 Com fome!</div>
+                </div>
+                <div class="bebe-capivara" id="bebe-2" onclick="acariciarBebe(this)" style="text-align:center; cursor:pointer;">
+                    <svg viewBox="0 0 84 60" width="96" height="68"><ellipse cx="40" cy="34" rx="24" ry="14" fill="#8D6E63" stroke="#3E2723" stroke-width="1.5"/><rect x="50" y="15" width="22" height="17" rx="7" fill="#A1887F" stroke="#3E2723" stroke-width="1.5"/><circle cx="61" cy="21" r="2.2" fill="#1A1A1A"/><path d="M22 30 Q34 26 42 36 L24 44 Z" fill="#FFF59D" stroke="#FBC02D" stroke-width="1.5"/></svg>
+                    <div class="status-bebe" style="background:white; border:2px solid #5D4037; border-radius:10px; padding:2px 8px; font-size:12px; font-weight:bold; color:#3E2723;">🧷 Trocar fralda!</div>
+                </div>
+            </div>
+            <div style="background:rgba(255,255,255,0.95); padding:8px 14px; border-radius:20px; display:flex; gap:12px; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
+                <button onclick="cuidarBebes('mamadeira')" style="font-size:16px; font-weight:bold; border:2px solid #1976D2; background:#E3F2FD; color:#0D47A1; border-radius:14px; padding:8px 14px; cursor:pointer;">🍼 Dar Mamadeira</button>
+                <button onclick="cuidarBebes('fralda')" style="font-size:16px; font-weight:bold; border:2px solid #388E3C; background:#E8F5E9; color:#1B5E20; border-radius:14px; padding:8px 14px; cursor:pointer;">🧷 Trocar Fralda</button>
             </div>
         </div>
         """
@@ -332,66 +354,31 @@ else:
             * {{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }}
             body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Comic Sans MS', sans-serif; overflow: hidden; user-select: none; touch-action: none; }}
             #cenario {{ width: 100%; height: 100%; background: {cfg['fundo']}; border-radius: 20px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 12px; position: relative; transition: background 0.8s ease; }}
-            #camada-noite {{
-                position: absolute; inset: 0; border-radius: 20px;
-                background: linear-gradient(to bottom, rgba(7, 13, 38, 0.86) 0%, rgba(15, 25, 65, 0.65) 55%, rgba(5, 10, 25, 0.58) 100%);
-                opacity: 0; pointer-events: none; z-index: 2; transition: opacity 0.8s ease;
-            }}
+            #camada-noite {{ position: absolute; inset: 0; border-radius: 20px; background: linear-gradient(to bottom, rgba(7, 13, 38, 0.86) 0%, rgba(15, 25, 65, 0.65) 55%, rgba(5, 10, 25, 0.58) 100%); opacity: 0; pointer-events: none; z-index: 2; transition: opacity 0.8s ease; }}
             #cenario.modo-noite #camada-noite {{ opacity: 1; }}
-            .estrela-noite {{
-                position: absolute; background: #FFFDE7; border-radius: 50%;
-                box-shadow: 0 0 8px #FFF59D; animation: piscar 1.6s infinite alternate;
-            }}
-            .sol-lua-btn {{
-                transition: transform 0.5s ease, filter 0.5s ease;
-                filter: drop-shadow(0 0 12px rgba(255, 235, 59, 0.8));
-            }}
-            #cenario.modo-noite .sol-lua-btn {{
-                filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.95));
-            }}
+            .estrela-noite {{ position: absolute; background: #FFFDE7; border-radius: 50%; box-shadow: 0 0 8px #FFF59D; animation: piscar 1.6s infinite alternate; }}
             .camada-ceu, .camada-agua {{ position: absolute; left: 0; width: 100%; display: flex; justify-content: space-around; align-items: center; z-index: 5; pointer-events: none; }}
-            .item-ceu, .item-agua {{ font-size: clamp(38px, 7.5vw, 60px); cursor: pointer; pointer-events: auto; display: inline-block; }}
-            .predio-escola-clicavel {{
-                position: absolute; top: 27%; left: 3%; width: clamp(185px, 32vw, 275px);
-                cursor: pointer; z-index: 5; transition: transform 0.2s;
-                filter: drop-shadow(0 6px 8px rgba(0,0,0,0.28));
-            }}
+            .item-ceu, .item-agua {{ font-size: clamp(38px, 7.5vw, 58px); cursor: pointer; pointer-events: auto; display: inline-block; }}
+            .predio-escola-clicavel {{ position: absolute; top: 24%; left: 3%; width: clamp(175px, 30vw, 260px); cursor: pointer; z-index: 5; transition: transform 0.2s; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.28)); }}
             .predio-escola-clicavel:hover {{ transform: scale(1.04); }}
-            .aviso-entrar-sala {{
-                position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
-                background: #FFD700; color: #003366; border: 2px solid #003366;
-                border-radius: 12px; padding: 2px 10px; font-size: 12px; font-weight: bold; white-space: nowrap;
-            }}
-            .ondulacoes-agua {{
-                position: absolute; top: 36%; left: 0; width: 100%; height: 30%;
-                background: repeating-linear-gradient(180deg, rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 2px, transparent 2px, transparent 18px);
-                pointer-events: none; z-index: 2;
-            }}
-            .pular-agua {{ animation: puloNaAgua 0.7s ease-out; }}
-            @keyframes puloNaAgua {{ 0% {{ transform: translateY(0); }} 45% {{ transform: translateY(-28px) rotate(-18deg) scale(1.15); }} 100% {{ transform: translateY(0); }} }}
-            .girar-ceu {{ animation: giroNoCeu 0.8s ease-in-out; }}
-            @keyframes giroNoCeu {{ 0% {{ transform: scale(1) rotate(0deg); }} 50% {{ transform: scale(1.25) rotate(180deg); }} 100% {{ transform: scale(1) rotate(360deg); }} }}
-            .ninho-capivaras {{ position: absolute; bottom: 13%; right: 4%; width: clamp(140px, 26vw, 205px); height: clamp(72px, 13vw, 105px); z-index: 4; pointer-events: none; transition: transform 0.25s; }}
-            .ninho-capivaras.destaque {{ transform: scale(1.08); filter: drop-shadow(0 0 12px #FFD700); }}
-            .placa-ninho {{ position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); background: #FFF8DC; color: #4E342E; border: 2px solid #6D4C41; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; white-space: nowrap; }}
-            .chafariz-riopreto {{ position: absolute; top: 44%; left: 26%; width: 90px; height: 80px; pointer-events: none; z-index: 3; }}
-            .jato-central {{ position: absolute; bottom: 8px; left: 41px; width: 8px; height: 68px; background: linear-gradient(to top, rgba(255,255,255,0.9), transparent); border-radius: 50% 50% 0 0; animation: pulsarJato 1.1s infinite alternate; }}
-            .jato-esq {{ position: absolute; bottom: 8px; left: 26px; width: 6px; height: 45px; background: linear-gradient(to top, rgba(255,255,255,0.8), transparent); transform: rotate(-18deg); transform-origin: bottom; animation: pulsarJato 1.1s infinite alternate; }}
-            .jato-dir {{ position: absolute; bottom: 8px; left: 58px; width: 6px; height: 45px; background: linear-gradient(to top, rgba(255,255,255,0.8), transparent); transform: rotate(18deg); transform-origin: bottom; animation: pulsarJato 1.1s infinite alternate; }}
-            .espuma-lago {{ position: absolute; bottom: 4px; left: 15px; width: 60px; height: 10px; background: rgba(255,255,255,0.75); border-radius: 50%; filter: blur(2px); }}
-            @keyframes pulsarJato {{ 0% {{ transform: scaleY(0.85); }} 100% {{ transform: scaleY(1.12); }} }}
-            .pista-riopreto {{ position: absolute; top: 66%; left: 0; width: 100%; height: 8%; pointer-events: none; z-index: 2; }}
+            .aviso-entrar-sala {{ position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #FFD700; color: #003366; border: 2px solid #003366; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: bold; white-space: nowrap; }}
+            .piscina-escola {{ position: absolute; bottom: 13%; left: 3%; width: clamp(160px, 28vw, 240px); height: clamp(68px, 12vw, 95px); background: #ECEFF1; border: 4px solid #90A4AE; border-radius: 16px; z-index: 4; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.25); }}
+            .agua-piscina {{ width: 100%; height: 100%; background: linear-gradient(to bottom, #4FC3F7, #0288D1); opacity: 0.9; }}
+            .placa-piscina {{ position: absolute; top: 2px; right: 6px; background: rgba(255,255,255,0.85); color: #01579B; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: bold; }}
+            .ninho-capivaras {{ position: absolute; bottom: 13%; right: 4%; width: clamp(145px, 27vw, 210px); height: clamp(72px, 13vw, 105px); z-index: 5; cursor: pointer; transition: transform 0.25s; }}
+            .ninho-capivaras:hover {{ transform: scale(1.06); }}
+            .placa-ninho {{ position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); background: #FFD700; color: #3E2723; border: 2px solid #3E2723; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold; white-space: nowrap; }}
+            .pista-riopreto {{ position: absolute; top: 64%; left: 0; width: 100%; height: 8%; pointer-events: none; z-index: 2; }}
             .faixa-ciclovia {{ width: 100%; height: 32%; background: rgba(214, 40, 40, 0.75); border-bottom: 2px dashed #FFFFFF; }}
             .faixa-pedestre {{ width: 100%; height: 68%; background: repeating-linear-gradient(90deg, transparent, transparent 30px, #FFD166 30px, #FFD166 55px); background-size: 100% 3px; background-repeat: no-repeat; background-position: center; }}
             .elementos-fundo {{ position: absolute; left: 0; width: 100%; display: flex; justify-content: space-around; align-items: flex-end; z-index: 4; pointer-events: none; }}
-            .item-fundo-interativo {{ font-size: clamp(46px, 9.5vw, 76px); cursor: pointer; pointer-events: auto; transform-origin: bottom center; display: inline-block; }}
+            .item-fundo-interativo {{ font-size: clamp(44px, 9vw, 72px); cursor: pointer; pointer-events: auto; transform-origin: bottom center; display: inline-block; }}
             .xagualhar {{ animation: balancarItem 0.65s ease-in-out; }}
             @keyframes balancarItem {{ 0%, 100% {{ transform: rotate(0deg); }} 25% {{ transform: rotate(-10deg); }} 50% {{ transform: rotate(9deg); }} 75% {{ transform: rotate(-6deg); }} }}
-            .particula-caindo {{ position: absolute; font-size: 22px; pointer-events: none; z-index: 9; animation: animarParticula 1.5s ease-out forwards; }}
+            .girar-ceu {{ animation: giroNoCeu 0.8s ease-in-out; }}
+            @keyframes giroNoCeu {{ 0% {{ transform: scale(1) rotate(0deg); }} 50% {{ transform: scale(1.25) rotate(180deg); }} 100% {{ transform: scale(1) rotate(360deg); }} }}
+            .particula-caindo {{ position: absolute; font-size: 22px; pointer-events: none; z-index: 12; animation: animarParticula 1.5s ease-out forwards; }}
             @keyframes animarParticula {{ 0% {{ opacity: 1; }} 100% {{ transform: translate(-12px, -55px) rotate(280deg) scale(0.7); opacity: 0; }} }}
-            #relampago {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.85); pointer-events: none; opacity: 0; z-index: 5; transition: opacity 0.08s; }}
-            #arco-iris {{ position: absolute; top: 8%; left: 50%; transform: translateX(-50%); width: 120vw; max-width: 850px; height: 60vw; max-height: 420px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: radial-gradient(circle at 50% 100%, transparent 48%, rgba(148,0,211,0.35) 52%, rgba(0,119,255,0.4) 56%, rgba(0,200,80,0.4) 60%, rgba(255,230,0,0.45) 64%, rgba(255,20,20,0.4) 68%, transparent 72%); filter: blur(6px); pointer-events: none; opacity: 0; transition: opacity 0.8s; z-index: 1; }}
-            #arco-iris.ativo {{ opacity: 1; }}
             #efeitos-container {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 3; }}
             .gota {{ position: absolute; width: 2px; height: 20px; background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.85)); animation: cair linear infinite; }}
             @keyframes cair {{ 0% {{ transform: translate(0, -20px) rotate(12deg); }} 100% {{ transform: translate(-35px, 105vh) rotate(12deg); }} }}
@@ -400,15 +387,13 @@ else:
             .estrela {{ position: absolute; background: white; border-radius: 50%; box-shadow: 0 0 8px #FFF; animation: piscar 1.5s infinite alternate; }}
             @keyframes piscar {{ 0% {{ opacity: 0.2; }} 100% {{ opacity: 1; transform: scale(1.3); }} }}
             .placa {{ background: {cfg['placa_bg']}; color: {cfg['placa_cor']}; border: 3px solid #003366; padding: 6px 16px; border-radius: 14px; font-size: clamp(13px, 3vw, 18px); font-weight: bold; text-align: center; z-index: 10; }}
-            .bicho {{ position: absolute; font-size: 48px; cursor: grab; z-index: 6; touch-action: none; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3)); }}
+            .bicho {{ position: absolute; font-size: 46px; cursor: grab; z-index: 6; touch-action: none; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3)); }}
             .bicho.brinquedo {{ z-index: 5; }}
             .bicho.brincando {{ z-index: 7; }}
             .bicho:active {{ cursor: grabbing; transform: scale(1.18); }}
             .conteudo-bicho {{ display: inline-block; }}
             .nadando .conteudo-bicho {{ animation: boiarNaAgua 1.1s infinite alternate ease-in-out; }}
             @keyframes boiarNaAgua {{ 0% {{ transform: translateY(-3px) rotate(-4deg); }} 100% {{ transform: translateY(4px) rotate(4deg); }} }}
-            .peixe-nadando .conteudo-bicho {{ animation: nadarPeixe 0.55s infinite alternate ease-in-out; }}
-            @keyframes nadarPeixe {{ 0% {{ transform: translateY(-2px) skewY(-2deg); }} 100% {{ transform: translateY(2px) skewY(2deg); }} }}
             .salto-peixe .conteudo-bicho {{ animation: saltarForaAgua 0.75s ease-out; }}
             @keyframes saltarForaAgua {{ 0% {{ transform: translateY(0) rotate(0deg); }} 45% {{ transform: translateY(-48px) rotate(-32deg) scale(1.12); }} 100% {{ transform: translateY(0) rotate(0deg); }} }}
             .voando .conteudo-bicho {{ animation: flutuarNoAr 1.4s infinite alternate ease-in-out; }}
@@ -418,7 +403,7 @@ else:
             .gangorra-brinquedo .conteudo-bicho {{ animation: gangorraSobeDesce 0.9s infinite alternate ease-in-out; }}
             @keyframes gangorraSobeDesce {{ 0% {{ transform: translateY(-14px) rotate(-8deg); }} 100% {{ transform: translateY(10px) rotate(8deg); }} }}
             #barra {{ background: rgba(255, 255, 255, 0.94); padding: 8px 12px; border-radius: 22px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 10; display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 96%; }}
-            .btn-item {{ font-size: 24px; border: 2px solid #FFD700; background: #FFF8DC; border-radius: 14px; padding: 4px 8px; cursor: pointer; }}
+            .btn-item {{ font-size: 15px; font-weight: bold; border: 2px solid #FFD700; background: #FFF8DC; color: #003366; border-radius: 14px; padding: 6px 10px; cursor: pointer; }}
             .btn-acao {{ font-size: 14px; font-weight: bold; border: none; border-radius: 14px; padding: 8px 11px; cursor: pointer; }}
         </style>
     </head>
@@ -426,44 +411,45 @@ else:
     <div id="cenario">
         <div id="camada-noite"></div>
         {decoracao_cenario}
-        {sala_aula_html}
-        <div id="relampago"></div>
-        <div id="arco-iris"></div>
+        {modais_extras_html}
         <div id="efeitos-container"></div>
         <div class="placa">{cfg['titulo']}</div>
         <div id="palco"></div>
         <div id="barra">
             {botoes_itens}
-            <button class="btn-acao" style="background:#FFD700; color:#333;" onclick="alternarClima()">🌦️ Clima</button>
             <button class="btn-acao" style="background:#4CAF50; color:white;" onclick="organizar()">🔄 Organizar</button>
             <button class="btn-acao" style="background:#FF6B6B; color:white;" onclick="limpar()">🗑️</button>
         </div>
     </div>
     <script>
-        let estadoClima = 0;
         let ehNoite = false;
-        let timerTrovao = null;
         let ultimoBanho = 0;
+        let ctxLousa = null;
+        let desenhandoLousa = false;
+        let corGizAtual = '#FFFFFF';
         const mundoAtual = "{st.session_state.tela_atual}";
-        const tipoClima = "{cfg['clima_extra']}";
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        const tiposPeixes = ['PEIXE_DOURADO', 'PEIXE_TILAPIA', 'PEIXE_LAMBARI', '🐠', '🐡', '🦈'];
-        const tiposAnimais = ['CAPIVARA', 'PEIXE_DOURADO', 'PEIXE_TILAPIA', 'PEIXE_LAMBARI', '🦆', '🦢', '🐶', '🐱', '🐳', '🐬', '🐠', '🐢', '🐙', '🦀', '🐡', '🦈', '🦞'];
-        const tiposPessoas = ['👧', '👦', '👨‍🚀', '👨‍✈️', '👽'];
+        const tiposPeixes = ['PEIXE_DOURADO', 'PEIXE_TILAPIA', '🐠', '🐡', '🦈'];
+        const tiposAnimais = ['CAPIVARA', 'PEIXE_DOURADO', 'PEIXE_TILAPIA', '🦆', '🦢', '🐶', '🐳', '🐬', '🐠', '🐢', '🐙', '🦀', '🐡', '🦈', '🦞'];
+        const tiposPessoas = ['MENINA', 'MENINO', 'CICLISTA', 'CAMINHANTE', '👨‍🚀', '👨‍✈️', '👽'];
         const tiposBrinquedos = ['ESCORREGADOR', 'BALANCO', 'GANGORRA'];
         const tiposAereos = ['✈️', '🚁', '🛩️', '🚀', '🛸', '🛰️'];
+        const tiposPista = ['CICLISTA', 'CAMINHANTE', '🚌'];
         const tiposBanho = ['🧼', '🚿'];
         const tiposComida = ['🌽', '🍎', '🌿'];
 
         const svgsObjetos = {{
-            'CAPIVARA': '<svg viewBox="0 0 84 60" width="76" height="54"><ellipse cx="40" cy="54" rx="26" ry="4.5" fill="rgba(0,0,0,0.28)"/><rect x="20" y="42" width="7" height="12" rx="3" fill="#4E342E"/><rect x="30" y="43" width="7" height="11" rx="3" fill="#5D4037"/><rect x="49" y="42" width="7" height="12" rx="3" fill="#4E342E"/><rect x="58" y="43" width="7" height="11" rx="3" fill="#5D4037"/><ellipse cx="40" cy="33" rx="25" ry="15" fill="#795548" stroke="#3E2723" stroke-width="1.5"/><rect x="50" y="13" width="24" height="19" rx="8" fill="#8D6E63" stroke="#3E2723" stroke-width="1.5"/><ellipse cx="53" cy="12" rx="3" ry="4.5" fill="#4E342E"/><circle cx="62" cy="19" r="2.2" fill="#1A1A1A"/><ellipse cx="71" cy="22" rx="2.5" ry="2" fill="#2E1B16"/><path d="M65 27 Q69 29 73 27" stroke="#3E2723" stroke-width="1.5" fill="none"/></svg>',
-            'PEIXE_DOURADO': '<svg viewBox="0 0 92 52" width="76" height="44"><defs><linearGradient id="douradoGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF8F00"/><stop offset="45%" stop-color="#FFD54F"/><stop offset="100%" stop-color="#FFF8E1"/></linearGradient></defs><path d="M24 26 L5 11 L12 26 L5 41 Z" fill="#E65100"/><path d="M40 13 Q50 3 60 14 Z" fill="#EF6C00"/><ellipse cx="50" cy="26" rx="28" ry="13" fill="url(#douradoGrad)" stroke="#BF360C" stroke-width="1.2"/><circle cx="70" cy="22" r="2.6" fill="#111111"/><circle cx="70.8" cy="21.2" r="0.9" fill="#FFFFFF"/></svg>',
-            'PEIXE_TILAPIA': '<svg viewBox="0 0 90 56" width="72" height="46"><defs><linearGradient id="tilapiaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#37474F"/><stop offset="50%" stop-color="#78909C"/><stop offset="100%" stop-color="#CFD8DC"/></linearGradient></defs><path d="M24 28 L6 13 L11 28 L6 43 Z" fill="#455A64"/><ellipse cx="50" cy="28" rx="27" ry="15" fill="url(#tilapiaGrad)" stroke="#263238" stroke-width="1.2"/><circle cx="69" cy="24" r="2.5" fill="#111111"/><circle cx="69.7" cy="23.3" r="0.8" fill="#FFFFFF"/></svg>',
-            'PEIXE_LAMBARI': '<svg viewBox="0 0 76 42" width="56" height="32"><path d="M20 21 L5 10 L10 21 L5 32 Z" fill="#E53935"/><ellipse cx="42" cy="21" rx="22" ry="9.5" fill="#ECEFF1" stroke="#607D8B" stroke-width="1.2"/><line x1="24" y1="21" x2="60" y2="21" stroke="#0288D1" stroke-width="2.5" opacity="0.7"/><circle cx="57" cy="18.5" r="2" fill="#111111"/></svg>',
-            'ESCORREGADOR': '<svg viewBox="0 0 110 95" width="98" height="84"><ellipse cx="55" cy="88" rx="44" ry="5" fill="rgba(0,0,0,0.22)"/><path d="M16 86 L28 18 L40 18 L28 86" stroke="#1565C0" stroke-width="5.5" fill="none" stroke-linecap="round"/><line x1="21" y1="36" x2="34" y2="36" stroke="#FFB300" stroke-width="4"/><line x1="19" y1="53" x2="32" y2="53" stroke="#FFB300" stroke-width="4"/><line x1="17" y1="70" x2="30" y2="70" stroke="#FFB300" stroke-width="4"/><path d="M38 20 Q58 64 98 80" stroke="#E53935" stroke-width="10" fill="none" stroke-linecap="round"/></svg>',
-            'BALANCO': '<svg viewBox="0 0 105 95" width="94" height="84"><ellipse cx="52" cy="88" rx="40" ry="5" fill="rgba(0,0,0,0.22)"/><path d="M14 86 L28 16 L76 16 L90 86" stroke="#D32F2F" stroke-width="5.5" fill="none" stroke-linecap="round"/><line x1="42" y1="16" x2="42" y2="64" stroke="#546E7A" stroke-width="2.5"/><line x1="62" y1="16" x2="62" y2="64" stroke="#546E7A" stroke-width="2.5"/><rect x="35" y="62" width="34" height="7" rx="3" fill="#FFB300" stroke="#E65100" stroke-width="1.5"/></svg>',
-            'GANGORRA': '<svg viewBox="0 0 110 74" width="98" height="66"><ellipse cx="55" cy="68" rx="42" ry="4.5" fill="rgba(0,0,0,0.22)"/><polygon points="45,67 55,40 65,67" fill="#1565C0"/><line x1="12" y1="55" x2="98" y2="27" stroke="#FFB300" stroke-width="7.5" stroke-linecap="round"/></svg>'
+            'CAPIVARA': '<svg viewBox="0 0 84 60" width="74" height="52"><ellipse cx="40" cy="54" rx="26" ry="4.5" fill="rgba(0,0,0,0.28)"/><rect x="20" y="42" width="7" height="12" rx="3" fill="#4E342E"/><rect x="50" y="42" width="7" height="12" rx="3" fill="#4E342E"/><ellipse cx="40" cy="33" rx="25" ry="15" fill="#795548" stroke="#3E2723" stroke-width="1.5"/><rect x="50" y="13" width="24" height="19" rx="8" fill="#8D6E63" stroke="#3E2723" stroke-width="1.5"/><circle cx="62" cy="19" r="2.2" fill="#1A1A1A"/></svg>',
+            'PEIXE_DOURADO': '<svg viewBox="0 0 92 52" width="72" height="42"><path d="M24 26 L5 11 L12 26 L5 41 Z" fill="#E65100"/><ellipse cx="50" cy="26" rx="28" ry="13" fill="#FFB300" stroke="#BF360C" stroke-width="1.2"/><circle cx="70" cy="22" r="2.5" fill="#111"/></svg>',
+            'PEIXE_TILAPIA': '<svg viewBox="0 0 90 56" width="68" height="44"><path d="M24 28 L6 13 L11 28 L6 43 Z" fill="#455A64"/><ellipse cx="50" cy="28" rx="27" ry="15" fill="#78909C" stroke="#263238" stroke-width="1.2"/><circle cx="69" cy="24" r="2.5" fill="#111"/></svg>',
+            'MENINA': '<svg viewBox="0 0 54 88" width="46" height="76"><ellipse cx="27" cy="84" rx="14" ry="3.5" fill="rgba(0,0,0,0.25)"/><rect x="20" y="56" width="5" height="24" rx="2" fill="#FFCCBC"/><rect x="29" y="56" width="5" height="24" rx="2" fill="#FFCCBC"/><path d="M16 58 L21 34 L33 34 L38 58 Z" fill="#E91E63"/><path d="M16 36 L10 50 M38 36 L44 50" stroke="#FFCCBC" stroke-width="4.5" stroke-linecap="round"/><circle cx="27" cy="20" r="11" fill="#FFCCBC"/><path d="M16 18 Q27 6 38 18 L40 28 L35 24 L19 24 L14 28 Z" fill="#4E342E"/><circle cx="23.5" cy="19" r="1.5" fill="#111"/><circle cx="30.5" cy="19" r="1.5" fill="#111"/></svg>',
+            'MENINO': '<svg viewBox="0 0 54 88" width="46" height="76"><ellipse cx="27" cy="84" rx="14" ry="3.5" fill="rgba(0,0,0,0.25)"/><rect x="19" y="56" width="6" height="24" rx="2" fill="#1565C0"/><rect x="29" y="56" width="6" height="24" rx="2" fill="#1565C0"/><rect x="18" y="33" width="18" height="24" rx="4" fill="#4CAF50"/><path d="M18 36 L11 50 M36 36 L43 50" stroke="#FFCCBC" stroke-width="4.5" stroke-linecap="round"/><circle cx="27" cy="20" r="11" fill="#FFCCBC"/><path d="M16 17 Q27 7 38 17 Z" fill="#212121"/><circle cx="23.5" cy="19" r="1.5" fill="#111"/><circle cx="30.5" cy="19" r="1.5" fill="#111"/></svg>',
+            'CICLISTA': '<svg viewBox="0 0 88 84" width="74" height="70"><circle cx="20" cy="64" r="13" fill="none" stroke="#263238" stroke-width="3"/><circle cx="68" cy="64" r="13" fill="none" stroke="#263238" stroke-width="3"/><path d="M20 64 L42 64 L56 44 L34 44 Z" fill="none" stroke="#E53935" stroke-width="3"/><rect x="33" y="24" width="13" height="20" rx="4" fill="#FF9800"/><circle cx="42" cy="14" r="8" fill="#FFCCBC"/><path d="M34 12 Q42 4 50 12 Z" fill="#1976D2"/></svg>',
+            'CAMINHANTE': '<svg viewBox="0 0 54 88" width="46" height="76"><ellipse cx="27" cy="84" rx="14" ry="3.5" fill="rgba(0,0,0,0.25)"/><path d="M23 56 L17 80 M31 56 L37 80" stroke="#37474F" stroke-width="5.5" stroke-linecap="round"/><rect x="18" y="32" width="18" height="25" rx="4" fill="#0288D1"/><circle cx="27" cy="19" r="10.5" fill="#FFCCBC"/><path d="M17 16 Q27 6 37 16 Z" fill="#5D4037"/></svg>',
+            'ESCORREGADOR': '<svg viewBox="0 0 110 95" width="94" height="80"><ellipse cx="55" cy="88" rx="44" ry="5" fill="rgba(0,0,0,0.22)"/><path d="M16 86 L28 18 L40 18 L28 86" stroke="#1565C0" stroke-width="5.5" fill="none" stroke-linecap="round"/><path d="M38 20 Q58 64 98 80" stroke="#E53935" stroke-width="10" fill="none" stroke-linecap="round"/></svg>',
+            'BALANCO': '<svg viewBox="0 0 105 95" width="90" height="80"><ellipse cx="52" cy="88" rx="40" ry="5" fill="rgba(0,0,0,0.22)"/><path d="M14 86 L28 16 L76 16 L90 86" stroke="#D32F2F" stroke-width="5.5" fill="none" stroke-linecap="round"/><line x1="42" y1="16" x2="42" y2="64" stroke="#546E7A" stroke-width="2.5"/><line x1="62" y1="16" x2="62" y2="64" stroke="#546E7A" stroke-width="2.5"/><rect x="35" y="62" width="34" height="7" rx="3" fill="#FFB300"/></svg>',
+            'GANGORRA': '<svg viewBox="0 0 110 74" width="94" height="64"><ellipse cx="55" cy="68" rx="42" ry="4.5" fill="rgba(0,0,0,0.22)"/><polygon points="45,67 55,40 65,67" fill="#1565C0"/><line x1="12" y1="55" x2="98" y2="27" stroke="#FFB300" stroke-width="7.5" stroke-linecap="round"/></svg>'
         }};
         function soltarParticulas(el, simbolo) {{
             const cenario = document.getElementById('cenario');
@@ -501,34 +487,93 @@ else:
             el.classList.remove('girar-ceu');
             void el.offsetWidth;
             el.classList.add('girar-ceu');
-
             if (ehNoite) {{
                 cenario.classList.add('modo-noite');
                 el.innerText = '🌙';
                 camadaNoite.innerHTML = '';
-                for (let i = 0; i < 32; i++) {{
+                for (let i = 0; i < 30; i++) {{
                     const st = document.createElement('div');
                     st.className = 'estrela-noite';
                     const tam = (Math.random() * 3.5 + 2) + 'px';
                     st.style.width = tam; st.style.height = tam;
                     st.style.left = Math.random() * 96 + '%';
                     st.style.top = Math.random() * 42 + '%';
-                    st.style.animationDelay = (Math.random() * 2) + 's';
                     camadaNoite.appendChild(st);
                 }}
                 tocarNota(660, 330, 0.45, 'sine');
-                soltarParticulas(el, '✨');
             }} else {{
                 cenario.classList.remove('modo-noite');
                 el.innerText = '☀️';
                 camadaNoite.innerHTML = '';
                 tocarNota(380, 880, 0.45, 'triangle');
-                soltarParticulas(el, '☀️');
             }}
         }}
-        let desenhandoLousa = false;
-        let corGizAtual = '#FFFFFF';
-        let ctxLousa = null;
+
+        function interagirNuvem(el, acao) {{
+            el.classList.remove('girar-ceu');
+            void el.offsetWidth;
+            el.classList.add('girar-ceu');
+            if (acao === 'chuva') {{
+                const div = document.getElementById('efeitos-container');
+                div.innerHTML = '';
+                for (let i = 0; i < 35; i++) {{
+                    const g = document.createElement('div');
+                    g.className = 'gota';
+                    g.style.left = Math.random() * 100 + 'vw';
+                    g.style.animationDuration = (Math.random() * 0.4 + 0.5) + 's';
+                    div.appendChild(g);
+                }}
+                tocarNota(280, 160, 0.35, 'sine');
+                setTimeout(() => {{ div.innerHTML = ''; }}, 4000);
+            }} else {{
+                tocarNota(680, 1080, 0.22, 'sine');
+                soltarParticulas(el, '🐦');
+            }}
+        }}
+
+        function interagirPassaro(el) {{
+            el.classList.remove('girar-ceu');
+            void el.offsetWidth;
+            el.classList.add('girar-ceu');
+            tocarNota(820, 1220, 0.18, 'sine');
+            soltarParticulas(el, '🎵');
+        }}
+        function abrirNinhoCapivaras() {{
+            const modal = document.getElementById('modal-ninho');
+            if (modal) modal.style.display = 'flex';
+            tocarNota(480, 740, 0.22, 'triangle');
+        }}
+
+        function fecharNinhoCapivaras() {{
+            const modal = document.getElementById('modal-ninho');
+            if (modal) modal.style.display = 'none';
+            tocarNota(520, 340, 0.2, 'sine');
+        }}
+
+        function acariciarBebe(el) {{
+            tocarNota(580, 880, 0.2, 'triangle');
+            soltarParticulas(el, '❤️');
+        }}
+
+        function cuidarBebes(tipo) {{
+            if (tipo === 'mamadeira') {{
+                const b1 = document.getElementById('bebe-1');
+                if (b1) {{
+                    b1.querySelector('.status-bebe').innerText = '😋 Barriguinha cheia!';
+                    soltarParticulas(b1, '🍼');
+                    soltarParticulas(b1, '❤️');
+                }}
+                tocarNota(420, 760, 0.25, 'triangle');
+            }} else {{
+                const b2 = document.getElementById('bebe-2');
+                if (b2) {{
+                    b2.querySelector('.status-bebe').innerText = '✨ Limpinho e cheiroso!';
+                    soltarParticulas(b2, '🧷');
+                    soltarParticulas(b2, '✨');
+                }}
+                tocarNota(520, 860, 0.25, 'sine');
+            }}
+        }}
 
         function abrirSalaAula() {{
             const modal = document.getElementById('modal-sala');
@@ -543,273 +588,22 @@ else:
                 ctxLousa.lineCap = 'round';
                 ctxLousa.lineJoin = 'round';
                 ctxLousa.lineWidth = 5;
-
-                const pegarPos = e => {{
-                    const r = canvas.getBoundingClientRect();
-                    return {{ x: e.clientX - r.left, y: e.clientY - r.top }};
-                }};
                 canvas.onpointerdown = e => {{
                     desenhandoLousa = true;
-                    const p = pegarPos(e);
+                    const r = canvas.getBoundingClientRect();
                     ctxLousa.strokeStyle = corGizAtual;
                     ctxLousa.beginPath();
-                    ctxLousa.moveTo(p.x, p.y);
+                    ctxLousa.moveTo(e.clientX - r.left, e.clientY - r.top);
                 }};
                 canvas.onpointermove = e => {{
                     if (!desenhandoLousa) return;
-                    const p = pegarPos(e);
-                    ctxLousa.lineTo(p.x, p.y);
+                    const r = canvas.getBoundingClientRect();
+                    ctxLousa.lineTo(e.clientX - r.left, e.clientY - r.top);
                     ctxLousa.stroke();
                 }};
                 canvas.onpointerup = () => {{ desenhandoLousa = false; }};
-                canvas.onpointerleave = () => {{ desenhandoLousa = false; }};
             }}
         }}
-
-        function fecharSalaAula() {{
-            const modal = document.getElementById('modal-sala');
-            if (modal) modal.style.display = 'none';
-            tocarNota(620, 400, 0.2, 'sine');
-        }}
-
-        function mudarCorGiz(cor) {{
-            corGizAtual = cor;
-            tocarNota(700, 920, 0.12, 'sine');
-        }}
-
-        function limparLousa() {{
-            const canvas = document.getElementById('lousa-canvas');
-            if (canvas && ctxLousa) {{
-                ctxLousa.clearRect(0, 0, canvas.width, canvas.height);
-                tocarNota(300, 180, 0.25, 'sine');
-            }}
-        }}
-
-        function carimbarLousa(emoji) {{
-            const canvas = document.getElementById('lousa-canvas');
-            if (canvas && ctxLousa) {{
-                ctxLousa.font = '38px sans-serif';
-                ctxLousa.fillText(emoji, 60 + Math.random() * (canvas.width - 140), 50 + Math.random() * (canvas.height - 100));
-                tocarNota(580, 880, 0.16, 'triangle');
-            }}
-        }}
-
-        function interagirProfessora(el) {{
-            const frases = ['Muito bem! 🌟', 'Que lindo desenho! 🎨', 'Parabéns, turma! 👏', 'Vamos aprender juntos! 📚'];
-            const balao = document.getElementById('fala-professora');
-            if (balao) balao.innerText = frases[Math.floor(Math.random() * frases.length)];
-            tocarNota(540, 860, 0.22, 'triangle');
-            soltarParticulas(el, '⭐');
-        }}
-        function limparEstadosBrinquedo(el) {{
-            el.classList.remove('brincando', 'balancando-brinquedo', 'gangorra-brinquedo');
-        }}
-
-        function estaNoAr(el) {{
-            const r = el.getBoundingClientRect();
-            const cy = r.top + r.height / 2;
-            const h = window.innerHeight;
-            if (mundoAtual === 'espaco') return true;
-            if (mundoAtual === 'aeroporto') return cy < h * 0.56;
-            return cy < h * 0.48;
-        }}
-
-        function atualizarEstadoVoo(el, tocandoSom) {{
-            if (!tiposAereos.includes(el.dataset.tipo)) return;
-            if (estaNoAr(el)) {{
-                if (!el.classList.contains('voando')) {{
-                    el.classList.add('voando');
-                    if (!el.dataset.dirX) el.dataset.dirX = '1';
-                    if (tocandoSom) {{
-                        tocarNota(220, 520, 0.35, 'sawtooth');
-                        soltarParticulas(el, '💨');
-                    }}
-                }}
-            }} else {{
-                el.classList.remove('voando');
-                el.style.transform = 'scaleX(1)';
-            }}
-        }}
-
-        function estaNaAgua(el) {{
-            const r = el.getBoundingClientRect();
-            const cy = r.top + r.height / 2;
-            const h = window.innerHeight;
-            if (mundoAtual === 'represa') return cy >= h * 0.35 && cy <= h * 0.65;
-            if (mundoAtual === 'oceano') return cy >= h * 0.20;
-            return false;
-        }}
-
-        function atualizarEstadoNado(el, tocandoSom) {{
-            if (!tiposAnimais.includes(el.dataset.tipo)) return;
-            if (el.classList.contains('brincando')) return;
-            const naAgua = estaNaAgua(el);
-            const ehPeixe = tiposPeixes.includes(el.dataset.tipo);
-            if (naAgua) {{
-                if (!el.classList.contains('nadando')) {{
-                    el.classList.add('nadando');
-                    if (ehPeixe) el.classList.add('peixe-nadando');
-                    el.dataset.dirX = Math.random() > 0.5 ? '1' : '-1';
-                    if (tocandoSom) {{
-                        tocarNota(280, 560, 0.25, 'sine');
-                        soltarParticulas(el, '💦');
-                    }}
-                }}
-            }} else {{
-                el.classList.remove('nadando', 'peixe-nadando');
-                el.style.transform = 'scaleX(1)';
-            }}
-        }}
-
-        function loopMovimentoContinuo() {{
-            const animaisOlhandoDireita = ['CAPIVARA', 'PEIXE_DOURADO', 'PEIXE_TILAPIA', 'PEIXE_LAMBARI'];
-            const aereosOlhandoDireita = ['✈️', '🛩️'];
-            const maxW = window.innerWidth - 80;
-
-            let comidaNaAgua = null;
-            document.querySelectorAll('.bicho').forEach(item => {{
-                if (tiposComida.includes(item.dataset.tipo) && estaNaAgua(item)) comidaNaAgua = item;
-            }});
-
-            document.querySelectorAll('.bicho.nadando').forEach(el => {{
-                if (el.dataset.arrastando === '1') return;
-                let left = parseFloat(el.style.left);
-                if (isNaN(left)) left = el.offsetLeft;
-                let top = parseFloat(el.style.top);
-                if (isNaN(top)) top = el.offsetTop;
-
-                let dir = parseFloat(el.dataset.dirX || '1');
-                const ehPeixe = tiposPeixes.includes(el.dataset.tipo);
-                let vel = ehPeixe ? (el.dataset.tipo === 'PEIXE_LAMBARI' ? 1.8 : 1.35) : 1.0;
-
-                if (ehPeixe && comidaNaAgua) {{
-                    const rCom = comidaNaAgua.getBoundingClientRect();
-                    const rEl = el.getBoundingClientRect();
-                    const dx = (rCom.left + rCom.width / 2) - (rEl.left + rEl.width / 2);
-                    const dy = (rCom.top + rCom.height / 2) - (rEl.top + rEl.height / 2);
-                    dir = dx >= 0 ? 1 : -1;
-                    vel = 2.4;
-                    top += Math.sign(dy) * Math.min(Math.abs(dy) * 0.04, 1.4);
-                    el.style.top = top + 'px';
-
-                    if (Math.abs(dx) < 28 && Math.abs(dy) < 28) {{
-                        tocarNota(380, 720, 0.16, 'triangle');
-                        soltarParticulas(el, '❤️');
-                        soltarParticulas(el, '🫧');
-                        comidaNaAgua.remove();
-                        comidaNaAgua = null;
-                    }}
-                }}
-
-                left += dir * vel;
-                if (left >= maxW) {{ left = maxW; dir = -1; }}
-                else if (left <= 10) {{ left = 10; dir = 1; }}
-                el.dataset.dirX = dir.toString();
-                el.style.left = left + 'px';
-                const olhaDir = animaisOlhandoDireita.includes(el.dataset.tipo);
-                const inverte = olhaDir ? (dir < 0 ? -1 : 1) : (dir > 0 ? -1 : 1);
-                el.style.transform = `scaleX(${{inverte}})`;
-            }});
-
-            document.querySelectorAll('.bicho.voando').forEach(el => {{
-                if (el.dataset.arrastando === '1') return;
-                let left = parseFloat(el.style.left);
-                if (isNaN(left)) left = el.offsetLeft;
-                let dir = parseFloat(el.dataset.dirX || '1');
-                const vel = el.dataset.tipo === '🚁' ? 1.5 : 2.3;
-                left += dir * vel;
-                if (left >= maxW) {{ left = maxW; dir = -1; }}
-                else if (left <= 10) {{ left = 10; dir = 1; }}
-                el.dataset.dirX = dir.toString();
-                el.style.left = left + 'px';
-                const olhaDir = aereosOlhandoDireita.includes(el.dataset.tipo);
-                const inverte = olhaDir ? (dir < 0 ? -1 : 1) : (dir > 0 ? -1 : 1);
-                el.style.transform = `scaleX(${{inverte}})`;
-            }});
-
-            requestAnimationFrame(loopMovimentoContinuo);
-        }}
-        requestAnimationFrame(loopMovimentoContinuo);
-        function animarEscorregador(personagem, escorregador) {{
-            limparEstadosBrinquedo(personagem);
-            personagem.classList.remove('nadando', 'peixe-nadando');
-            personagem.classList.add('brincando');
-            personagem.style.transform = 'scaleX(1)';
-
-            const rEsc = escorregador.getBoundingClientRect();
-            const rPer = personagem.getBoundingClientRect();
-            const inicioX = rEsc.left + rEsc.width * 0.25 - rPer.width / 2;
-            const inicioY = rEsc.top + rEsc.height * 0.05;
-            const fimX = rEsc.left + rEsc.width * 0.85 - rPer.width / 2;
-            const fimY = rEsc.top + rEsc.height * 0.62;
-
-            personagem.style.transition = 'none';
-            personagem.style.left = inicioX + 'px';
-            personagem.style.top = inicioY + 'px';
-
-            tocarNota(780, 260, 0.65, 'triangle');
-            soltarParticulas(personagem, '✨');
-
-            requestAnimationFrame(() => {{
-                requestAnimationFrame(() => {{
-                    personagem.style.transition = 'left 0.75s ease-in, top 0.75s ease-in';
-                    personagem.style.left = fimX + 'px';
-                    personagem.style.top = fimY + 'px';
-                }});
-            }});
-
-            setTimeout(() => {{
-                personagem.style.transition = 'none';
-                limparEstadosBrinquedo(personagem);
-                soltarParticulas(personagem, '🎉');
-            }}, 800);
-        }}
-
-        function verificarBrinquedos(el) {{
-            const tipo = el.dataset.tipo;
-            if (!tiposAnimais.includes(tipo) && !tiposPessoas.includes(tipo)) return false;
-
-            const rEl = el.getBoundingClientRect();
-            const cx = rEl.left + rEl.width / 2;
-            const cy = rEl.top + rEl.height / 2;
-
-            let interagiu = false;
-            document.querySelectorAll('.bicho.brinquedo').forEach(brinq => {{
-                if (interagiu) return;
-                const rB = brinq.getBoundingClientRect();
-                const perto = cx >= rB.left - 15 && cx <= rB.right + 15 && cy >= rB.top - 25 && cy <= rB.bottom + 15;
-                if (!perto) return;
-
-                const tBrinq = brinq.dataset.tipo;
-                if (tBrinq === 'ESCORREGADOR') {{
-                    interagiu = true;
-                    animarEscorregador(el, brinq);
-                }} else if (tBrinq === 'BALANCO') {{
-                    interagiu = true;
-                    limparEstadosBrinquedo(el);
-                    el.classList.remove('nadando', 'peixe-nadando');
-                    el.classList.add('brincando', 'balancando-brinquedo');
-                    el.style.transform = 'scaleX(1)';
-                    el.style.left = (rB.left + rB.width * 0.5 - rEl.width / 2) + 'px';
-                    el.style.top = (rB.top + rB.height * 0.35) + 'px';
-                    tocarNota(380, 560, 0.25, 'sine');
-                    soltarParticulas(el, '🎵');
-                }} else if (tBrinq === 'GANGORRA') {{
-                    interagiu = true;
-                    limparEstadosBrinquedo(el);
-                    el.classList.remove('nadando', 'peixe-nadando');
-                    el.classList.add('brincando', 'gangorra-brinquedo');
-                    el.style.transform = 'scaleX(1)';
-                    const ladoEsq = cx < (rB.left + rB.width / 2);
-                    el.style.left = (rB.left + rB.width * (ladoEsq ? 0.18 : 0.78) - rEl.width / 2) + 'px';
-                    el.style.top = (rB.top + rB.height * (ladoEsq ? 0.32 : 0.12)) + 'px';
-                    tocarNota(320, 480, 0.25, 'triangle');
-                    soltarParticulas(el, '⭐');
-                }}
-            }});
-            return interagiu;
-        }}
-
         function verificarInteracaoElementos(el, soltou) {{
             const tipo = el.dataset.tipo;
             const rEl = el.getBoundingClientRect();
@@ -818,7 +612,7 @@ else:
 
             if (soltou && verificarBrinquedos(el)) return;
 
-            if (tipo === 'CAPIVARA') {{
+            if (tipo === 'CAPIVARA' || tipo === 'BEBE_CAPIVARA') {{
                 const ninho = document.getElementById('ninho-capivaras');
                 if (ninho) {{
                     const rNinho = ninho.getBoundingClientRect();
@@ -829,7 +623,7 @@ else:
                             ninho.classList.remove('destaque');
                             el.classList.remove('nadando');
                             el.style.transform = 'scaleX(1)';
-                            el.style.top = (rNinho.top + rNinho.height * 0.22) + 'px';
+                            el.style.top = (rNinho.top + rNinho.height * 0.25) + 'px';
                             tocarNota(580, 860, 0.18, 'triangle');
                             soltarParticulas(el, '❤️');
                         }}
@@ -837,11 +631,26 @@ else:
                 }}
             }}
 
+            if ((tipo === '🍼' || tipo === '🧷') && soltou) {{
+                document.querySelectorAll('.bicho').forEach(outro => {{
+                    if (outro !== el && (outro.dataset.tipo === 'BEBE_CAPIVARA' || outro.dataset.tipo === 'CAPIVARA')) {{
+                        const rOutro = outro.getBoundingClientRect();
+                        if (Math.abs(cx - (rOutro.left + rOutro.width/2)) < 65 && Math.abs(cy - (rOutro.top + rOutro.height/2)) < 65) {{
+                            tocarNota(480, 780, 0.2, 'triangle');
+                            setTimeout(() => tocarNota(620, 920, 0.2, 'triangle'), 160);
+                            soltarParticulas(outro, tipo === '🍼' ? '🍼' : '✨');
+                            soltarParticulas(outro, '❤️');
+                            el.remove();
+                        }}
+                    }}
+                }});
+            }}
+
             if (tiposBanho.includes(tipo)) {{
                 const agora = Date.now();
                 if (agora - ultimoBanho > 350) {{
                     document.querySelectorAll('.bicho').forEach(outro => {{
-                        if (outro !== el && outro.dataset.tipo === 'CAPIVARA') {{
+                        if (outro !== el && (outro.dataset.tipo === 'CAPIVARA' || outro.dataset.tipo === 'BEBE_CAPIVARA')) {{
                             const rOutro = outro.getBoundingClientRect();
                             if (Math.abs(cx - (rOutro.left + rOutro.width/2)) < 55 && Math.abs(cy - (rOutro.top + rOutro.height/2)) < 55) {{
                                 ultimoBanho = agora;
@@ -869,12 +678,31 @@ else:
                 }});
             }}
         }}
+
+        function interagirNuvem(el, acao) {{
+            el.classList.remove('girar-ceu');
+            void el.offsetWidth;
+            el.classList.add('girar-ceu');
+            if (acao === 'chover') {{
+                tocarNota(300, 160, 0.35, 'sine');
+                soltarParticulas(el, '💧');
+                soltarParticulas(el, '🌧️');
+            }} else if (acao === 'passaro') {{
+                tocarNota(720, 1180, 0.25, 'sine');
+                soltarParticulas(el, '🕊️');
+                soltarParticulas(el, '🎵');
+            }} else {{
+                tocarNota(440, 880, 0.35, 'triangle');
+                soltarParticulas(el, '🌈');
+                soltarParticulas(el, '✨');
+            }}
+        }}
+
         function interagirCeu(el, tipo) {{
             el.classList.remove('girar-ceu');
             void el.offsetWidth;
             el.classList.add('girar-ceu');
-            if (tipo === 'nuvem') {{ tocarNota(300, 180, 0.3, 'sine'); soltarParticulas(el, '💧'); }}
-            else if (tipo === 'passaro') {{ tocarNota(780, 1150, 0.18, 'sine'); soltarParticulas(el, '🎵'); }}
+            if (tipo === 'passaro') {{ tocarNota(780, 1150, 0.18, 'sine'); soltarParticulas(el, '🎵'); }}
             else {{ tocarNota(520, 960, 0.3, 'sine'); soltarParticulas(el, '⭐'); }}
         }}
 
@@ -895,7 +723,6 @@ else:
             else if (tipo === 'bolha') soltarParticulas(el, '🫧');
             else soltarParticulas(el, '✨');
         }}
-
         function dispararTrovao() {{
             if (estadoClima !== 1 || tipoClima !== 'chuva_arcoiris') return;
             const flash = document.getElementById('relampago');
@@ -960,6 +787,10 @@ else:
             const el = document.createElement('div');
             el.className = 'bicho';
             if (tiposBrinquedos.includes(item)) el.classList.add('brinquedo');
+            if (tiposPista.includes(item)) {{
+                el.classList.add('na-pista');
+                el.dataset.dirX = Math.random() > 0.5 ? '1' : '-1';
+            }}
             el.dataset.tipo = item;
             const miolo = document.createElement('div');
             miolo.className = 'conteudo-bicho';
@@ -1004,6 +835,11 @@ else:
                         atualizarEstadoVoo(el, true);
                         return;
                     }}
+                    if (tiposPista.includes(item)) {{
+                        tocarNota(440, 680, 0.18, 'triangle');
+                        soltarParticulas(el, '👋');
+                        return;
+                    }}
                 }}
                 atualizarEstadoVoo(el, true);
                 atualizarEstadoNado(el, true);
@@ -1018,6 +854,7 @@ else:
             let yIni = 52 + Math.random() * 22;
             if (tiposAereos.includes(item)) yIni = 20 + Math.random() * 15;
             else if (tiposPeixes.includes(item) && (mundoAtual === 'represa' || mundoAtual === 'oceano')) yIni = 42 + Math.random() * 16;
+            else if (tiposPista.includes(item) && mundoAtual === 'represa') yIni = 61;
             criarNaPosicao(item, 15 + Math.random() * 65, yIni);
         }}
         function limpar() {{ document.getElementById('palco').innerHTML = ''; }}
