@@ -1,12 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(
-    page_title="EM Pato Donald - Mundo da Escola",
-    page_icon="🏫",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="EM Pato Donald - Teste Realista", page_icon="🏫", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
@@ -16,296 +11,247 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-html_escola = """
+html_teste = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Comic Sans MS', sans-serif; overflow: hidden; user-select: none; touch-action: none; }
-        #cenario { width: 100%; height: 100%; background: linear-gradient(to bottom, #4FC3F7 0%, #B3E5FC 48%, #E6B88A 48%, #689F38 60%, #33691E 100%); display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 12px; position: relative; transition: background 0.8s; }
-        #noite { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(7,13,38,0.86) 0%, rgba(15,25,65,0.62) 60%, rgba(5,10,25,0.52) 100%); opacity: 0; pointer-events: none; z-index: 2; transition: opacity 0.8s; }
-        #cenario.noite #noite { opacity: 1; }
-        #cenario.noite .janela { fill: #FFF176; filter: drop-shadow(0 0 10px #FFEE58); }
-        .estrela { position: absolute; background: #FFFDE7; border-radius: 50%; box-shadow: 0 0 8px #FFF; animation: piscar 1.5s infinite alternate; }
-        .vagalume { position: absolute; width: 6px; height: 6px; background: #C6FF00; border-radius: 50%; box-shadow: 0 0 12px #AEEA00; animation: voarVL 3.2s infinite alternate ease-in-out; }
-        @keyframes piscar { 0% { opacity: 0.2; } 100% { opacity: 1; } }
-        @keyframes voarVL { 0% { transform: translate(0,0) scale(0.8); } 100% { transform: translate(28px,-22px) scale(1.3); } }
-        .ceu { position: absolute; top: 8%; left: 0; width: 100%; display: flex; justify-content: space-around; z-index: 5; pointer-events: none; }
-        .item-ceu { font-size: clamp(40px, 7.5vw, 60px); cursor: pointer; pointer-events: auto; display: inline-block; }
-        .nuvem { animation: flutuarNuvem 4.5s infinite alternate ease-in-out; }
-        @keyframes flutuarNuvem { 0% { transform: translateX(-12px); } 100% { transform: translateX(12px); } }
-        .escola-box { position: absolute; top: 22%; left: 3%; width: clamp(190px, 32vw, 280px); cursor: pointer; z-index: 5; transition: transform 0.2s; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.3)); }
-        .escola-box:hover { transform: scale(1.04); }
-        .aviso-sala { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #FFD700; color: #003366; border: 2px solid #003366; border-radius: 12px; padding: 2px 10px; font-size: 12px; font-weight: bold; white-space: nowrap; }
-        .piscina { position: absolute; bottom: 13%; right: 4%; width: clamp(180px, 36vw, 290px); height: clamp(88px, 17vw, 135px); background: #ECEFF1; border: 5px solid #90A4AE; border-radius: 22px; padding: 5px; z-index: 3; pointer-events: none; box-shadow: 0 6px 14px rgba(0,0,0,0.25); }
-        .agua-piscina { width: 100%; height: 100%; background: linear-gradient(to bottom, #4FC3F7, #0288D1); border-radius: 14px; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px 10px; color: white; font-weight: bold; font-size: 13px; }
-        .arvores { position: absolute; top: 37%; left: 0; width: 100%; display: flex; justify-content: space-around; z-index: 4; pointer-events: none; }
-        .arvore { font-size: clamp(46px, 9vw, 74px); cursor: pointer; pointer-events: auto; }
-        .placa { background: #FFD700; color: #003366; border: 3px solid #003366; padding: 6px 16px; border-radius: 14px; font-size: clamp(13px, 3vw, 18px); font-weight: bold; z-index: 15; }
-        .ator { position: absolute; font-size: 48px; cursor: grab; z-index: 20; touch-action: none; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3)); }
-        .ator.brinquedo { z-index: 18; }
-        .ator:active { cursor: grabbing; z-index: 30; }
-        .corpo { display: inline-block; pointer-events: none; position: relative; }
-        .balao { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); background: white; border: 2px solid #003366; border-radius: 12px; padding: 1px 6px; font-size: 15px; box-shadow: 0 3px 6px rgba(0,0,0,0.25); pointer-events: none; animation: pulsar 1s infinite alternate; }
-        @keyframes pulsar { 0% { transform: translateX(-50%) scale(0.95); } 100% { transform: translateX(-50%) scale(1.1); } }
-        .nadando::after { content: ''; position: absolute; bottom: 0; left: -4px; right: -4px; height: 42%; background: linear-gradient(to bottom, rgba(129,212,250,0.55), rgba(2,136,209,0.78)); border-top: 2px solid #FFF; border-radius: 0 0 14px 14px; pointer-events: none; }
-        .nadando .corpo { animation: boiar 1s infinite alternate ease-in-out; }
-        .balancando .corpo { transform-origin: top center; animation: balancar 0.8s infinite alternate ease-in-out; }
-        .gangorra .corpo { animation: gangorrar 0.85s infinite alternate ease-in-out; }
-        .quicar .corpo { animation: quicarBola 0.6s ease-out; }
-        @keyframes boiar { 0% { transform: translateY(-3px) rotate(-4deg); } 100% { transform: translateY(4px) rotate(4deg); } }
-        @keyframes balancar { 0% { transform: rotate(-22deg) translateX(-10px); } 100% { transform: rotate(22deg) translateX(10px); } }
-        @keyframes gangorrar { 0% { transform: translateY(-14px) rotate(-8deg); } 100% { transform: translateY(10px) rotate(8deg); } }
-        @keyframes quicarBola { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-42px) rotate(180deg); } }
-        .particula { position: absolute; font-size: 22px; pointer-events: none; z-index: 35; animation: subirP 1.4s ease-out forwards; }
-        @keyframes subirP { 0% { opacity: 1; } 100% { transform: translateY(-55px) scale(0.7); opacity: 0; } }
-        #barra { background: rgba(255,255,255,0.95); padding: 8px 12px; border-radius: 22px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 25; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-        .btn { font-size: 24px; border: 2px solid #FFD700; background: #FFF8DC; border-radius: 14px; padding: 4px 8px; cursor: pointer; }
-        .btn-cmd { font-size: 14px; font-weight: bold; border: none; border-radius: 14px; padding: 8px 11px; cursor: pointer; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; user-select: none; touch-action: none; }
+    #cenario {
+        width: 100%; height: 100%; position: relative; overflow: hidden;
+        background: linear-gradient(180deg, #29B6F6 0%, #81D4FA 35%, #E1F5FE 46%, #D7CCC8 46%, #BCAAA4 53%, #7CB342 53%, #558B2F 78%, #33691E 100%);
+    }
+    #noite { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,18,48,0.82) 0%, rgba(18,32,75,0.58) 55%, rgba(8,14,32,0.48) 100%); opacity: 0; pointer-events: none; z-index: 2; transition: opacity 0.8s; }
+    #cenario.noite #noite { opacity: 1; }
+    #cenario.noite .vidro-janela { fill: #FFF59D; filter: drop-shadow(0 0 10px #FFEE58); }
+    .sol-btn { position: absolute; top: 4%; right: 6%; width: 64px; height: 64px; cursor: pointer; z-index: 6; filter: drop-shadow(0 0 18px rgba(255,215,0,0.8)); }
+    .nuvem-svg { position: absolute; top: 6%; opacity: 0.92; pointer-events: none; z-index: 3; animation: moverNuvem 28s linear infinite; }
+    @keyframes moverNuvem { 0% { transform: translateX(-180px); } 100% { transform: translateX(110vw); } }
+    .predio { position: absolute; top: 15%; left: 4%; width: clamp(230px, 36vw, 340px); z-index: 4; filter: drop-shadow(0 12px 14px rgba(0,0,0,0.28)); }
+    .sino { position: absolute; top: 23%; left: 34%; width: 42px; height: 42px; cursor: pointer; z-index: 6; transform-origin: top center; }
+    .tocando { animation: balancarSino 0.45s ease-in-out 3; }
+    @keyframes balancarSino { 0%,100% { transform: rotate(0deg); } 25% { transform: rotate(22deg); } 75% { transform: rotate(-22deg); } }
+    .piscina {
+        position: absolute; bottom: 13%; right: 5%; width: clamp(210px, 38vw, 330px); height: clamp(105px, 19vw, 155px);
+        background: linear-gradient(145deg, #ECEFF1, #CFD8DC); border: 6px solid #90A4AE; border-radius: 24px;
+        padding: 7px; z-index: 3; box-shadow: 0 10px 20px rgba(0,0,0,0.28);
+    }
+    .agua { width: 100%; height: 100%; border-radius: 16px; position: relative; overflow: hidden; background: radial-gradient(circle at 30% 30%, #4FC3F7, #0288D1 65%, #01579B 100%); }
+    .reflexo-agua { position: absolute; inset: 0; opacity: 0.35; background: repeating-radial-gradient(circle at 50% 50%, transparent 0, transparent 18px, rgba(255,255,255,0.4) 20px, transparent 22px); animation: ondulacao 4s infinite linear; }
+    @keyframes ondulacao { 0% { transform: scale(1); } 50% { transform: scale(1.06); } 100% { transform: scale(1); } }
+    .crianca { position: absolute; cursor: grab; z-index: 20; touch-action: none; transform-origin: bottom center; }
+    .crianca:active { cursor: grabbing; z-index: 35; filter: drop-shadow(0 16px 12px rgba(0,0,0,0.35)); }
+    .corpo-svg { display: block; pointer-events: none; animation: respirar 2.4s infinite alternate ease-in-out; transform-origin: bottom center; }
+    @keyframes respirar { 0% { transform: scaleY(1); } 100% { transform: scaleY(1.022); } }
+    .olho-piscar { animation: piscarOlho 4.2s infinite; transform-origin: center; }
+    @keyframes piscarOlho { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+    .submerso::after { content: ''; position: absolute; bottom: 0; left: -6px; right: -6px; height: 46%; background: linear-gradient(180deg, rgba(129,212,250,0.62) 0%, rgba(2,136,209,0.86) 100%); border-top: 2.5px solid #FFF; border-radius: 4px 4px 16px 16px; pointer-events: none; }
+    .submerso .corpo-svg { animation: boiarAgua 1.2s infinite alternate ease-in-out; }
+    @keyframes boiarAgua { 0% { transform: translateY(-3px) rotate(-3deg); } 100% { transform: translateY(4px) rotate(3deg); } }
+    #barra { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.92); padding: 8px 16px; border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); display: flex; gap: 10px; z-index: 40; }
+    .btn { border: 2px solid #FFB300; background: #FFFDE7; color: #003366; font-weight: bold; font-size: 14px; border-radius: 16px; padding: 6px 12px; cursor: pointer; }
+    .gota-splash { position: absolute; width: 8px; height: 8px; background: #E1F5FE; border-radius: 50%; pointer-events: none; z-index: 30; animation: splashAnim 0.7s ease-out forwards; }
+    @keyframes splashAnim { 0% { opacity: 1; transform: translate(0,0) scale(1); } 100% { opacity: 0; transform: translate(var(--dx), -42px) scale(0.4); } }
+</style>
 </head>
-"""
-html_escola += """
 <body>
 <div id="cenario">
     <div id="noite"></div>
-    <div class="ceu">
-        <span class="item-ceu" onclick="diaNoite(this)">☀️</span>
-        <span class="item-ceu nuvem" onclick="nuvem(this, '💧')">☁️</span>
-        <span class="item-ceu nuvem" style="animation-delay:1.5s;" onclick="nuvem(this, '🕊️')">☁️</span>
+    <div class="sol-btn" onclick="alternarDiaNoite(this)">
+        <svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="18" fill="#FFD54F" stroke="#FFA000" stroke-width="2"/></svg>
     </div>
-    <div class="escola-box" onclick="abrirSala()">
-        <svg viewBox="0 0 360 195" width="100%" height="100%">
-            <polygon points="10,65 180,15 350,65" fill="#D62828" stroke="#8D0801" stroke-width="3"/>
-            <rect x="25" y="65" width="310" height="105" fill="#1E88E5" stroke="#0D47A1" stroke-width="3"/>
-            <rect x="45" y="72" width="270" height="24" rx="4" fill="#FFD700" stroke="#003366" stroke-width="2"/>
-            <text x="180" y="88" font-family="Comic Sans MS" font-size="13" font-weight="bold" fill="#003366" text-anchor="middle">EM PATO DONALD</text>
-            <rect x="155" y="115" width="50" height="55" rx="3" fill="#FFD700" stroke="#003366" stroke-width="2"/>
-            <rect class="janela" x="55" y="110" width="45" height="35" rx="3" fill="#E3F2FD" stroke="#003366" stroke-width="2"/>
-            <rect class="janela" x="260" y="110" width="45" height="35" rx="3" fill="#E3F2FD" stroke="#003366" stroke-width="2"/>
+    <svg class="nuvem-svg" style="top:6%; width:140px;" viewBox="0 0 140 60">
+        <path d="M25,48 Q10,48 10,35 Q10,23 24,22 Q30,8 48,10 Q64,4 78,16 Q95,12 106,24 Q125,25 125,38 Q125,48 110,48 Z" fill="#FFFFFF"/>
+    </svg>
+    <div class="predio">
+        <svg viewBox="0 0 380 210" width="100%" height="100%">
+            <ellipse cx="190" cy="202" rx="175" ry="7" fill="rgba(0,0,0,0.22)"/>
+            <polygon points="8,72 190,14 372,72" fill="#B71C1C" stroke="#7F0000" stroke-width="3"/>
+            <rect x="26" y="72" width="328" height="126" fill="#1976D2" stroke="#0D47A1" stroke-width="3"/>
+            <rect x="55" y="80" width="270" height="28" rx="6" fill="#FFD54F" stroke="#003366" stroke-width="2.5"/>
+            <text x="190" y="99" font-family="Segoe UI, sans-serif" font-size="14" font-weight="bold" fill="#003366" text-anchor="middle">EM PATO DONALD</text>
+            <rect x="160" y="124" width="60" height="74" rx="4" fill="#6D4C41" stroke="#3E2723" stroke-width="2.5"/>
+            <rect class="vidro-janela" x="56" y="122" width="56" height="44" rx="4" fill="#B3E5FC" stroke="#003366" stroke-width="2.5"/>
+            <rect class="vidro-janela" x="268" y="122" width="56" height="44" rx="4" fill="#B3E5FC" stroke="#003366" stroke-width="2.5"/>
         </svg>
-        <div class="aviso-sala">🚪 Entrar na Sala</div>
     </div>
-    <div id="piscina" class="piscina"><div class="agua-piscina"><span>🛟</span><span>🏊 Piscina</span></div></div>
-    <div class="arvores">
-        <span class="arvore" onclick="particulas(this,'🍃');som(520,880,0.2)">🌳</span>
-        <span class="arvore" onclick="particulas(this,'🍎');som(520,880,0.2)">🌲</span>
-        <span class="arvore" onclick="particulas(this,'🍃');som(520,880,0.2)">🌳</span>
+    <div class="sino" onclick="tocarSino(this)">
+        <svg viewBox="0 0 48 48" width="42" height="42"><path d="M24,6 C15,6 10,14 10,24 L6,34 L42,34 L38,24 C38,14 33,6 24,6 Z" fill="#FFB300" stroke="#E65100" stroke-width="2"/><circle cx="24" cy="37" r="4" fill="#E65100"/></svg>
     </div>
-    <div id="sala" style="display:none; position:absolute; inset:0; background:linear-gradient(to bottom, #FFF8E1 0%, #FFE082 78%, #8D6E63 78%, #5D4037 100%); z-index:50; flex-direction:column; justify-content:space-between; align-items:center; padding:10px;">
-        <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
-            <button onclick="document.getElementById('sala').style.display='none'" style="background:#FF5252; color:white; border:2px solid white; border-radius:14px; padding:6px 12px; font-weight:bold; cursor:pointer;">⬅️ Pátio</button>
-            <div style="background:#FFD700; color:#003366; border:3px solid #003366; border-radius:14px; padding:4px 12px; font-weight:bold;">👩‍🏫 Sala - EM Pato Donald</div>
-            <button onclick="limparLousa()" style="background:#1565C0; color:white; border:2px solid white; border-radius:14px; padding:6px 12px; font-weight:bold; cursor:pointer;">🧽 Apagar</button>
-        </div>
-        <div style="position:relative; width:94%; height:64%; background:#1B5E20; border:10px solid #6D4C41; border-radius:16px; overflow:hidden;">
-            <canvas id="lousa" style="width:100%; height:100%; display:block; cursor:crosshair; touch-action:none;"></canvas>
-            <div onclick="falarProf(this)" style="position:absolute; bottom:4px; left:8px; display:flex; align-items:flex-end; gap:6px; cursor:pointer;">
-                <span style="font-size:64px; line-height:1;">👩‍🏫</span>
-                <div id="fala-prof" style="background:white; color:#003366; border:2px solid #003366; border-radius:14px; padding:5px 10px; font-weight:bold; margin-bottom:20px;">Desenhe na lousa! ✏️</div>
-            </div>
-            <div onclick="particulas(this,'✨');som(440,880,0.25)" style="position:absolute; bottom:8px; right:12px; font-size:48px; cursor:pointer;">🌍</div>
-        </div>
-        <div style="background:white; padding:8px 14px; border-radius:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center;">
-            <button onclick="corGiz='#FFF'" style="width:28px;height:28px;border-radius:50%;background:#FFF;border:2px solid #333;"></button>
-            <button onclick="corGiz='#FFEB3B'" style="width:28px;height:28px;border-radius:50%;background:#FFEB3B;border:2px solid #333;"></button>
-            <button onclick="corGiz='#FF5252'" style="width:28px;height:28px;border-radius:50%;background:#FF5252;border:2px solid #333;"></button>
-            <button onclick="corGiz='#40C4FF'" style="width:28px;height:28px;border-radius:50%;background:#40C4FF;border:2px solid #333;"></button>
-            <button onclick="carimbo('⭐')" class="btn">⭐</button>
-            <button onclick="carimbo('🦆')" class="btn">🦆</button>
-            <button onclick="carimbo('❤️')" class="btn">❤️</button>
-        </div>
-    </div>
-    <div class="placa">🏫 EM Pato Donald - Clique na Escola para entrar na Sala!</div>
+    <div id="piscina" class="piscina"><div class="agua"><div class="reflexo-agua"></div></div></div>
     <div id="palco"></div>
     <div id="barra">
-        <button class="btn" onclick="spawn('👧')">👧</button>
-        <button class="btn" onclick="spawn('👦')">👦</button>
-        <button class="btn" onclick="spawn('🦆')">🦆</button>
-        <button class="btn" onclick="spawn('🐶')">🐶</button>
-        <button class="btn" onclick="spawn('🍎')">🍎</button>
-        <button class="btn" onclick="spawn('⚽')">⚽</button>
-        <button class="btn-cmd" style="background:#4CAF50;color:white;" onclick="resetar()">🔄 Organizar</button>
-        <button class="btn-cmd" style="background:#FF5252;color:white;" onclick="document.getElementById('palco').innerHTML=''">🗑️</button>
+        <button class="btn" onclick="criarCrianca('MENINA', 35, 58)">+ Menina</button>
+        <button class="btn" onclick="criarCrianca('MENINO', 48, 60)">+ Menino</button>
+        <button class="btn" style="background:#E8F5E9; border-color:#4CAF50;" onclick="iniciarCena()">Organizar</button>
     </div>
 </div>
 """
-html_escola += """
+html_teste += """
 <script>
     const audio = new (window.AudioContext || window.webkitAudioContext)();
-    let noite = false, corGiz = '#FFF', ctx = null, desenhando = false;
-    const svgs = {
-        'ESCORREGADOR': '<svg viewBox="0 0 110 95" width="96" height="82"><path d="M16 86 L28 18 L40 18 L28 86" stroke="#1565C0" stroke-width="5.5" fill="none"/><path d="M38 20 Q58 64 98 80" stroke="#E53935" stroke-width="10" fill="none" stroke-linecap="round"/></svg>',
-        'BALANCO': '<svg viewBox="0 0 105 95" width="92" height="82"><path d="M14 86 L28 16 L76 16 L90 86" stroke="#D32F2F" stroke-width="5.5" fill="none"/><line x1="42" y1="16" x2="42" y2="64" stroke="#546E7A" stroke-width="2.5"/><line x1="62" y1="16" x2="62" y2="64" stroke="#546E7A" stroke-width="2.5"/><rect x="35" y="62" width="34" height="7" rx="3" fill="#FFB300"/></svg>',
-        'GANGORRA': '<svg viewBox="0 0 110 74" width="96" height="64"><polygon points="45,67 55,40 65,67" fill="#1565C0"/><line x1="12" y1="55" x2="98" y2="27" stroke="#FFB300" stroke-width="7.5" stroke-linecap="round"/></svg>'
+    let ehNoite = false;
+
+    const modelos = {
+        'MENINA': `<svg class="corpo-svg" viewBox="0 0 90 140" width="76" height="118">
+            <ellipse cx="45" cy="133" rx="24" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+            <circle cx="21" cy="30" r="11" fill="#3E2723"/><circle cx="69" cy="30" r="11" fill="#3E2723"/>
+            <rect x="34" y="96" width="8" height="28" rx="4" fill="#F4B47C"/>
+            <rect x="48" y="96" width="8" height="28" rx="4" fill="#F4B47C"/>
+            <path d="M30,121 Q38,118 43,124 L43,129 L29,129 Z" fill="#EC407A" stroke="#880E4F" stroke-width="1.2"/>
+            <path d="M47,124 Q52,118 60,121 L61,129 L47,129 Z" fill="#EC407A" stroke="#880E4F" stroke-width="1.2"/>
+            <rect x="19" y="62" width="8" height="28" rx="4" fill="#FFE0B2" transform="rotate(14 19 62)"/>
+            <rect x="63" y="62" width="8" height="28" rx="4" fill="#FFE0B2" transform="rotate(-14 63 62)"/>
+            <path d="M29,60 L61,60 L67,100 L23,100 Z" fill="#FF4081" stroke="#880E4F" stroke-width="1.5"/>
+            <circle cx="45" cy="34" r="21" fill="#FFE0B2" stroke="#D79B60" stroke-width="1.5"/>
+            <path d="M24,31 Q45,14 66,31 Q62,11 45,11 Q28,11 24,31 Z" fill="#3E2723"/>
+            <g class="olho-piscar">
+                <ellipse cx="38" cy="33" rx="2.8" ry="3.2" fill="#212121"/><circle cx="39" cy="32" r="1" fill="#FFF"/>
+                <ellipse cx="52" cy="33" rx="2.8" ry="3.2" fill="#212121"/><circle cx="53" cy="32" r="1" fill="#FFF"/>
+            </g>
+            <path d="M39,43 Q45,49 51,43" stroke="#B71C1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        </svg>`,
+
+        'MENINO': `<svg class="corpo-svg" viewBox="0 0 90 140" width="76" height="118">
+            <ellipse cx="45" cy="133" rx="24" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+            <rect x="34" y="96" width="8" height="28" rx="4" fill="#E09F67"/>
+            <rect x="48" y="96" width="8" height="28" rx="4" fill="#E09F67"/>
+            <path d="M30,121 Q38,118 43,124 L43,129 L29,129 Z" fill="#1565C0" stroke="#0D47A1" stroke-width="1.2"/>
+            <path d="M47,124 Q52,118 60,121 L61,129 L47,129 Z" fill="#1565C0" stroke="#0D47A1" stroke-width="1.2"/>
+            <rect x="28" y="83" width="15" height="18" rx="4" fill="#283593"/>
+            <rect x="47" y="83" width="15" height="18" rx="4" fill="#283593"/>
+            <rect x="19" y="62" width="8" height="28" rx="4" fill="#FFCC80" transform="rotate(14 19 62)"/>
+            <rect x="63" y="62" width="8" height="28" rx="4" fill="#FFCC80" transform="rotate(-14 63 62)"/>
+            <rect x="27" y="58" width="36" height="28" rx="8" fill="#00ACC1" stroke="#006064" stroke-width="1.5"/>
+            <rect x="27" y="68" width="36" height="5" fill="#FFD54F"/>
+            <circle cx="45" cy="34" r="21" fill="#FFCC80" stroke="#C68642" stroke-width="1.5"/>
+            <path d="M23,30 Q26,10 45,10 Q64,10 67,30 Q56,21 45,23 Q34,21 23,30 Z" fill="#263238"/>
+            <g class="olho-piscar">
+                <ellipse cx="38" cy="33" rx="2.8" ry="3.2" fill="#212121"/><circle cx="39" cy="32" r="1" fill="#FFF"/>
+                <ellipse cx="52" cy="33" rx="2.8" ry="3.2" fill="#212121"/><circle cx="53" cy="32" r="1" fill="#FFF"/>
+            </g>
+            <path d="M39,43 Q45,49 51,43" stroke="#B71C1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        </svg>`
     };
+
     function som(f1, f2, d) {
         if (audio.state === 'suspended') audio.resume();
         const o = audio.createOscillator(), g = audio.createGain();
         o.frequency.setValueAtTime(f1, audio.currentTime);
         o.frequency.exponentialRampToValueAtTime(f2, audio.currentTime + d);
-        g.gain.setValueAtTime(0.15, audio.currentTime);
+        g.gain.setValueAtTime(0.14, audio.currentTime);
         g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d);
         o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + d);
     }
-    function particulas(el, s) {
-        const c = document.getElementById('cenario'), r = el.getBoundingClientRect(), cr = c.getBoundingClientRect();
-        for (let i = 0; i < 4; i++) {
-            const p = document.createElement('div'); p.className = 'particula'; p.innerText = s;
-            p.style.left = (r.left - cr.left + 10 + Math.random()*35) + 'px';
-            p.style.top = (r.top - cr.top + 10) + 'px';
-            c.appendChild(p); setTimeout(() => p.remove(), 1400);
+
+    function splashAgua(el) {
+        const c = document.getElementById('cenario'), r = el.getBoundingClientRect();
+        for (let i = 0; i < 8; i++) {
+            const g = document.createElement('div');
+            g.className = 'gota-splash';
+            g.style.left = (r.left + r.width/2) + 'px';
+            g.style.top = (r.top + r.height*0.6) + 'px';
+            g.style.setProperty('--dx', ((Math.random() - 0.5) * 90) + 'px');
+            c.appendChild(g);
+            setTimeout(() => g.remove(), 700);
         }
     }
-    function darDesejo(el) {
-        if (!['👧','👦','🦆','🐶'].includes(el.dataset.tipo)) return;
-        const ant = el.querySelector('.balao'); if (ant) ant.remove();
-        const opcoes = ['🏊', '🛝', '🍎', '⚽'];
-        const d = opcoes[Math.floor(Math.random()*opcoes.length)];
-        el.dataset.desejo = d;
-        const b = document.createElement('div'); b.className = 'balao'; b.innerText = d;
-        el.appendChild(b);
+
+    function tocarSino(el) {
+        el.classList.remove('tocando'); void el.offsetWidth; el.classList.add('tocando');
+        som(880, 1180, 0.25); setTimeout(() => som(880, 1180, 0.35), 240);
     }
-    function cumprirDesejo(el, pedido) {
-        if (el.dataset.desejo === pedido) {
-            delete el.dataset.desejo;
-            const b = el.querySelector('.balao'); if (b) b.remove();
-            som(520, 980, 0.25); particulas(el, '🌟');
-            setTimeout(() => darDesejo(el), 5000);
-        }
+
+    function alternarDiaNoite(el) {
+        ehNoite = !ehNoite;
+        document.getElementById('cenario').classList.toggle('noite', ehNoite);
+        el.innerHTML = ehNoite
+            ? '<svg viewBox="0 0 64 64" width="60" height="60"><path d="M40,12 A22,22 0 1,0 54,44 A18,18 0 1,1 40,12 Z" fill="#FFF59D"/></svg>'
+            : '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="18" fill="#FFD54F" stroke="#FFA000" stroke-width="2"/></svg>';
+        som(ehNoite ? 580 : 380, ehNoite ? 300 : 860, 0.35);
     }
-    function diaNoite(el) {
-        noite = !noite;
-        const c = document.getElementById('cenario'), n = document.getElementById('noite');
-        c.classList.toggle('noite', noite); el.innerText = noite ? '🌙' : '☀️'; n.innerHTML = '';
-        if (noite) {
-            for (let i = 0; i < 28; i++) {
-                const s = document.createElement('div'); s.className = 'estrela';
-                s.style.width = s.style.height = '3px'; s.style.left = Math.random()*95+'%'; s.style.top = Math.random()*40+'%';
-                n.appendChild(s);
-            }
-            for (let i = 0; i < 12; i++) {
-                const v = document.createElement('div'); v.className = 'vagalume';
-                v.style.left = (10+Math.random()*80)+'%'; v.style.top = (55+Math.random()*30)+'%';
-                n.appendChild(v);
-            }
-        }
-        som(noite ? 600 : 400, noite ? 320 : 840, 0.35);
-    }
-    function nuvem(el, s) { particulas(el, s); som(340, 200, 0.25); }
-    function abrirSala() {
-        document.getElementById('sala').style.display = 'flex'; som(520, 780, 0.2);
-        const cv = document.getElementById('lousa');
-        if (!ctx) {
-            cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; ctx = cv.getContext('2d');
-            ctx.lineCap = 'round'; ctx.lineWidth = 5;
-            cv.onpointerdown = e => { desenhando = true; const r = cv.getBoundingClientRect(); ctx.strokeStyle = corGiz; ctx.beginPath(); ctx.moveTo(e.clientX-r.left, e.clientY-r.top); };
-            cv.onpointermove = e => { if (!desenhando) return; const r = cv.getBoundingClientRect(); ctx.lineTo(e.clientX-r.left, e.clientY-r.top); ctx.stroke(); };
-            cv.onpointerup = () => desenhando = false;
-        }
-    }
-    function limparLousa() { const cv = document.getElementById('lousa'); if (ctx) ctx.clearRect(0,0,cv.width,cv.height); }
-    function carimbo(e) { const cv = document.getElementById('lousa'); if (ctx) { ctx.font = '36px sans-serif'; ctx.fillText(e, 60+Math.random()*(cv.width-120), 60+Math.random()*(cv.height-120)); } }
-    function falarProf(el) {
-        const f = ['Muito bem! 🌟', 'Que lindo desenho! 🎨', 'Parabéns, turma! 👏'];
-        document.getElementById('fala-prof').innerText = f[Math.floor(Math.random()*f.length)];
-        som(540, 860, 0.2); particulas(el, '⭐');
-    }
-"""
-html_escola += """
-    function aplicarEscala(el) {
+
+    function atualizarProfundidade(el) {
         const top = parseFloat(el.style.top) || el.offsetTop;
-        const esc = 0.8 + Math.max(0.25, Math.min(1, top / window.innerHeight)) * 0.32;
-        const inv = el.dataset.inv === '-1' ? -1 : 1;
-        el.style.transform = `scale(${inv * esc}, ${esc})`;
+        const esc = 0.72 + Math.max(0.35, Math.min(1, top / window.innerHeight)) * 0.36;
+        const dir = el.dataset.dir === '-1' ? -1 : 1;
+        el.style.transform = `scale(${dir * esc}, ${esc})`;
     }
-    function checarInteracoes(el) {
-        const tipo = el.dataset.tipo, r = el.getBoundingClientRect(), cx = r.left + r.width/2, cy = r.top + r.height/2;
-        if (tipo === '🍎') {
-            document.querySelectorAll('.ator').forEach(o => {
-                if (o !== el && ['👧','👦','🦆','🐶'].includes(o.dataset.tipo)) {
-                    const ro = o.getBoundingClientRect();
-                    if (Math.abs(cx-(ro.left+ro.width/2)) < 55 && Math.abs(cy-(ro.top+ro.height/2)) < 55) {
-                        cumprirDesejo(o, '🍎'); som(450, 780, 0.2); particulas(o, '❤️'); el.remove();
-                    }
-                }
-            });
-            return;
+
+    function checarPiscina(el, tocarSom) {
+        const r = el.getBoundingClientRect(), p = document.getElementById('piscina').getBoundingClientRect();
+        const cx = r.left + r.width/2, cy = r.top + r.height*0.75;
+        const dentro = cx >= p.left && cx <= p.right && cy >= p.top && cy <= p.bottom;
+        if (dentro && !el.classList.contains('submerso')) {
+            el.classList.add('submerso'); el.dataset.dir = '1';
+            if (tocarSom) { som(260, 560, 0.25); splashAgua(el); }
+        } else if (!dentro) {
+            el.classList.remove('submerso'); el.dataset.dir = '1';
+            atualizarProfundidade(el);
         }
-        const pisc = document.getElementById('piscina').getBoundingClientRect();
-        const naPiscina = cx >= pisc.left && cx <= pisc.right && cy >= pisc.top && cy <= pisc.bottom;
-        el.classList.toggle('nadando', naPiscina);
-        if (naPiscina) { el.dataset.dir = '1'; cumprirDesejo(el, '🏊'); som(280, 560, 0.22); particulas(el, '💦'); return; }
-        document.querySelectorAll('.brinquedo').forEach(b => {
-            const rb = b.getBoundingClientRect();
-            if (cx >= rb.left-10 && cx <= rb.right+10 && cy >= rb.top-15 && cy <= rb.bottom+10) {
-                const tb = b.dataset.tipo;
-                if (tb === 'ESCORREGADOR') {
-                    cumprirDesejo(el, '🛝');
-                    el.style.left = (rb.left + rb.width*0.2) + 'px'; el.style.top = (rb.top + 5) + 'px';
-                    som(760, 260, 0.6);
-                    setTimeout(() => { el.style.transition = 'all 0.7s ease-in'; el.style.left = (rb.left + rb.width*0.8) + 'px'; el.style.top = (rb.top + rb.height*0.6) + 'px'; }, 30);
-                    setTimeout(() => { el.style.transition = 'none'; particulas(el, '🎉'); aplicarEscala(el); }, 750);
-                } else if (tb === 'BALANCO') {
-                    el.classList.add('balancando'); el.style.left = (rb.left + rb.width*0.35) + 'px'; el.style.top = (rb.top + rb.height*0.35) + 'px'; som(380, 560, 0.25);
-                } else if (tb === 'GANGORRA') {
-                    el.classList.add('gangorra'); el.style.left = (rb.left + rb.width*0.15) + 'px'; el.style.top = (rb.top + rb.height*0.25) + 'px'; som(320, 480, 0.25);
-                }
-            }
-        });
     }
-    function loop() {
-        const pisc = document.getElementById('piscina').getBoundingClientRect();
-        document.querySelectorAll('.nadando').forEach(el => {
+
+    function loopNado() {
+        const p = document.getElementById('piscina').getBoundingClientRect();
+        document.querySelectorAll('.submerso').forEach(el => {
             if (el.dataset.drag === '1') return;
-            let left = parseFloat(el.style.left) || el.offsetLeft, dir = parseFloat(el.dataset.dir || '1');
-            left += dir * 0.9;
-            if (left >= pisc.right - 48) { left = pisc.right - 48; dir = -1; }
-            if (left <= pisc.left + 8) { left = pisc.left + 8; dir = 1; }
-            el.dataset.dir = dir; el.style.left = left + 'px'; el.dataset.inv = dir > 0 ? '-1' : '1'; aplicarEscala(el);
+            let left = parseFloat(el.style.left) || el.offsetLeft;
+            let dir = parseFloat(el.dataset.dir || '1');
+            left += dir * 0.85;
+            if (left >= p.right - 68) { left = p.right - 68; dir = -1; }
+            if (left <= p.left + 8) { left = p.left + 8; dir = 1; }
+            el.dataset.dir = dir.toString();
+            el.style.left = left + 'px';
+            atualizarProfundidade(el);
         });
-        requestAnimationFrame(loop);
+        requestAnimationFrame(loopNado);
     }
-    requestAnimationFrame(loop);
-    function criarAtor(tipo, xPct, yPct) {
-        const palco = document.getElementById('palco'), el = document.createElement('div');
-        el.className = 'ator';
-        if (['ESCORREGADOR','BALANCO','GANGORRA'].includes(tipo)) el.classList.add('brinquedo');
-        el.dataset.tipo = tipo;
-        const corpo = document.createElement('div'); corpo.className = 'corpo';
-        if (svgs[tipo]) corpo.innerHTML = svgs[tipo]; else corpo.innerText = tipo;
-        el.appendChild(corpo);
+    requestAnimationFrame(loopNado);
+
+    function criarCrianca(tipo, xPct, yPct) {
+        const palco = document.getElementById('palco');
+        const el = document.createElement('div');
+        el.className = 'crianca';
+        el.innerHTML = modelos[tipo];
         el.style.left = (window.innerWidth * xPct / 100) + 'px';
         el.style.top = (window.innerHeight * yPct / 100) + 'px';
-        let drag = false, ox = 0, oy = 0, moveu = false;
-        el.onpointerdown = e => { drag = true; moveu = false; el.dataset.drag = '1'; el.classList.remove('balancando','gangorra'); const r = el.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top; el.setPointerCapture(e.pointerId); };
-        el.onpointermove = e => { if (!drag) return; moveu = true; el.style.left = Math.max(5, Math.min(e.clientX - ox, window.innerWidth - 75)) + 'px'; el.style.top = Math.max(40, Math.min(e.clientY - oy, window.innerHeight - 115)) + 'px'; aplicarEscala(el); };
-        el.onpointerup = e => {
-            drag = false; el.dataset.drag = '0'; el.releasePointerCapture(e.pointerId);
-            if (!moveu && tipo === '⚽') {
-                el.classList.remove('quicar'); void el.offsetWidth; el.classList.add('quicar');
-                document.querySelectorAll('.ator').forEach(o => cumprirDesejo(o, '⚽'));
-                som(240, 520, 0.25); particulas(el, '⭐'); return;
-            }
-            aplicarEscala(el);
-            if (!el.classList.contains('brinquedo')) checarInteracoes(el);
+
+        let drag = false, ox = 0, oy = 0;
+        el.onpointerdown = e => {
+            drag = true; el.dataset.drag = '1';
+            const r = el.getBoundingClientRect();
+            ox = e.clientX - r.left; oy = e.clientY - r.top;
+            el.setPointerCapture(e.pointerId);
+            som(420, 620, 0.12);
         };
-        palco.appendChild(el); aplicarEscala(el);
-        setTimeout(() => darDesejo(el), 1500 + Math.random()*2000);
+        el.onpointermove = e => {
+            if (!drag) return;
+            el.style.left = Math.max(5, Math.min(e.clientX - ox, window.innerWidth - 80)) + 'px';
+            el.style.top = Math.max(80, Math.min(e.clientY - oy, window.innerHeight - 135)) + 'px';
+            atualizarProfundidade(el);
+        };
+        el.onpointerup = e => {
+            drag = false; el.dataset.drag = '0';
+            el.releasePointerCapture(e.pointerId);
+            checarPiscina(el, true);
+            atualizarProfundidade(el);
+        };
+        palco.appendChild(el);
+        atualizarProfundidade(el);
     }
-    function spawn(t) { criarAtor(t, 20 + Math.random()*55, 55 + Math.random()*18); }
-    function resetar() {
+
+    function iniciarCena() {
         document.getElementById('palco').innerHTML = '';
-        criarAtor('👧', 34, 55); criarAtor('👦', 46, 56); criarAtor('🦆', 12, 74); criarAtor('🐶', 22, 74);
-        criarAtor('ESCORREGADOR', 56, 52); criarAtor('BALANCO', 77, 52); criarAtor('GANGORRA', 34, 72); criarAtor('⚽', 48, 75);
+        criarCrianca('MENINA', 34, 52);
+        criarCrianca('MENINO', 46, 56);
     }
-    resetar();
+    iniciarCena();
 </script>
 </body>
 </html>
 """
 
-components.html(html_escola, height=740, scrolling=False)
+components.html(html_teste, height=740, scrolling=False)
