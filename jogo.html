@@ -9,8 +9,8 @@
   #box { position: relative; width: 100%; max-width: 880px; aspect-ratio: 880 / 590; border: 3px solid #1e293b; border-radius: 12px; overflow: hidden; background: #000; outline: none; }
   canvas { display: block; width: 100%; height: 100%; }
   #garagem, #fim { position: absolute; inset: 0; background: rgba(11,15,25,0.96); display: flex; flex-direction: column; justify-content: space-between; padding: 14px 18px; overflow-y: auto; z-index: 20; }
-  #fim { display: none; justify-content: center; align-items: center; text-align: center; }
-  h1 { color: #facc15; margin: 0; font-size: clamp(18px, 3vw, 26px); }
+  #fim { display: none; justify-content: center; align-items: center; text-align: center; padding: 20px; }
+  h1 { color: #facc15; margin: 0; font-size: clamp(18px, 3vw, 25px); }
   .grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px; flex: 1; margin: 8px 0; }
   @media (max-width: 680px) {
     #box { aspect-ratio: auto; min-height: 640px; }
@@ -28,61 +28,51 @@
   #btn-play, .btn-re { flex: none; width: 100%; padding: 12px; background: #16a34a; font-size: 16px; border: none; border-radius: 8px; }
   .btn-re { width: auto; padding: 12px 24px; background: #0284c7; }
   #controles-tela { display: none; position: absolute; bottom: 66px; left: 16px; right: 16px; justify-content: space-between; align-items: flex-end; pointer-events: none; z-index: 10; }
-  .seta-btn { touch-action: none; border-radius: 16px; font-size: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform 0.08s; }
+  .seta-btn { touch-action: none; border-radius: 16px; font-size: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform 0.08s; }
   .seta-btn:active { transform: scale(0.92); filter: brightness(1.25); }
   .seta-lbl { font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-top: 2px; }
 </style>
 </head>
 <body>
-<div id="box" tabindex="0">
-  <canvas id="c" width="880" height="590"></canvas>
+<div id="box" tabindex="0" onclick="this.focus()">
+  <canvas id="c" width="880" height="590" onclick="document.getElementById('box').focus()"></canvas>
 
-  <!-- SETAS DIRECIONAIS NA TELA (VIRAR E ACELERAR/FREAR) -->
+  <!-- SETAS DIRECIONAIS NA TELA (FUNCIONA NO MOUSE DO PC E NO TOQUE DO CELULAR) -->
   <div id="controles-tela">
-    <!-- Lado Esquerdo: Setas de Virar -->
     <div style="display:flex;gap:12px;pointer-events:auto;">
-      <button class="seta-btn"
-        onpointerdown="e=>{e.preventDefault();keys['ArrowLeft']=true}"
-        onpointerup="keys['ArrowLeft']=false"
-        onpointerleave="keys['ArrowLeft']=false"
-        onpointercancel="keys['ArrowLeft']=false"
+      <button type="button" class="seta-btn"
+        onmousedown="keys['ArrowLeft']=true" onmouseup="keys['ArrowLeft']=false" onmouseleave="keys['ArrowLeft']=false"
+        ontouchstart="keys['ArrowLeft']=true" ontouchend="keys['ArrowLeft']=false"
         style="width:74px;height:74px;background:rgba(15,23,42,0.82);border:2px solid #38bdf8;">
         <span>⬅️</span>
         <span class="seta-lbl">ESQUERDA</span>
       </button>
-      <button class="seta-btn"
-        onpointerdown="e=>{e.preventDefault();keys['ArrowRight']=true}"
-        onpointerup="keys['ArrowRight']=false"
-        onpointerleave="keys['ArrowRight']=false"
-        onpointercancel="keys['ArrowRight']=false"
+      <button type="button" class="seta-btn"
+        onmousedown="keys['ArrowRight']=true" onmouseup="keys['ArrowRight']=false" onmouseleave="keys['ArrowRight']=false"
+        ontouchstart="keys['ArrowRight']=true" ontouchend="keys['ArrowRight']=false"
         style="width:74px;height:74px;background:rgba(15,23,42,0.82);border:2px solid #38bdf8;">
         <span>➡️</span>
         <span class="seta-lbl">DIREITA</span>
       </button>
     </div>
 
-    <!-- Lado Direito: Nitro + Setas de Frear e Acelerar -->
     <div style="display:flex;gap:10px;align-items:flex-end;pointer-events:auto;">
-      <button class="seta-btn"
-        onpointerdown="e=>{e.preventDefault();ativarNitro()}"
+      <button type="button" class="seta-btn"
+        onmousedown="ativarNitro()" ontouchstart="ativarNitro()"
         style="width:64px;height:64px;background:rgba(2,132,199,0.85);border:2px solid #7dd3fc;">
         <span>🔥</span>
         <span class="seta-lbl">NITRO</span>
       </button>
-      <button class="seta-btn"
-        onpointerdown="e=>{e.preventDefault();keys['ArrowDown']=true}"
-        onpointerup="keys['ArrowDown']=false"
-        onpointerleave="keys['ArrowDown']=false"
-        onpointercancel="keys['ArrowDown']=false"
+      <button type="button" class="seta-btn"
+        onmousedown="keys['ArrowDown']=true" onmouseup="keys['ArrowDown']=false" onmouseleave="keys['ArrowDown']=false"
+        ontouchstart="keys['ArrowDown']=true" ontouchend="keys['ArrowDown']=false"
         style="width:68px;height:74px;background:rgba(220,38,38,0.85);border:2px solid #fca5a5;">
         <span>⬇️</span>
         <span class="seta-lbl">FREAR</span>
       </button>
-      <button class="seta-btn"
-        onpointerdown="e=>{e.preventDefault();keys['ArrowUp']=true}"
-        onpointerup="keys['ArrowUp']=false"
-        onpointerleave="keys['ArrowUp']=false"
-        onpointercancel="keys['ArrowUp']=false"
+      <button type="button" class="seta-btn"
+        onmousedown="keys['ArrowUp']=true" onmouseup="keys['ArrowUp']=false" onmouseleave="keys['ArrowUp']=false"
+        ontouchstart="keys['ArrowUp']=true" ontouchend="keys['ArrowUp']=false"
         style="width:82px;height:86px;background:rgba(22,163,74,0.9);border:2px solid #86efac;">
         <span>⬆️</span>
         <span class="seta-lbl">ACELERAR</span>
@@ -118,30 +108,30 @@
         <div>
           <small>MOTOR</small>
           <div class="ops">
-            <button class="ativo" id="btn-m0" onclick="setOp('m',0,this)">V6 Stock</button>
-            <button id="btn-m1" onclick="setOp('m',1,this)">🔒 V8 Turbo</button>
-            <button id="btn-m2" onclick="setOp('m',2,this)">🔒 V10 GT</button>
-            <button id="btn-m3" onclick="setOp('m',3,this)">🔒 V12 Hyper</button>
+            <button type="button" class="ativo" id="btn-m0" onclick="setOp('m',0,this)">V6 Stock</button>
+            <button type="button" id="btn-m1" onclick="setOp('m',1,this)">🔒 V8 Turbo</button>
+            <button type="button" id="btn-m2" onclick="setOp('m',2,this)">🔒 V10 GT</button>
+            <button type="button" id="btn-m3" onclick="setOp('m',3,this)">🔒 V12 Hyper</button>
           </div>
           <small>SISTEMA DE FREIOS</small>
           <div class="ops">
-            <button class="ativo" id="btn-f0" onclick="setOp('f',0,this)">Ventilado</button>
-            <button id="btn-f1" onclick="setOp('f',1,this)">🔒 Cerâmica</button>
-            <button id="btn-f2" onclick="setOp('f',2,this)">🔒 Carbono F1</button>
+            <button type="button" class="ativo" id="btn-f0" onclick="setOp('f',0,this)">Ventilado</button>
+            <button type="button" id="btn-f1" onclick="setOp('f',1,this)">🔒 Cerâmica</button>
+            <button type="button" id="btn-f2" onclick="setOp('f',2,this)">🔒 Carbono F1</button>
           </div>
           <small>TANQUE DE GASOLINA</small>
           <div class="ops">
-            <button class="ativo" id="btn-t0" onclick="setOp('t',0,this)">50L Stock</button>
-            <button id="btn-t1" onclick="setOp('t',1,this)">🔒 75L Sport</button>
-            <button id="btn-t2" onclick="setOp('t',2,this)">🔒 100L Pro</button>
+            <button type="button" class="ativo" id="btn-t0" onclick="setOp('t',0,this)">50L Stock</button>
+            <button type="button" id="btn-t1" onclick="setOp('t',1,this)">🔒 75L Sport</button>
+            <button type="button" id="btn-t2" onclick="setOp('t',2,this)">🔒 100L Pro</button>
           </div>
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
             <div style="flex:1;">
               <small>RODAS</small>
               <div class="ops" style="margin-bottom:0;">
-                <button class="ativo" onclick="setOp('r',0,this)">Prata</button>
-                <button onclick="setOp('r',1,this)">Ouro</button>
-                <button onclick="setOp('r',2,this)">Carbono</button>
+                <button type="button" class="ativo" onclick="setOp('r',0,this)">Prata</button>
+                <button type="button" onclick="setOp('r',1,this)">Ouro</button>
+                <button type="button" onclick="setOp('r',2,this)">Carbono</button>
               </div>
             </div>
             <div>
@@ -159,13 +149,13 @@
         <small style="color:#38bdf8;margin-top:6px;" id="desc-missao">Pista: Costa do Sol (Limpo) | Meta: Top 15 para liberar V8 Turbo + Freio Cerâmica!</small>
       </div>
     </div>
-    <button id="btn-play" onclick="iniciar()">🏁 INICIAR MISSÃO 1</button>
+    <button type="button" id="btn-play" onclick="iniciar()">🏁 INICIAR MISSÃO 1</button>
   </div>
 
   <div id="fim">
     <h1 id="ftit" style="font-size:34px">FIM!</h1>
     <p id="fdesc" style="font-size:17px;max-width:600px;line-height:1.5;"></p>
-    <button class="btn-re" onclick="voltar()">🔧 VOLTAR À OFICINA</button>
+    <button type="button" class="btn-re" onclick="voltar()">🔧 VOLTAR À OFICINA</button>
   </div>
 </div>
 <script>
@@ -482,12 +472,36 @@ function ativarNitro() {
   }
 }
 
-window.addEventListener('keydown', e => {
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  keys[e.code] = true;
-  if (e.code === 'Space') ativarNitro();
-});
-window.addEventListener('keyup', e => { keys[e.code] = false; });
+function tratarTecla(e, pressionada) {
+  const k = e.key ? e.key.toLowerCase() : '';
+  const c = e.code || '';
+
+  if (c === 'ArrowUp' || k === 'arrowup' || k === 'w') {
+    e.preventDefault();
+    keys['ArrowUp'] = pressionada;
+  }
+  if (c === 'ArrowDown' || k === 'arrowdown' || k === 's') {
+    e.preventDefault();
+    keys['ArrowDown'] = pressionada;
+  }
+  if (c === 'ArrowLeft' || k === 'arrowleft' || k === 'a') {
+    e.preventDefault();
+    keys['ArrowLeft'] = pressionada;
+  }
+  if (c === 'ArrowRight' || k === 'arrowright' || k === 'd') {
+    e.preventDefault();
+    keys['ArrowRight'] = pressionada;
+  }
+  if ((c === 'Space' || k === ' ') && pressionada) {
+    e.preventDefault();
+    ativarNitro();
+  }
+}
+
+document.addEventListener('keydown', e => tratarTecla(e, true), { passive: false });
+document.addEventListener('keyup', e => tratarTecla(e, false));
+window.addEventListener('keydown', e => tratarTecla(e, true), { passive: false });
+window.addEventListener('keyup', e => tratarTecla(e, false));
 
 function iniciar() {
   const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
@@ -504,7 +518,7 @@ function iniciar() {
   document.getElementById('box').focus();
 
   pos = 0; px = 0; vel = 0; nit = 3; tnit = 0; tempo = 0; trem = 0;
-  segs = []; rivais = []; galoes = []; gotasClima = [];
+  segs = []; rivais = []; galoes = []; gotasClima = []; keys = {};
 
   for (let i = 0; i < 95; i++) {
     gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 6 + Math.random() * 8 });
@@ -538,6 +552,7 @@ function voltar() {
 
 function fimJogo(win, p) {
   run = false;
+  keys = {};
   document.getElementById('controles-tela').style.display = 'none';
   const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
 
@@ -553,7 +568,7 @@ function fimJogo(win, p) {
       if (nivel <= 2) {
         msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVAS PEÇAS LIBERADAS:<br>• Motor ${MOT[nivel].nome} (${MOT[nivel].v} KM/H)<br>• Freios ${FRE[nivel].nome}<br>• Tanque ${TAN[nivel].nome}</b>`;
       } else if (nivel === 3) {
-        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ${MOT[3].nome} (${MOT[3].v} KM/H)!</b>`;
+        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ${MOT.nome} (${MOT.v} KM/H)!</b>`;
       } else {
         msgExtra = '<br><br><b style="color:#facc15;">🏆 VOCÊ VENCEU TODAS AS MISSÕES DO HORIZONTE TURBO!</b>';
       }
@@ -575,8 +590,10 @@ function loop(now) {
   const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r], pista = PISTAS[pistaIdxAtual];
   if (tnit > 0) tnit -= dt; const na = tnit > 0;
 
-  const acel = keys['ArrowUp'] || keys['KeyW'], fre = keys['ArrowDown'] || keys['KeyS'];
-  const esq = keys['ArrowLeft'] || keys['KeyA'], dir = keys['ArrowRight'] || keys['KeyD'];
+  const acel = keys['ArrowUp'] || keys['KeyW'];
+  const fre = keys['ArrowDown'] || keys['KeyS'];
+  const esq = keys['ArrowLeft'] || keys['KeyA'];
+  const dir = keys['ArrowRight'] || keys['KeyD'];
   const vmax = m.v * (na ? 1.25 : 1);
 
   if (combLitros > 0) { vel += (acel || na) ? 115 * m.a * (na ? 1.6 : 1) * dt : -45 * dt; } else vel -= 70 * dt;
