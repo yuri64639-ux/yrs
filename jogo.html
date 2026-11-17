@@ -5,106 +5,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   * { box-sizing: border-box; user-select: none; -webkit-user-select: none; font-family: 'Segoe UI', sans-serif; }
-  body { margin: 0; background: #0b0f19; color: #fff; display: flex; justify-content: center; }
-  #box { position: relative; width: 100%; max-width: 900px; height: 610px; border: 3px solid #1e293b; border-radius: 12px; overflow: hidden; background: #000; outline: none; }
+  body { margin: 0; background: #0b0f19; color: #fff; display: flex; justify-content: center; overflow-x: hidden; }
+  #box { position: relative; width: 100%; max-width: 880px; aspect-ratio: 880 / 590; border: 3px solid #1e293b; border-radius: 12px; overflow: hidden; background: #000; outline: none; }
   canvas { display: block; width: 100%; height: 100%; }
-  #garagem, #fim { position: absolute; inset: 0; background: rgba(11,15,25,0.96); display: flex; flex-direction: column; justify-content: space-between; padding: 14px 18px; }
-  #fim { display: none; justify-content: center; align-items: center; text-align: center; padding: 24px; }
-  h1 { text-align: center; color: #facc15; margin: 0; font-size: 24px; letter-spacing: 1px; }
-  .grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px; flex: 1; margin: 10px 0; overflow-y: auto; }
+  #garagem, #fim { position: absolute; inset: 0; background: rgba(11,15,25,0.96); display: flex; flex-direction: column; justify-content: space-between; padding: 14px 18px; overflow-y: auto; z-index: 20; }
+  #fim { display: none; justify-content: center; align-items: center; text-align: center; }
+  h1 { color: #facc15; margin: 0; font-size: clamp(18px, 3vw, 26px); }
+  .grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px; flex: 1; margin: 8px 0; }
+  @media (max-width: 680px) {
+    #box { aspect-ratio: auto; min-height: 640px; }
+    .grid { grid-template-columns: 1fr; }
+  }
   .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; }
-  .card h3 { margin: 0 0 6px; color: #38bdf8; font-size: 14px; text-transform: uppercase; }
+  .card h3 { margin: 0 0 6px; color: #38bdf8; font-size: 13px; text-transform: uppercase; }
   .ops { display: flex; gap: 5px; margin-bottom: 7px; flex-wrap: wrap; }
-  button { flex: 1; padding: 6px 4px; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 11px; min-width: 68px; }
-  button.ativo { background: #0284c7; border-color: #7dd3fc; box-shadow: 0 0 8px rgba(2,132,199,0.5); }
+  button { flex: 1; padding: 7px 5px; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 11px; }
+  button.ativo { background: #0284c7; border-color: #7dd3fc; }
   .cor { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; cursor: pointer; }
   .cor.ativo { transform: scale(1.2); box-shadow: 0 0 8px #fff; }
   .bar { height: 7px; background: #0f172a; border-radius: 4px; overflow: hidden; margin: 3px 0 6px; }
   .fill { height: 100%; background: linear-gradient(90deg, #22c55e, #facc15); transition: width 0.2s; }
-  #btn-play, .btn-re { flex: none; width: 100%; padding: 12px; background: #16a34a; font-size: 17px; border: none; border-radius: 8px; }
-  .btn-re { width: auto; padding: 12px 26px; background: #0284c7; }
-  .ctrl-btn { touch-action: manipulation; border-radius: 14px; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  #btn-play, .btn-re { flex: none; width: 100%; padding: 12px; background: #16a34a; font-size: 16px; border: none; border-radius: 8px; }
+  .btn-re { width: auto; padding: 12px 24px; background: #0284c7; }
+  #controles-tela { display: none; position: absolute; bottom: 66px; left: 16px; right: 16px; justify-content: space-between; align-items: flex-end; pointer-events: none; z-index: 10; }
+  .seta-btn { touch-action: none; border-radius: 16px; font-size: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform 0.08s; }
+  .seta-btn:active { transform: scale(0.92); filter: brightness(1.25); }
+  .seta-lbl { font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-top: 2px; }
 </style>
 </head>
 <body>
 <div id="box" tabindex="0">
-  <canvas id="c" width="900" height="610"></canvas>
+  <canvas id="c" width="880" height="590"></canvas>
 
-  <!-- CONTROLES TÁTEIS E MOUSE NA TELA -->
-  <div id="controles-tela" style="display:none;position:absolute;bottom:65px;left:14px;right:14px;justify-content:space-between;pointer-events:none;">
-    <div style="display:flex;gap:10px;pointer-events:auto;">
-      <button class="ctrl-btn" onpointerdown="keys['ArrowLeft']=true" onpointerup="keys['ArrowLeft']=false" onpointerleave="keys['ArrowLeft']=false" style="width:66px;height:66px;background:rgba(15,23,42,0.78);border:2px solid #38bdf8;">⬅️</button>
-      <button class="ctrl-btn" onpointerdown="keys['ArrowRight']=true" onpointerup="keys['ArrowRight']=false" onpointerleave="keys['ArrowRight']=false" style="width:66px;height:66px;background:rgba(15,23,42,0.78);border:2px solid #38bdf8;">➡️</button>
+  <!-- SETAS DIRECIONAIS NA TELA (VIRAR E ACELERAR/FREAR) -->
+  <div id="controles-tela">
+    <!-- Lado Esquerdo: Setas de Virar -->
+    <div style="display:flex;gap:12px;pointer-events:auto;">
+      <button class="seta-btn"
+        onpointerdown="e=>{e.preventDefault();keys['ArrowLeft']=true}"
+        onpointerup="keys['ArrowLeft']=false"
+        onpointerleave="keys['ArrowLeft']=false"
+        onpointercancel="keys['ArrowLeft']=false"
+        style="width:74px;height:74px;background:rgba(15,23,42,0.82);border:2px solid #38bdf8;">
+        <span>⬅️</span>
+        <span class="seta-lbl">ESQUERDA</span>
+      </button>
+      <button class="seta-btn"
+        onpointerdown="e=>{e.preventDefault();keys['ArrowRight']=true}"
+        onpointerup="keys['ArrowRight']=false"
+        onpointerleave="keys['ArrowRight']=false"
+        onpointercancel="keys['ArrowRight']=false"
+        style="width:74px;height:74px;background:rgba(15,23,42,0.82);border:2px solid #38bdf8;">
+        <span>➡️</span>
+        <span class="seta-lbl">DIREITA</span>
+      </button>
     </div>
-    <div style="display:flex;gap:10px;pointer-events:auto;">
-      <button class="ctrl-btn" onpointerdown="ativarNitro()" style="width:64px;height:66px;background:rgba(2,132,199,0.82);border:2px solid #7dd3fc;">🔥</button>
-      <button class="ctrl-btn" onpointerdown="keys['ArrowDown']=true" onpointerup="keys['ArrowDown']=false" onpointerleave="keys['ArrowDown']=false" style="width:64px;height:66px;background:rgba(220,38,38,0.82);border:2px solid #fca5a5;">🛑</button>
-      <button class="ctrl-btn" onpointerdown="keys['ArrowUp']=true" onpointerup="keys['ArrowUp']=false" onpointerleave="keys['ArrowUp']=false" style="width:76px;height:66px;background:rgba(22,163,74,0.85);border:2px solid #86efac;">🚀</button>
+
+    <!-- Lado Direito: Nitro + Setas de Frear e Acelerar -->
+    <div style="display:flex;gap:10px;align-items:flex-end;pointer-events:auto;">
+      <button class="seta-btn"
+        onpointerdown="e=>{e.preventDefault();ativarNitro()}"
+        style="width:64px;height:64px;background:rgba(2,132,199,0.85);border:2px solid #7dd3fc;">
+        <span>🔥</span>
+        <span class="seta-lbl">NITRO</span>
+      </button>
+      <button class="seta-btn"
+        onpointerdown="e=>{e.preventDefault();keys['ArrowDown']=true}"
+        onpointerup="keys['ArrowDown']=false"
+        onpointerleave="keys['ArrowDown']=false"
+        onpointercancel="keys['ArrowDown']=false"
+        style="width:68px;height:74px;background:rgba(220,38,38,0.85);border:2px solid #fca5a5;">
+        <span>⬇️</span>
+        <span class="seta-lbl">FREAR</span>
+      </button>
+      <button class="seta-btn"
+        onpointerdown="e=>{e.preventDefault();keys['ArrowUp']=true}"
+        onpointerup="keys['ArrowUp']=false"
+        onpointerleave="keys['ArrowUp']=false"
+        onpointercancel="keys['ArrowUp']=false"
+        style="width:82px;height:86px;background:rgba(22,163,74,0.9);border:2px solid #86efac;">
+        <span>⬆️</span>
+        <span class="seta-lbl">ACELERAR</span>
+      </button>
     </div>
   </div>
 
+  <!-- OFICINA INTERATIVA -->
   <div id="garagem">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <h1>TOP GEAR: HORIZONTE TURBO</h1>
       <div id="badge-missao" style="background:#1e293b;border:1px solid #facc15;padding:5px 12px;border-radius:8px;font-size:12px;color:#facc15;font-weight:bold;">
-        🎯 MISSÃO 1/4
+        🎯 MISSÃO 1/4: Costa do Sol
       </div>
     </div>
 
     <div class="grid">
-      <!-- Coluna Esquerda: Preview e Atributos -->
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <h3>OFICINA INTERATIVA</h3>
-          <span id="txt-peca-info" style="font-size:11px;color:#94a3b8;">Clique no carro para testar</span>
+          <span id="txt-peca-info" style="font-size:11px;color:#94a3b8;">Clique no carro para testar o motor</span>
         </div>
         <canvas id="prev" width="380" height="165" style="background:#0f172a;border-radius:8px;width:100%;height:165px;cursor:pointer;"></canvas>
         <div>
           <small>VELOCIDADE FINAL: <b id="tv">280 KM/H</b></small><div class="bar"><div class="fill" id="bv" style="width:55%"></div></div>
-          <small>ACELERAÇÃO: <b id="ta">65%</b></small><div class="bar"><div class="fill" id="ba" style="width:65%"></div></div>
           <small>FREIOS & ADERÊNCIA: <b id="tf">60%</b></small><div class="bar"><div class="fill" id="bf" style="width:60%"></div></div>
-          <small>CAPACIDADE DO TANQUE: <b id="tt">50 LITROS</b></small><div class="bar"><div class="fill" id="bt" style="width:38%"></div></div>
+          <small>CAPACIDADE DO TANQUE: <b id="tt">50 LITROS</b></small><div class="bar"><div class="fill" id="bt" style="width:50%"></div></div>
         </div>
       </div>
 
-      <!-- Coluna Direita: Peças Desbloqueáveis e Pistas -->
       <div class="card">
-        <h3>PEÇAS DESBLOQUEÁVEIS & PISTA</h3>
+        <h3>PEÇAS DESBLOQUEÁVEIS POR MISSÃO</h3>
         <div>
-          <small>MOTOR (Vença missões para liberar)</small>
+          <small>MOTOR</small>
           <div class="ops">
             <button class="ativo" id="btn-m0" onclick="setOp('m',0,this)">V6 Stock</button>
             <button id="btn-m1" onclick="setOp('m',1,this)">🔒 V8 Turbo</button>
             <button id="btn-m2" onclick="setOp('m',2,this)">🔒 V10 GT</button>
             <button id="btn-m3" onclick="setOp('m',3,this)">🔒 V12 Hyper</button>
           </div>
-
-          <small>SISTEMA DE FREIOS (Desbloqueia com missões)</small>
+          <small>SISTEMA DE FREIOS</small>
           <div class="ops">
             <button class="ativo" id="btn-f0" onclick="setOp('f',0,this)">Ventilado</button>
             <button id="btn-f1" onclick="setOp('f',1,this)">🔒 Cerâmica</button>
             <button id="btn-f2" onclick="setOp('f',2,this)">🔒 Carbono F1</button>
-            <button id="btn-f3" onclick="setOp('f',3,this)">🔒 Magnético</button>
           </div>
-
-          <small>TANQUE DE GASOLINA (Maior autonomia)</small>
+          <small>TANQUE DE GASOLINA</small>
           <div class="ops">
-            <button class="ativo" id="btn-t0" onclick="setOp('t',0,this)">50L Orig.</button>
-            <button id="btn-t1" onclick="setOp('t',1,this)">🔒 75L Rally</button>
-            <button id="btn-t2" onclick="setOp('t',2,this)">🔒 100L Endur.</button>
-            <button id="btn-t3" onclick="setOp('t',3,this)">🔒 130L Hyper</button>
+            <button class="ativo" id="btn-t0" onclick="setOp('t',0,this)">50L Stock</button>
+            <button id="btn-t1" onclick="setOp('t',1,this)">🔒 75L Sport</button>
+            <button id="btn-t2" onclick="setOp('t',2,this)">🔒 100L Pro</button>
           </div>
-
-          <small>PISTA & CLIMA</small>
-          <div class="ops">
-            <button class="ativo" id="btn-p0" onclick="setPista(0,this)">☀️ Costa Sol</button>
-            <button id="btn-p1" onclick="setPista(1,this)">🏜️ Deserto</button>
-            <button id="btn-p2" onclick="setPista(2,this)">🌧️ Noite/Chuva</button>
-            <button id="btn-p3" onclick="setPista(3,this)">❄️ Alpes Neve</button>
-          </div>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
-            <div>
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <div style="flex:1;">
               <small>RODAS</small>
               <div class="ops" style="margin-bottom:0;">
                 <button class="ativo" onclick="setOp('r',0,this)">Prata</button>
@@ -114,26 +146,25 @@
             </div>
             <div>
               <small>PINTURA</small>
-              <div class="ops" style="gap:6px;margin-bottom:0;margin-top:2px;">
+              <div class="ops" style="gap:6px;margin-bottom:0;">
                 <div class="cor ativo" style="background:#dc2626" onclick="setCor('#dc2626','#991b1b',this)"></div>
                 <div class="cor" style="background:#2563eb" onclick="setCor('#2563eb','#1e40af',this)"></div>
                 <div class="cor" style="background:#eab308" onclick="setCor('#eab308','#a16207',this)"></div>
                 <div class="cor" style="background:#16a34a" onclick="setCor('#16a34a','#166534',this)"></div>
-                <div class="cor" style="background:#9333ea" onclick="setCor('#9333ea','#581c87',this)"></div>
                 <div class="cor" style="background:#f8fafc" onclick="setCor('#f8fafc','#94a3b8',this)"></div>
               </div>
             </div>
           </div>
         </div>
-        <small style="color:#38bdf8;margin-top:4px;" id="desc-missao">Meta: Chegue no Top 15 para desbloquear Motor V8, Freio Cerâmica e Tanque 75L!</small>
+        <small style="color:#38bdf8;margin-top:6px;" id="desc-missao">Pista: Costa do Sol (Limpo) | Meta: Top 15 para liberar V8 Turbo + Freio Cerâmica!</small>
       </div>
     </div>
-    <button id="btn-play" onclick="iniciar()">🏁 INICIAR CORRIDA</button>
+    <button id="btn-play" onclick="iniciar()">🏁 INICIAR MISSÃO 1</button>
   </div>
 
   <div id="fim">
     <h1 id="ftit" style="font-size:34px">FIM!</h1>
-    <p id="fdesc" style="font-size:16px;max-width:620px;line-height:1.5;margin:14px 0 22px;"></p>
+    <p id="fdesc" style="font-size:17px;max-width:600px;line-height:1.5;"></p>
     <button class="btn-re" onclick="voltar()">🔧 VOLTAR À OFICINA</button>
   </div>
 </div>
@@ -151,82 +182,79 @@ function som(f, t, d, v = 0.1) {
   o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
 }
 
-// 4 Motores
 const MOT = [
-  { nome: 'V6 Stock',   v: 280, a: 0.72, c: 0.90, cor: '#64748b' },
-  { nome: 'V8 Biturbo', v: 315, a: 0.92, c: 1.05, cor: '#38bdf8' },
-  { nome: 'V10 GT-R',   v: 345, a: 1.12, c: 1.20, cor: '#facc15' },
-  { nome: 'V12 Hyper',  v: 380, a: 1.35, c: 1.35, cor: '#ef4444' }
+  { nome: 'V6 Stock',   v: 280, a: 0.75, c: 0.85, cor: '#64748b' },
+  { nome: 'V8 Biturbo', v: 315, a: 0.95, c: 1.00, cor: '#38bdf8' },
+  { nome: 'V10 GT-R',   v: 345, a: 1.15, c: 1.15, cor: '#facc15' },
+  { nome: 'V12 Hyper',  v: 380, a: 1.38, c: 1.30, cor: '#ef4444' }
 ];
 
-// 4 Sistemas de Freios
 const FRE = [
-  { nome: 'Ventilado',  f: 0.95, g: 0.92, cor: '#94a3b8' },
-  { nome: 'Cerâmica',   f: 1.35, g: 1.08, cor: '#eab308' },
-  { nome: 'Carbono F1', f: 1.75, g: 1.24, cor: '#38bdf8' },
-  { nome: 'Magnético',  f: 2.20, g: 1.40, cor: '#ef4444' }
+  { nome: 'Ventilado',  f: 1.0, g: 0.95, cor: '#94a3b8' },
+  { nome: 'Cerâmica',   f: 1.4, g: 1.12, cor: '#eab308' },
+  { nome: 'Carbono F1', f: 1.8, g: 1.30, cor: '#38bdf8' }
 ];
 
-// 4 Tanques de Gasolina
 const TAN = [
-  { nome: '50L Orig.',   litros: 50,  cor: '#64748b' },
-  { nome: '75L Rally',   litros: 75,  cor: '#22c55e' },
-  { nome: '100L Endur.', litros: 100, cor: '#38bdf8' },
-  { nome: '130L Hyper',  litros: 130, cor: '#facc15' }
+  { nome: '50L Stock', litros: 50,  cor: '#64748b' },
+  { nome: '75L Sport', litros: 75,  cor: '#22c55e' },
+  { nome: '100L Pro',  litros: 100, cor: '#facc15' }
 ];
 
-// 3 Jogos de Rodas
 const ROD = [
   { aro: '#cbd5e1', g: 1.00 },
-  { aro: '#facc15', g: 1.14 },
-  { aro: '#334155', g: 1.28 }
+  { aro: '#facc15', g: 1.15 },
+  { aro: '#334155', g: 1.30 }
 ];
 
-// 4 Pistas e Climas Diferentes
 const PISTAS = [
-  { nome: 'COSTA DO SOL', ceu1: '#0f172a', ceu2: '#1d4ed8', ceu3: '#f97316', grama1: '#15803d', grama2: '#166534', asf1: '#334155', asf2: '#1e293b', zeb1: '#ef4444', zeb2: '#f8fafc', clima: 'limpo', aderencia: 1.00, comp: 3600 },
-  { nome: 'DESERTO ESCARLATE', ceu1: '#7c2d12', ceu2: '#ea580c', ceu3: '#fde047', grama1: '#d97706', grama2: '#b45309', asf1: '#44403c', asf2: '#292524', zeb1: '#facc15', zeb2: '#1c1917', clima: 'poeira', aderencia: 0.93, comp: 4200 },
-  { nome: 'AUTOESTRADA NOTURNA', ceu1: '#020617', ceu2: '#0f172a', ceu3: '#1e1b4b', grama1: '#064e3b', grama2: '#022c22', asf1: '#1e293b', asf2: '#0f172a', zeb1: '#06b6d4', zeb2: '#f8fafc', clima: 'chuva', aderencia: 0.85, comp: 4600 },
-  { nome: 'ALPES CONGELADOS', ceu1: '#334155', ceu2: '#64748b', ceu3: '#cbd5e1', grama1: '#e2e8f0', grama2: '#cbd5e1', asf1: '#475569', asf2: '#334155', zeb1: '#e11d48', zeb2: '#ffffff', clima: 'neve', aderencia: 0.78, comp: 5000 }
+  { nome: 'Costa do Sol', ceu1: '#0f172a', ceu2: '#1d4ed8', ceu3: '#f97316', g1: '#15803d', g2: '#166534', a1: '#334155', a2: '#1e293b', z1: '#ef4444', z2: '#f8fafc', clima: 'limpo', ader: 1.00, comp: 3600 },
+  { nome: 'Deserto Escarlate', ceu1: '#7c2d12', ceu2: '#ea580c', ceu3: '#fde047', g1: '#d97706', g2: '#b45309', a1: '#44403c', a2: '#292524', z1: '#facc15', z2: '#1c1917', clima: 'poeira', ader: 0.94, comp: 4100 },
+  { nome: 'Autoestrada Noturna', ceu1: '#020617', ceu2: '#0f172a', ceu3: '#1e1b4b', g1: '#064e3b', g2: '#022c22', a1: '#1e293b', a2: '#0f172a', z1: '#06b6d4', z2: '#f8fafc', clima: 'chuva', ader: 0.86, comp: 4500 },
+  { nome: 'Alpes Congelados', ceu1: '#334155', ceu2: '#64748b', ceu3: '#cbd5e1', g1: '#e2e8f0', g2: '#cbd5e1', a1: '#475569', a2: '#334155', z1: '#e11d48', z2: '#ffffff', clima: 'neve', ader: 0.78, comp: 4900 }
 ];
 
-// 4 Missões Progressivas
 const MISSOES = [
-  { id: 1, alvoPos: 15, pistaSug: 0, titulo: 'MISSÃO 1/4: Top 15', desc: 'Chegue no Top 15 para liberar Motor V8, Freio Cerâmica e Tanque 75L!' },
-  { id: 2, alvoPos: 8,  pistaSug: 1, titulo: 'MISSÃO 2/4: Top 8',  desc: 'Chegue no Top 8 para liberar Motor V10 GT, Freio Carbono e Tanque 100L!' },
-  { id: 3, alvoPos: 3,  pistaSug: 2, titulo: 'MISSÃO 3/4: Pódio Top 3', desc: 'Suba ao Pódio (Top 3) para liberar Motor V12 Hyper, Freio Magnético e Tanque 130L!' },
-  { id: 4, alvoPos: 1,  pistaSug: 3, titulo: 'MISSÃO FINAL: Campeão 1º', desc: 'Vença em 1º lugar absoluto e conquiste o troféu Horizonte Turbo!' }
+  { alvoPos: 15, pista: 0, titulo: 'MISSÃO 1/4: Costa do Sol', desc: 'Pista: Costa do Sol (Limpo) | Meta: Top 15 para liberar V8 Turbo + Freio Cerâmica + Tanque 75L!' },
+  { alvoPos: 8,  pista: 1, titulo: 'MISSÃO 2/4: Deserto',      desc: 'Pista: Deserto (Poeira) | Meta: Top 8 para liberar V10 GT + Freio Carbono + Tanque 100L!' },
+  { alvoPos: 3,  pista: 2, titulo: 'MISSÃO 3/4: Noite/Chuva',  desc: 'Pista: Autoestrada Noturna (Chuva) | Meta: Top 3 para liberar o lendário V12 Hyper!' },
+  { alvoPos: 1,  pista: 3, titulo: 'MISSÃO FINAL: Alpes Neve', desc: 'Pista: Alpes Congelados (Neve) | Meta: 1º Lugar Absoluto para vencer o campeonato!' }
 ];
 
-let nivelDesbloqueio = parseInt(localStorage.getItem('tg_nivel') || '0');
-let cfg = { m: 0, f: 0, t: 0, r: 0, p: 0, c1: '#dc2626', c2: '#991b1b' };
+let nivel = parseInt(localStorage.getItem('tg_nivel_v2') || '0');
+let cfg = { m: 0, f: 0, t: 0, r: 0, c1: '#dc2626', c2: '#991b1b' };
 
 function atualizarUIOficina() {
   const mNomes = ['V6 Stock', 'V8 Turbo', 'V10 GT', 'V12 Hyper'];
-  const fNomes = ['Ventilado', 'Cerâmica', 'Carbono F1', 'Magnético'];
-  const tNomes = ['50L Orig.', '75L Rally', '100L Endur.', '130L Hyper'];
-
   for (let i = 0; i < 4; i++) {
-    const lib = i <= nivelDesbloqueio;
     const bm = document.getElementById('btn-m' + i);
-    const bf = document.getElementById('btn-f' + i);
-    const bt = document.getElementById('btn-t' + i);
-
-    bm.innerText = lib ? mNomes[i] : '🔒 ' + mNomes[i]; bm.style.opacity = lib ? '1' : '0.48';
-    bf.innerText = lib ? fNomes[i] : '🔒 ' + fNomes[i]; bf.style.opacity = lib ? '1' : '0.48';
-    bt.innerText = lib ? tNomes[i] : '🔒 ' + tNomes[i]; bt.style.opacity = lib ? '1' : '0.48';
+    const lib = i <= nivel;
+    bm.innerText = lib ? mNomes[i] : '🔒 ' + mNomes[i];
+    bm.style.opacity = lib ? '1' : '0.48';
   }
 
-  const mObj = MISSOES[Math.min(nivelDesbloqueio, MISSOES.length - 1)];
+  const fNomes = ['Ventilado', 'Cerâmica', 'Carbono F1'];
+  const tNomes = ['50L Stock', '75L Sport', '100L Pro'];
+  for (let i = 0; i < 3; i++) {
+    const bf = document.getElementById('btn-f' + i);
+    const bt = document.getElementById('btn-t' + i);
+    const lib = i <= nivel;
+    bf.innerText = lib ? fNomes[i] : '🔒 ' + fNomes[i];
+    bf.style.opacity = lib ? '1' : '0.48';
+    bt.innerText = lib ? tNomes[i] : '🔒 ' + tNomes[i];
+    bt.style.opacity = lib ? '1' : '0.48';
+  }
+
+  const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
   document.getElementById('badge-missao').innerText = '🎯 ' + mObj.titulo;
-  document.getElementById('desc-missao').innerText = nivelDesbloqueio >= MISSOES.length
+  document.getElementById('desc-missao').innerText = nivel >= MISSOES.length
     ? '🏆 Todas as missões concluídas! Todas as peças de elite estão liberadas.'
     : mObj.desc;
-  document.getElementById('btn-play').innerText = `🏁 CORRER EM ${PISTAS[cfg.p].nome} (${mObj.titulo.split(':')})`;
+  document.getElementById('btn-play').innerText = `🏁 INICIAR ${mObj.titulo.split(':')}`;
 }
 
 function setOp(k, i, b) {
-  if (['m', 'f', 't'].includes(k) && i > nivelDesbloqueio) {
+  if (['m', 'f', 't'].includes(k) && i > nivel) {
     som(150, 'sawtooth', 0.15);
     document.getElementById('txt-peca-info').innerText = `🔒 Conclua a Missão ${i} para desbloquear!`;
     document.getElementById('txt-peca-info').style.color = '#ef4444';
@@ -238,15 +266,6 @@ function setOp(k, i, b) {
   som(480, 'triangle', 0.08);
   document.getElementById('txt-peca-info').innerText = 'Peça instalada na oficina!';
   document.getElementById('txt-peca-info').style.color = '#22c55e';
-  desenharPrev();
-}
-
-function setPista(i, b) {
-  cfg.p = i;
-  [...b.parentElement.children].forEach(x => x.classList.remove('ativo'));
-  b.classList.add('ativo');
-  som(560, 'triangle', 0.08);
-  atualizarUIOficina();
   desenharPrev();
 }
 
@@ -274,7 +293,6 @@ function desenharRodaDetalhada(g, x, y, raio, aroCor, pincaCor) {
   g.fillStyle = '#475569';
   g.beginPath(); g.arc(x, y, raio * 0.48, 0, Math.PI * 2); g.fill();
 
-  // Pinça de freio muda de cor conforme o freio instalado
   g.fillStyle = pincaCor;
   g.beginPath(); g.arc(x + raio * 0.25, y - raio * 0.2, raio * 0.24, -0.8, 0.8); g.fill();
 
@@ -413,8 +431,8 @@ function carro(g, cx, cy, esc, c1, c2, aro, inc, nitro, freio) {
 function desenharPrev(acelerandoOficina = false) {
   pctx.clearRect(0, 0, 380, 165);
 
-  // Fundo com prévia do clima da pista selecionada
-  const pAtual = PISTAS[cfg.p];
+  const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
+  const pAtual = PISTAS[mObj.pista];
   const gradCeu = pctx.createLinearGradient(0, 0, 0, 100);
   gradCeu.addColorStop(0, pAtual.ceu1);
   gradCeu.addColorStop(1, pAtual.ceu2);
@@ -424,10 +442,8 @@ function desenharPrev(acelerandoOficina = false) {
   pctx.fillStyle = '#1e293b';
   pctx.fillRect(0, 100, 380, 65);
 
-  // Roda + Pinça de freio à esquerda
   desenharRodaDetalhada(pctx, 48, 78, 25, ROD[cfg.r].aro, FRE[cfg.f].cor);
 
-  // Tanque de Gasolina instalado no topo direito
   const tanAtual = TAN[cfg.t];
   pctx.fillStyle = '#0f172a';
   pctx.beginPath(); pctx.roundRect(306, 12, 60, 42, 6); pctx.fill();
@@ -436,7 +452,6 @@ function desenharPrev(acelerandoOficina = false) {
   pctx.fillText('TANQUE', 315, 28);
   pctx.fillStyle = '#fff'; pctx.fillText(tanAtual.litros + 'L', 322, 44);
 
-  // Bloco do Motor instalado na base direita
   const motAtual = MOT[cfg.m];
   pctx.fillStyle = '#0f172a';
   pctx.beginPath(); pctx.roundRect(306, 62, 60, 42, 6); pctx.fill();
@@ -451,19 +466,15 @@ function desenharPrev(acelerandoOficina = false) {
   document.getElementById('tv').innerText = m.v + ' KM/H';
   document.getElementById('bv').style.width = ((m.v - 230) / 160 * 100) + '%';
 
-  const ap = Math.min(100, Math.round((m.a / 1.4) * 100));
-  document.getElementById('ta').innerText = ap + '%';
-  document.getElementById('ba').style.width = ap + '%';
-
-  const fp = Math.min(100, Math.round((f.f + r.g) / 3.5 * 100));
+  const fp = Math.min(100, Math.round((f.f + r.g) / 3.1 * 100));
   document.getElementById('tf').innerText = fp + '%';
   document.getElementById('bf').style.width = fp + '%';
 
   document.getElementById('tt').innerText = t.litros + ' LITROS';
-  document.getElementById('bt').style.width = ((t.litros / 130) * 100) + '%';
+  document.getElementById('bt').style.width = ((t.litros / 100) * 100) + '%';
 }
 let run = false, pos = 0, px = 0, vel = 0, combLitros = 50, maxLitros = 50, nit = 3, tnit = 0, tempo = 0, trem = 0;
-let segs = [], rivais = [], galoes = [], gotasClima = [], keys = {}, ult = 0, COMP = 3600;
+let segs = [], rivais = [], galoes = [], gotasClima = [], keys = {}, ult = 0, COMP = 3600, pistaIdxAtual = 0;
 
 function ativarNitro() {
   if (run && nit > 0 && tnit <= 0) {
@@ -479,7 +490,9 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 function iniciar() {
-  const pistaAtual = PISTAS[cfg.p];
+  const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
+  pistaIdxAtual = mObj.pista;
+  const pistaAtual = PISTAS[pistaIdxAtual];
   COMP = pistaAtual.comp;
   maxLitros = TAN[cfg.t].litros;
   combLitros = maxLitros;
@@ -494,7 +507,7 @@ function iniciar() {
   segs = []; rivais = []; galoes = []; gotasClima = [];
 
   for (let i = 0; i < 95; i++) {
-    gotasClima.push({ x: Math.random() * 900, y: Math.random() * 610, v: 6 + Math.random() * 8 });
+    gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 6 + Math.random() * 8 });
   }
 
   let cur = 0;
@@ -526,24 +539,23 @@ function voltar() {
 function fimJogo(win, p) {
   run = false;
   document.getElementById('controles-tela').style.display = 'none';
-  const mObj = MISSOES[Math.min(nivelDesbloqueio, MISSOES.length - 1)];
+  const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
 
   if (!win) {
     document.getElementById('ftit').innerText = '⛽ PANE SECA!';
-    document.getElementById('fdesc').innerText = 'Sua gasolina acabou! Equipe um tanque maior na oficina ou pegue galões na pista.';
+    document.getElementById('fdesc').innerText = 'Sua gasolina acabou! Equipe um tanque maior na oficina ou pegue os galões vermelhos na pista.';
     som(140, 'sawtooth', 0.4);
   } else if (p <= mObj.alvoPos) {
     let msgExtra = '';
-    if (nivelDesbloqueio < MISSOES.length) {
-      nivelDesbloqueio++;
-      localStorage.setItem('tg_nivel', nivelDesbloqueio);
-      if (nivelDesbloqueio <= 3) {
-        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVAS PEÇAS LIBERADAS NA OFICINA:<br>• Motor ${MOT[nivelDesbloqueio].nome} (${MOT[nivelDesbloqueio].v} KM/H)<br>• Freios ${FRE[nivelDesbloqueio].nome}<br>• Tanque ${TAN[nivelDesbloqueio].nome}</b>`;
-        // Avança sugestão de pista automaticamente
-        cfg.p = Math.min(3, nivelDesbloqueio);
-        document.querySelectorAll('[id^="btn-p"]').forEach((b, idx) => b.classList.toggle('ativo', idx === cfg.p));
+    if (nivel < MISSOES.length) {
+      nivel++;
+      localStorage.setItem('tg_nivel_v2', nivel);
+      if (nivel <= 2) {
+        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVAS PEÇAS LIBERADAS:<br>• Motor ${MOT[nivel].nome} (${MOT[nivel].v} KM/H)<br>• Freios ${FRE[nivel].nome}<br>• Tanque ${TAN[nivel].nome}</b>`;
+      } else if (nivel === 3) {
+        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ${MOT[3].nome} (${MOT[3].v} KM/H)!</b>`;
       } else {
-        msgExtra = '<br><br><b style="color:#facc15;">🏆 VOCÊ CONQUISTOU TODAS AS MISSÕES E PEÇAS DE ELITE!</b>';
+        msgExtra = '<br><br><b style="color:#facc15;">🏆 VOCÊ VENCEU TODAS AS MISSÕES DO HORIZONTE TURBO!</b>';
       }
     }
     document.getElementById('ftit').innerText = '🏆 MISSÃO CONCLUÍDA!';
@@ -560,7 +572,7 @@ function fimJogo(win, p) {
 function loop(now) {
   if (!run) return; const dt = Math.min(0.05, (now - ult) / 1000); ult = now;
   tempo += dt;
-  const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r], pista = PISTAS[cfg.p];
+  const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r], pista = PISTAS[pistaIdxAtual];
   if (tnit > 0) tnit -= dt; const na = tnit > 0;
 
   const acel = keys['ArrowUp'] || keys['KeyW'], fre = keys['ArrowDown'] || keys['KeyS'];
@@ -575,12 +587,10 @@ function loop(now) {
   const seg = segs[Math.floor(pos) % segs.length];
   pos += (vel / 60) * dt * 28;
 
-  // Aderência influenciada pelo clima da pista (chuva/neve) + freios + rodas
-  const gripTotal = f.g * r.g * pista.aderencia;
+  const gripTotal = f.g * r.g * pista.ader;
   px += (((esq ? -1 : 0) + (dir ? 1 : 0)) * 1.65 * gripTotal * Math.min(1, vel / 65) * dt) - (seg.c * (vel / 270) * 0.55 * dt);
   px = Math.max(-1.85, Math.min(1.85, px));
 
-  // Consumo em litros reais
   if (vel > 5) {
     const gastoLitros = (0.65 + vel / 220) * m.c * (na ? 1.35 : 1) * dt;
     combLitros = Math.max(0, combLitros - gastoLitros);
@@ -605,44 +615,41 @@ function loop(now) {
   desenhar(); requestAnimationFrame(loop);
 }
 function desenhar() {
-  const pista = PISTAS[cfg.p];
-  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, hor = 265 + oy;
+  const pista = PISTAS[pistaIdxAtual];
+  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, hor = 255 + oy;
 
-  // Céu dinâmico da pista
   const gc = ctx.createLinearGradient(0, 0, 0, hor);
   gc.addColorStop(0, pista.ceu1); gc.addColorStop(0.6, pista.ceu2); gc.addColorStop(1, pista.ceu3);
-  ctx.fillStyle = gc; ctx.fillRect(0, 0, 900, hor);
+  ctx.fillStyle = gc; ctx.fillRect(0, 0, 880, hor);
 
-  // Sol ou Lua conforme o clima
   if (pista.clima === 'chuva') {
-    ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(450 + ox * 0.3, hor - 45, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 45, 25, 0, Math.PI * 2); ctx.fill();
   } else if (pista.clima !== 'neve') {
-    ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(450 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill();
   }
 
-  const lv = 610 - hor; let ca = 0, dc = 0, objs = [];
-  for (let y = 609; y > hor; y--) {
+  const lv = 590 - hor; let ca = 0, dc = 0, objs = [];
+  for (let y = 589; y > hor; y--) {
     const dt = y - hor, z = (lv / dt) * 12, si = Math.floor(pos + z), s = segs[si % segs.length];
-    ca += s.c * 0.0045; dc += ca; const esc = dt / lv, cen = 450 - (px * 335 * esc) + dc + ox, lp = 36 + 440 * esc, lz = lp * 0.11;
+    ca += s.c * 0.0045; dc += ca; const esc = dt / lv, cen = 440 - (px * 330 * esc) + dc + ox, lp = 36 + 430 * esc, lz = lp * 0.11;
     const alt = Math.floor(si / 3) % 2 === 0, cheg = si >= COMP - 55 && si <= COMP - 48;
 
-    ctx.fillStyle = alt ? pista.grama1 : pista.grama2; ctx.fillRect(0, y, 900, 1);
-    ctx.fillStyle = alt ? pista.zeb1 : pista.zeb2; ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, 1);
-    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.asf1 : pista.asf2); ctx.fillRect(cen - lp, y, lp * 2, 1);
+    ctx.fillStyle = alt ? pista.g1 : pista.g2; ctx.fillRect(0, y, 880, 1);
+    ctx.fillStyle = alt ? pista.z1 : pista.z2; ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, 1);
+    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.a1 : pista.a2); ctx.fillRect(cen - lp, y, lp * 2, 1);
 
     if (alt) { ctx.fillStyle = '#f8fafc'; const fw = Math.max(1, 4 * esc); ctx.fillRect(cen - lp * 0.33 - fw, y, fw * 2, 1); ctx.fillRect(cen + lp * 0.33 - fw, y, fw * 2, 1); }
     if (s.arv !== 0) objs.push({ t: 'a', x: cen + s.arv * (lp + lz + 48 * esc), y, esc });
   }
 
-  for (let rv of rivais) { const dz = rv.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), ry = hor + lv * esc; if (ry > hor && ry < 610) objs.push({ t: 'r', x: 450 + (rv.x - px) * 335 * esc + ox, y: ry, esc, c1: rv.c1, c2: rv.c2 }); } }
-  for (let g of galoes) { if (!g.ok) { const dz = g.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), gy = hor + lv * esc; if (gy > hor && gy < 610) objs.push({ t: 'g', x: 450 + (g.x - px) * 335 * esc + ox, y: gy, esc }); } } }
+  for (let rv of rivais) { const dz = rv.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), ry = hor + lv * esc; if (ry > hor && ry < 590) objs.push({ t: 'r', x: 440 + (rv.x - px) * 330 * esc + ox, y: ry, esc, c1: rv.c1, c2: rv.c2 }); } }
+  for (let g of galoes) { if (!g.ok) { const dz = g.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), gy = hor + lv * esc; if (gy > hor && gy < 590) objs.push({ t: 'g', x: 440 + (g.x - px) * 330 * esc + ox, y: gy, esc }); } } }
   objs.sort((a, b) => a.y - b.y);
 
   for (let o of objs) {
     if (o.t === 'a') {
       const th = 85 * o.esc, tw = Math.max(2, 12 * o.esc);
       if (pista.clima === 'poeira') {
-        // Cacto do deserto
         ctx.fillStyle = '#15803d'; ctx.fillRect(o.x - tw / 2, o.y - th * 0.7, tw, th * 0.7);
       } else {
         ctx.fillStyle = '#78350f'; ctx.fillRect(o.x - tw / 2, o.y - th / 2, tw, th / 2);
@@ -658,19 +665,17 @@ function desenhar() {
     }
   }
 
-  // Faróis iluminando a pista na corrida noturna
   if (pista.clima === 'chuva') {
     ctx.fillStyle = 'rgba(255, 250, 200, 0.16)';
     ctx.beginPath();
-    ctx.moveTo(410 + ox, 510 + oy); ctx.lineTo(490 + ox, 510 + oy);
-    ctx.lineTo(640 + ox, hor + 30); ctx.lineTo(260 + ox, hor + 30);
+    ctx.moveTo(400 + ox, 495 + oy); ctx.lineTo(480 + ox, 495 + oy);
+    ctx.lineTo(630 + ox, hor + 30); ctx.lineTo(250 + ox, hor + 30);
     ctx.fill();
   }
 
   const dv = ((keys['ArrowLeft'] || keys['KeyA']) ? -1 : 0) + ((keys['ArrowRight'] || keys['KeyD']) ? 1 : 0);
-  carro(ctx, 450 + ox, 525 + oy, 1.05, cfg.c1, cfg.c2, ROD[cfg.r].aro, dv, tnit > 0, keys['ArrowDown'] || keys['KeyS']);
+  carro(ctx, 440 + ox, 505 + oy, 1.05, cfg.c1, cfg.c2, ROD[cfg.r].aro, dv, tnit > 0, keys['ArrowDown'] || keys['KeyS']);
 
-  // Partículas de Clima (Chuva, Neve ou Poeira)
   if (pista.clima !== 'limpo') {
     for (let pt of gotasClima) {
       pt.y += pt.v;
@@ -684,30 +689,27 @@ function desenhar() {
         pt.x += 4; pt.y -= pt.v * 0.7; ctx.fillStyle = 'rgba(251, 191, 36, 0.35)';
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.2, 0, Math.PI * 2); ctx.fill();
       }
-      if (pt.y > 610) { pt.y = 0; pt.x = Math.random() * 900; }
-      if (pt.x > 900) pt.x = 0; if (pt.x < 0) pt.x = 900;
+      if (pt.y > 590) { pt.y = 0; pt.x = Math.random() * 880; }
+      if (pt.x > 880) pt.x = 0; if (pt.x < 0) pt.x = 880;
     }
   }
 
-  // HUD Superior e Inferior
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(0, 0, 900, 44);
+  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(0, 0, 880, 44);
   ctx.fillStyle = '#facc15'; ctx.font = 'bold 18px monospace'; ctx.fillText(`POS: ${rivais.filter(x => x.z > pos).length + 1}º/26`, 18, 28);
   ctx.fillStyle = '#fff'; ctx.fillText(`TEMPO: ${tempo.toFixed(1)}s`, 175, 28);
-  ctx.fillStyle = '#38bdf8'; ctx.fillText(`${pista.nome} (${Math.min(100, Math.floor(pos / (COMP - 50) * 100))}%)`, 355, 28);
-  ctx.fillText('NITRO:', 675, 28); for (let i = 0; i < 3; i++) { ctx.fillStyle = i < nit ? '#38bdf8' : '#334155'; ctx.fillRect(745 + i * 28, 11, 20, 20); }
+  ctx.fillStyle = '#38bdf8'; ctx.fillText(`${pista.nome} (${Math.min(100, Math.floor(pos / (COMP - 50) * 100))}%)`, 350, 28);
+  ctx.fillText('NITRO:', 665, 28); for (let i = 0; i < 3; i++) { ctx.fillStyle = i < nit ? '#38bdf8' : '#334155'; ctx.fillRect(735 + i * 28, 11, 20, 20); }
 
-  // Tanque em Litros (canto inferior esquerdo)
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(15, 550, 225, 44);
+  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(15, 535, 220, 42);
   const pctComb = combLitros / maxLitros;
-  ctx.fillStyle = '#334155'; ctx.fillRect(25, 572, 205, 13);
+  ctx.fillStyle = '#334155'; ctx.fillRect(25, 557, 200, 12);
   ctx.fillStyle = pctComb > 0.35 ? '#22c55e' : (pctComb > 0.15 ? '#eab308' : '#ef4444');
-  ctx.fillRect(25, 572, 205 * pctComb, 13);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
-  ctx.fillText(`TANQUE: ${combLitros.toFixed(1)}L / ${maxLitros}L`, 25, 565);
+  ctx.fillRect(25, 557, 200 * pctComb, 12);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(`TANQUE: ${combLitros.toFixed(1)}L / ${maxLitros}L`, 25, 550);
 
-  // Velocímetro (canto inferior direito)
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(720, 550, 165, 44);
-  ctx.fillStyle = '#facc15'; ctx.font = 'bold 22px monospace'; ctx.fillText(`${Math.floor(vel)} KM/H`, 735, 579);
+  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(700, 535, 165, 42);
+  ctx.fillStyle = '#facc15'; ctx.font = 'bold 21px monospace'; ctx.fillText(`${Math.floor(vel)} KM/H`, 715, 563);
 }
 
 atualizarUIOficina();
