@@ -30,20 +30,16 @@
 </style>
 </head>
 <body>
-<div id="box" tabindex="0" onclick="this.focus()">
-  <canvas id="c" width="880" height="590" onclick="document.getElementById('box').focus()"></canvas>
+<div id="box" tabindex="0">
+  <canvas id="c" width="880" height="590"></canvas>
 
   <div id="controles-tela">
     <div style="display:flex;gap:12px;pointer-events:auto;">
-      <button type="button" class="seta-btn"
-        onmousedown="keys['ArrowLeft']=true" onmouseup="keys['ArrowLeft']=false" onmouseleave="keys['ArrowLeft']=false"
-        ontouchstart="keys['ArrowLeft']=true" ontouchend="keys['ArrowLeft']=false"
+      <button type="button" class="seta-btn" id="btn-esq"
         style="width:78px;height:78px;background:rgba(15,23,42,0.85);border:2px solid #38bdf8;">
         <span>⬅️</span><span class="seta-lbl">ESQUERDA</span>
       </button>
-      <button type="button" class="seta-btn"
-        onmousedown="keys['ArrowRight']=true" onmouseup="keys['ArrowRight']=false" onmouseleave="keys['ArrowRight']=false"
-        ontouchstart="keys['ArrowRight']=true" ontouchend="keys['ArrowRight']=false"
+      <button type="button" class="seta-btn" id="btn-dir"
         style="width:78px;height:78px;background:rgba(15,23,42,0.85);border:2px solid #38bdf8;">
         <span>➡️</span><span class="seta-lbl">DIREITA</span>
       </button>
@@ -54,19 +50,15 @@
         style="width:72px;height:66px;background:rgba(22,163,74,0.9);border:2px solid #86efac;">
         <span>⚙️</span><span class="seta-lbl" id="lbl-auto">AUTO: ON</span>
       </button>
-      <button type="button" class="seta-btn" onmousedown="ativarNitro()" ontouchstart="ativarNitro()"
+      <button type="button" class="seta-btn" id="btn-nit"
         style="width:66px;height:66px;background:rgba(2,132,199,0.85);border:2px solid #7dd3fc;">
         <span>🔥</span><span class="seta-lbl">NITRO</span>
       </button>
-      <button type="button" class="seta-btn"
-        onmousedown="keys['ArrowDown']=true" onmouseup="keys['ArrowDown']=false" onmouseleave="keys['ArrowDown']=false"
-        ontouchstart="keys['ArrowDown']=true" ontouchend="keys['ArrowDown']=false"
+      <button type="button" class="seta-btn" id="btn-fre"
         style="width:68px;height:74px;background:rgba(220,38,38,0.85);border:2px solid #fca5a5;">
         <span>⬇️</span><span class="seta-lbl">FREAR</span>
       </button>
-      <button type="button" class="seta-btn"
-        onmousedown="keys['ArrowUp']=true" onmouseup="keys['ArrowUp']=false" onmouseleave="keys['ArrowUp']=false"
-        ontouchstart="keys['ArrowUp']=true" ontouchend="keys['ArrowUp']=false"
+      <button type="button" class="seta-btn" id="btn-ace"
         style="width:80px;height:84px;background:rgba(22,163,74,0.9);border:2px solid #86efac;">
         <span>⬆️</span><span class="seta-lbl">ACELERAR</span>
       </button>
@@ -199,7 +191,7 @@ const MISSOES = [
   { alvoPos: 1,  pista: 3, titulo: 'MISSÃO FINAL: Alpes Neve', desc: 'Pista: Alpes Congelados (Neve) | Meta: 1º Lugar Absoluto para vencer o campeonato!' }
 ];
 
-let nivel = parseInt(localStorage.getItem('tg_nivel_v3') || '0');
+let nivel = parseInt(localStorage.getItem('tg_nivel_v4') || '0');
 let cfg = { m: 0, f: 0, t: 0, r: 0, c1: '#dc2626', c2: '#991b1b' };
 let autoAcel = true;
 
@@ -312,59 +304,86 @@ let run = false, pos = 0, px = 0, vel = 0, combLitros = 50, maxLitros = 50, nit 
 let segs = [], rivais = [], galoes = [], gotasClima = [], keys = {}, ult = 0, COMP = 3600, pistaIdxAtual = 0;
 
 function ativarNitro() {
-  if (run && nit > 0 && tnit <= 0) { nit--; tnit = 2.5; som(200, 'sawtooth', 0.35); }
+  if (run && nit > 0 && tnit <= 0) {
+    nit--;
+    tnit = 2.5;
+    som(200, 'sawtooth', 0.35);
+  }
 }
 
 function tratarTecla(e, st) {
-  const k = e.key ? e.key.toLowerCase() : '', c = e.code || '';
+  const k = e.key ? e.key.toLowerCase() : '';
+  const c = e.code || '';
   if (c === 'ArrowUp' || k === 'arrowup' || k === 'w') { e.preventDefault(); keys['ArrowUp'] = st; }
   if (c === 'ArrowDown' || k === 'arrowdown' || k === 's') { e.preventDefault(); keys['ArrowDown'] = st; }
   if (c === 'ArrowLeft' || k === 'arrowleft' || k === 'a') { e.preventDefault(); keys['ArrowLeft'] = st; }
   if (c === 'ArrowRight' || k === 'arrowright' || k === 'd') { e.preventDefault(); keys['ArrowRight'] = st; }
   if ((c === 'Space' || k === ' ') && st) { e.preventDefault(); ativarNitro(); }
 }
+
 document.addEventListener('keydown', e => tratarTecla(e, true), { passive: false });
 document.addEventListener('keyup', e => tratarTecla(e, false));
 
 function iniciar() {
   const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
-  pistaIdxAtual = mObj.pista; COMP = PISTAS[pistaIdxAtual].comp;
-  maxLitros = TAN[cfg.t].litros; combLitros = maxLitros;
+  pistaIdxAtual = mObj.pista;
+  COMP = PISTAS[pistaIdxAtual].comp;
+  maxLitros = TAN[cfg.t].litros;
+  combLitros = maxLitros;
+
   document.getElementById('garagem').style.display = 'none';
   document.getElementById('fim').style.display = 'none';
   document.getElementById('controles-tela').style.display = 'flex';
-  window.focus(); document.getElementById('box').focus();
+  window.focus();
+  document.getElementById('box').focus();
 
   pos = 0; px = 0; vel = 25; nit = 3; tnit = 0; tempo = 0; trem = 0;
   segs = []; rivais = []; galoes = []; gotasClima = []; keys = {};
-  for (let i = 0; i < 90; i++) gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 6 + Math.random() * 8 });
+
+  for (let i = 0; i < 90; i++) {
+    gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 6 + Math.random() * 8 });
+  }
+
   let cur = 0;
   for (let i = 0; i < COMP; i++) {
-    if (i % 120 === 0 && i > 100 && i < COMP - 200) cur = [-2.2, -1.4, 0, 1.4, 2.2][Math.floor(Math.random() * 5)];
-    else if (i >= COMP - 200) cur = 0;
+    if (i % 120 === 0 && i > 100 && i < COMP - 200) {
+      cur = [-2.2, -1.4, 0, 1.4, 2.2][Math.floor(Math.random() * 5)];
+    } else if (i >= COMP - 200) {
+      cur = 0;
+    }
     segs.push({ c: cur, arv: i % 7 === 0 ? (Math.random() > 0.5 ? 1 : -1) : 0 });
   }
+
   const cols = [['#eab308', '#a16207'], ['#2563eb', '#1e40af'], ['#16a34a', '#166534'], ['#9333ea', '#581c87'], ['#f97316', '#9a3412'], ['#06b6d4', '#155e75']];
   for (let i = 1; i <= 25; i++) {
     const pc = cols[i % cols.length];
-    rivais.push({ z: i * 145 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 165 + Math.random() * 95, c1: pc, c2: pc });
+    rivais.push({ z: i * 145 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 165 + Math.random() * 95, c1: pc[0], c2: pc[1] });
   }
-  for (let z = 750; z < COMP - 300; z += 780) galoes.push({ z, x: Math.random() * 1.2 - 0.6, ok: false });
 
-  run = true; som(520, 'square', 0.2); ult = performance.now(); requestAnimationFrame(loop);
+  for (let z = 750; z < COMP - 300; z += 780) {
+    galoes.push({ z: z, x: Math.random() * 1.2 - 0.6, ok: false });
+  }
+
+  run = true;
+  som(520, 'square', 0.2);
+  ult = performance.now();
+  requestAnimationFrame(loop);
 }
 
 function voltar() {
   document.getElementById('fim').style.display = 'none';
   document.getElementById('controles-tela').style.display = 'none';
   document.getElementById('garagem').style.display = 'flex';
-  atualizarUIOficina(); desenharPrev();
+  atualizarUIOficina();
+  desenharPrev();
 }
 
 function fimJogo(win, p) {
-  run = false; keys = {};
+  run = false;
+  keys = {};
   document.getElementById('controles-tela').style.display = 'none';
   const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
+
   if (!win) {
     document.getElementById('ftit').innerText = '⛽ PANE SECA!';
     document.getElementById('fdesc').innerText = 'Sua gasolina acabou! Equipe um tanque maior na oficina ou pegue os galões vermelhos na pista.';
@@ -372,11 +391,12 @@ function fimJogo(win, p) {
   } else if (p <= mObj.alvoPos) {
     let msgExtra = '';
     if (nivel < MISSOES.length) {
-      nivel++; localStorage.setItem('tg_nivel_v3', nivel);
+      nivel++;
+      localStorage.setItem('tg_nivel_v3', nivel);
       if (nivel <= 2) {
         msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVAS PEÇAS LIBERADAS:<br>• Motor ${MOT[nivel].nome} (${MOT[nivel].v} KM/H)<br>• Freios ${FRE[nivel].nome}<br>• Tanque ${TAN[nivel].nome}</b>`;
       } else if (nivel === 3) {
-        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ${MOT.nome} (${MOT.v} KM/H)!</b>`;
+        msgExtra = `<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ${MOT[3].nome} (${MOT[3].v} KM/H)!</b>`;
       } else {
         msgExtra = '<br><br><b style="color:#facc15;">🏆 VOCÊ VENCEU TODAS AS MISSÕES DO HORIZONTE TURBO!</b>';
       }
@@ -393,19 +413,31 @@ function fimJogo(win, p) {
 }
 
 function loop(now) {
-  if (!run) return; const dt = Math.min(0.05, (now - ult) / 1000); ult = now;
+  if (!run) return;
+  const dt = Math.min(0.05, (now - ult) / 1000);
+  ult = now;
   tempo += dt;
+
   const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r], pista = PISTAS[pistaIdxAtual];
-  if (tnit > 0) tnit -= dt; const na = tnit > 0;
+  if (tnit > 0) tnit -= dt;
+  const na = tnit > 0;
 
   const fre = keys['ArrowDown'] || keys['KeyS'];
   const acel = (autoAcel && !fre) || keys['ArrowUp'] || keys['KeyW'];
-  const esq = keys['ArrowLeft'] || keys['KeyA'], dir = keys['ArrowRight'] || keys['KeyD'];
+  const esq = keys['ArrowLeft'] || keys['KeyA'];
+  const dir = keys['ArrowRight'] || keys['KeyD'];
   const vmax = m.v * (na ? 1.25 : 1);
 
-  if (combLitros > 0) { vel += (acel || na) ? 115 * m.a * (na ? 1.6 : 1) * dt : -45 * dt; } else vel -= 70 * dt;
+  if (combLitros > 0) {
+    vel += (acel || na) ? 115 * m.a * (na ? 1.6 : 1) * dt : -45 * dt;
+  } else {
+    vel -= 70 * dt;
+  }
   if (fre) vel -= 185 * f.f * dt;
-  if (Math.abs(px) > 1.05) { vel -= 110 * dt; if (vel > 50) trem = 3; }
+  if (Math.abs(px) > 1.05) {
+    vel -= 110 * dt;
+    if (vel > 50) trem = 3;
+  }
   vel = Math.max(0, Math.min(vmax, vel));
 
   const seg = segs[Math.floor(pos) % segs.length];
@@ -413,86 +445,222 @@ function loop(now) {
   px += (((esq ? -1 : 0) + (dir ? 1 : 0)) * 1.65 * f.g * r.g * pista.ader * Math.min(1, vel / 65) * dt) - (seg.c * (vel / 270) * 0.55 * dt);
   px = Math.max(-1.85, Math.min(1.85, px));
 
-  if (vel > 5) combLitros = Math.max(0, combLitros - (0.65 + vel / 220) * m.c * (na ? 1.35 : 1) * dt);
+  if (vel > 5) {
+    combLitros = Math.max(0, combLitros - (0.65 + vel / 220) * m.c * (na ? 1.35 : 1) * dt);
+  }
   if (combLitros <= 0 && vel <= 2) return fimJogo(false, 26);
 
   for (let rv of rivais) {
     rv.z += (rv.v / 60) * dt * 28;
-    if (rv.z - pos > 0 && rv.z - pos < 2.3 && Math.abs(rv.x - px) < 0.34) { vel *= 0.52; rv.z += 4.5; trem = 10; som(120, 'sawtooth', 0.2); }
+    if (rv.z - pos > 0 && rv.z - pos < 2.3 && Math.abs(rv.x - px) < 0.34) {
+      vel *= 0.52;
+      rv.z += 4.5;
+      trem = 10;
+      som(120, 'sawtooth', 0.2);
+    }
   }
+
   for (let g of galoes) {
-    if (!g.ok && g.z - pos > -1.5 && g.z - pos < 2.5 && Math.abs(g.x - px) < 0.36) { g.ok = true; combLitros = Math.min(maxLitros, combLitros + 28); som(680, 'sine', 0.2); }
+    if (!g.ok && g.z - pos > -1.5 && g.z - pos < 2.5 && Math.abs(g.x - px) < 0.36) {
+      g.ok = true;
+      combLitros = Math.min(maxLitros, combLitros + 28);
+      som(680, 'sine', 0.2);
+    }
   }
+
   if (trem > 0) trem--;
   if (pos >= COMP - 50) return fimJogo(true, rivais.filter(x => x.z > pos).length + 1);
-  desenhar(); requestAnimationFrame(loop);
+  desenhar();
+  requestAnimationFrame(loop);
 }
 function desenhar() {
   const pista = PISTAS[pistaIdxAtual];
-  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, hor = 255 + oy;
-  const gc = ctx.createLinearGradient(0, 0, 0, hor); gc.addColorStop(0, pista.ceu1); gc.addColorStop(0.6, pista.ceu2); gc.addColorStop(1, pista.ceu3);
-  ctx.fillStyle = gc; ctx.fillRect(0, 0, 880, hor);
+  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0;
+  const oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0;
+  const hor = 255 + oy;
 
-  if (pista.clima === 'chuva') { ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 45, 25, 0, Math.PI * 2); ctx.fill(); }
-  else if (pista.clima !== 'neve') { ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill(); }
+  // Céu dinâmico da pista
+  const gc = ctx.createLinearGradient(0, 0, 0, hor);
+  gc.addColorStop(0, pista.ceu1);
+  gc.addColorStop(0.6, pista.ceu2);
+  gc.addColorStop(1, pista.ceu3);
+  ctx.fillStyle = gc;
+  ctx.fillRect(0, 0, 880, hor);
 
-  const lv = 590 - hor; let ca = 0, dc = 0, objs = [];
-  for (let y = 589; y > hor; y--) {
-    const dt = y - hor, z = (lv / dt) * 12, si = Math.floor(pos + z), s = segs[si % segs.length];
-    ca += s.c * 0.0045; dc += ca; const esc = dt / lv, cen = 440 - (px * 330 * esc) + dc + ox, lp = 36 + 430 * esc, lz = lp * 0.11;
-    const alt = Math.floor(si / 3) % 2 === 0, cheg = si >= COMP - 55 && si <= COMP - 48;
-    ctx.fillStyle = alt ? pista.g1 : pista.g2; ctx.fillRect(0, y, 880, 1);
-    ctx.fillStyle = alt ? pista.z1 : pista.z2; ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, 1);
-    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.a1 : pista.a2); ctx.fillRect(cen - lp, y, lp * 2, 1);
-    if (alt) { ctx.fillStyle = '#f8fafc'; const fw = Math.max(1, 4 * esc); ctx.fillRect(cen - lp * 0.33 - fw, y, fw * 2, 1); ctx.fillRect(cen + lp * 0.33 - fw, y, fw * 2, 1); }
-    if (s.arv !== 0) objs.push({ t: 'a', x: cen + s.arv * (lp + lz + 48 * esc), y, esc });
+  // Sol ou Lua
+  if (pista.clima === 'chuva') {
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 45, 25, 0, Math.PI * 2); ctx.fill();
+  } else if (pista.clima !== 'neve') {
+    ctx.fillStyle = '#fde047';
+    ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill();
   }
-  for (let rv of rivais) { const dz = rv.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), ry = hor + lv * esc; if (ry > hor && ry < 590) objs.push({ t: 'r', x: 440 + (rv.x - px) * 330 * esc + ox, y: ry, esc, c1: rv.c1, c2: rv.c2 }); } }
-  for (let g of galoes) { if (!g.ok) { const dz = g.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), gy = hor + lv * esc; if (gy > hor && gy < 590) objs.push({ t: 'g', x: 440 + (g.x - px) * 330 * esc + ox, y: gy, esc }); } } }
+
+  // Pista Pseudo-3D
+  const lv = 590 - hor;
+  let ca = 0, dc = 0, objs = [];
+  for (let y = 589; y > hor; y--) {
+    const dt = y - hor;
+    const z = (lv / dt) * 12;
+    const si = Math.floor(pos + z);
+    const s = segs[si % segs.length];
+    ca += s.c * 0.0045;
+    dc += ca;
+    const esc = dt / lv;
+    const cen = 440 - (px * 330 * esc) + dc + ox;
+    const lp = 36 + 430 * esc;
+    const lz = lp * 0.11;
+    const alt = Math.floor(si / 3) % 2 === 0;
+    const cheg = si >= COMP - 55 && si <= COMP - 48;
+
+    ctx.fillStyle = alt ? pista.g1 : pista.g2;
+    ctx.fillRect(0, y, 880, 1);
+
+    ctx.fillStyle = alt ? pista.z1 : pista.z2;
+    ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, 1);
+
+    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.a1 : pista.a2);
+    ctx.fillRect(cen - lp, y, lp * 2, 1);
+
+    if (alt) {
+      ctx.fillStyle = '#f8fafc';
+      const fw = Math.max(1, 4 * esc);
+      ctx.fillRect(cen - lp * 0.33 - fw, y, fw * 2, 1);
+      ctx.fillRect(cen + lp * 0.33 - fw, y, fw * 2, 1);
+    }
+    if (s.arv !== 0) {
+      objs.push({ t: 'a', x: cen + s.arv * (lp + lz + 48 * esc), y: y, esc: esc });
+    }
+  }
+
+  // Projetar 25 rivais e galões de combustível
+  for (let rv of rivais) {
+    const dz = rv.z - pos;
+    if (dz > 1 && dz < 145) {
+      const esc = Math.min(1.15, 12 / dz);
+      const ry = hor + lv * esc;
+      if (ry > hor && ry < 590) {
+        objs.push({ t: 'r', x: 440 + (rv.x - px) * 330 * esc + ox, y: ry, esc: esc, c1: rv.c1, c2: rv.c2 });
+      }
+    }
+  }
+
+  for (let g of galoes) {
+    if (!g.ok) {
+      const dz = g.z - pos;
+      if (dz > 1 && dz < 145) {
+        const esc = Math.min(1.15, 12 / dz);
+        const gy = hor + lv * esc;
+        if (gy > hor && gy < 590) {
+          objs.push({ t: 'g', x: 440 + (g.x - px) * 330 * esc + ox, y: gy, esc: esc });
+        }
+      }
+    }
+  }
+
   objs.sort((a, b) => a.y - b.y);
 
   for (let o of objs) {
     if (o.t === 'a') {
       const th = 85 * o.esc, tw = Math.max(2, 12 * o.esc);
-      if (pista.clima === 'poeira') { ctx.fillStyle = '#15803d'; ctx.fillRect(o.x - tw / 2, o.y - th * 0.7, tw, th * 0.7); }
-      else { ctx.fillStyle = '#78350f'; ctx.fillRect(o.x - tw / 2, o.y - th / 2, tw, th / 2); ctx.fillStyle = pista.clima === 'neve' ? '#f8fafc' : '#14532d'; ctx.beginPath(); ctx.arc(o.x, o.y - th / 2, Math.max(4, 30 * o.esc), 0, Math.PI * 2); ctx.fill(); }
-    } else if (o.t === 'r') carro(ctx, o.x, o.y - 24 * o.esc, o.esc * 0.9, o.c1, o.c2, '#cbd5e1', 0, false, false);
-    else { const gw = Math.max(6, 30 * o.esc), gh = Math.max(8, 40 * o.esc); ctx.fillStyle = '#ef4444'; ctx.fillRect(o.x - gw / 2, o.y - gh, gw, gh); ctx.fillStyle = '#facc15'; ctx.fillRect(o.x - gw / 4, o.y - gh - 4 * o.esc, gw / 2, 4 * o.esc); }
-  }
-
-  if (pista.clima === 'chuva') {
-    ctx.fillStyle = 'rgba(255, 250, 200, 0.16)'; ctx.beginPath(); ctx.moveTo(400 + ox, 495 + oy); ctx.lineTo(480 + ox, 495 + oy); ctx.lineTo(630 + ox, hor + 30); ctx.lineTo(250 + ox, hor + 30); ctx.fill();
-  }
-
-  const dv = ((keys['ArrowLeft'] || keys['KeyA']) ? -1 : 0) + ((keys['ArrowRight'] || keys['KeyD']) ? 1 : 0);
-  carro(ctx, 440 + ox, 505 + oy, 1.05, cfg.c1, cfg.c2, ROD[cfg.r].aro, dv, tnit > 0, keys['ArrowDown'] || keys['KeyS']);
-
-  if (pista.clima !== 'limpo') {
-    for (let pt of gotasClima) {
-      pt.y += pt.v;
-      if (pista.clima === 'chuva') { pt.x -= 2; ctx.strokeStyle = 'rgba(147,197,253,0.55)'; ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x - 4, pt.y + 12); ctx.stroke(); }
-      else if (pista.clima === 'neve') { pt.x += Math.sin(pt.y * 0.04) * 1.5; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.8, 0, Math.PI * 2); ctx.fill(); }
-      else { pt.x += 4; pt.y -= pt.v * 0.7; ctx.fillStyle = 'rgba(251,191,36,0.35)'; ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.2, 0, Math.PI * 2); ctx.fill(); }
-      if (pt.y > 590) { pt.y = 0; pt.x = Math.random() * 880; }
-      if (pt.x > 880) pt.x = 0; if (pt.x < 0) pt.x = 880;
+      if (pista.clima === 'poeira') {
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(o.x - tw / 2, o.y - th * 0.7, tw, th * 0.7);
+      } else {
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(o.x - tw / 2, o.y - th / 2, tw, th / 2);
+        ctx.fillStyle = pista.clima === 'neve' ? '#f8fafc' : '#14532d';
+        ctx.beginPath(); ctx.arc(o.x, o.y - th / 2, Math.max(4, 30 * o.esc), 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (o.t === 'r') {
+      carro(ctx, o.x, o.y - 24 * o.esc, o.esc * 0.9, o.c1, o.c2, '#cbd5e1', 0, false, false);
+    } else {
+      const gw = Math.max(6, 30 * o.esc), gh = Math.max(8, 40 * o.esc);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(o.x - gw / 2, o.y - gh, gw, gh);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(o.x - gw / 4, o.y - gh - 4 * o.esc, gw / 2, 4 * o.esc);
     }
   }
 
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(0, 0, 880, 44);
-  ctx.fillStyle = '#facc15'; ctx.font = 'bold 18px monospace'; ctx.fillText(`POS: ${rivais.filter(x => x.z > pos).length + 1}º/26`, 18, 28);
-  ctx.fillStyle = '#fff'; ctx.fillText(`TEMPO: ${tempo.toFixed(1)}s`, 175, 28);
-  ctx.fillStyle = '#38bdf8'; ctx.fillText(`${pista.nome} (${Math.min(100, Math.floor(pos / (COMP - 50) * 100))}%)`, 350, 28);
-  ctx.fillText('NITRO:', 665, 28); for (let i = 0; i < 3; i++) { ctx.fillStyle = i < nit ? '#38bdf8' : '#334155'; ctx.fillRect(735 + i * 28, 11, 20, 20); }
+  // Faróis na pista noturna
+  if (pista.clima === 'chuva') {
+    ctx.fillStyle = 'rgba(255, 250, 200, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(400 + ox, 495 + oy); ctx.lineTo(480 + ox, 495 + oy);
+    ctx.lineTo(630 + ox, hor + 30); ctx.lineTo(250 + ox, hor + 30);
+    ctx.fill();
+  }
 
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(15, 535, 220, 42);
+  // Carro do Jogador
+  const dv = ((keys['ArrowLeft'] || keys['KeyA']) ? -1 : 0) + ((keys['ArrowRight'] || keys['KeyD']) ? 1 : 0);
+  const freando = keys['ArrowDown'] || keys['KeyS'];
+  carro(ctx, 440 + ox, 505 + oy, 1.05, cfg.c1, cfg.c2, ROD[cfg.r].aro, dv, tnit > 0, freando);
+
+  // Partículas Climáticas (Chuva, Neve ou Poeira)
+  if (pista.clima !== 'limpo') {
+    for (let pt of gotasClima) {
+      pt.y += pt.v;
+      if (pista.clima === 'chuva') {
+        pt.x -= 2;
+        ctx.strokeStyle = 'rgba(147, 197, 253, 0.55)';
+        ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x - 4, pt.y + 12); ctx.stroke();
+      } else if (pista.clima === 'neve') {
+        pt.x += Math.sin(pt.y * 0.04) * 1.5;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.8, 0, Math.PI * 2); ctx.fill();
+      } else {
+        pt.x += 4; pt.y -= pt.v * 0.7;
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.35)';
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.2, 0, Math.PI * 2); ctx.fill();
+      }
+      if (pt.y > 590) { pt.y = 0; pt.x = Math.random() * 880; }
+      if (pt.x > 880) pt.x = 0;
+      if (pt.x < 0) pt.x = 880;
+    }
+  }
+
+  // HUD Superior
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.fillRect(0, 0, 880, 44);
+
+  const posAtual = rivais.filter(x => x.z > pos).length + 1;
+  const progPct = Math.min(100, Math.floor(pos / (COMP - 50) * 100));
+
+  ctx.fillStyle = '#facc15';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText(`POS: ${posAtual}º/26`, 18, 28);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`TEMPO: ${tempo.toFixed(1)}s`, 175, 28);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillText(`${pista.nome} (${progPct}%)`, 350, 28);
+
+  ctx.fillText('NITRO:', 665, 28);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i < nit ? '#38bdf8' : '#334155';
+    ctx.fillRect(735 + i * 28, 11, 20, 20);
+  }
+
+  // HUD Inferior Esquerdo: Tanque em Litros
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.fillRect(15, 535, 220, 42);
   const pctComb = combLitros / maxLitros;
-  ctx.fillStyle = '#334155'; ctx.fillRect(25, 557, 200, 12);
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(25, 557, 200, 12);
   ctx.fillStyle = pctComb > 0.35 ? '#22c55e' : (pctComb > 0.15 ? '#eab308' : '#ef4444');
   ctx.fillRect(25, 557, 200 * pctComb, 12);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.fillText(`TANQUE: ${combLitros.toFixed(1)}L / ${maxLitros}L`, 25, 550);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(`TANQUE: ${combLitros.toFixed(1)}L / ${maxLitros}L`, 25, 550);
 
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'; ctx.fillRect(700, 535, 165, 42);
-  ctx.fillStyle = '#facc15'; ctx.font = 'bold 21px monospace'; ctx.fillText(`${Math.floor(vel)} KM/H`, 715, 563);
+  // HUD Inferior Direito: Velocímetro
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.fillRect(700, 535, 165, 42);
+  ctx.fillStyle = '#facc15';
+  ctx.font = 'bold 21px monospace';
+  ctx.fillText(`${Math.floor(vel)} KM/H`, 715, 563);
 }
 
 atualizarUIOficina();
