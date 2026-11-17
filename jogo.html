@@ -28,39 +28,50 @@
 <div id="box">
   <canvas id="c" width="880" height="580"></canvas>
   <div id="garagem">
-    <h1>TOP GEAR: HORIZONTE TURBO</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h1 style="font-size:26px;">TOP GEAR: HORIZONTE TURBO</h1>
+      <div id="badge-missao" style="background:#1e293b;border:1px solid #facc15;padding:6px 14px;border-radius:8px;font-size:13px;color:#facc15;font-weight:bold;">
+        🎯 MISSÃO 1/4: Chegue no Top 15
+      </div>
+    </div>
+
     <div class="grid">
       <div class="card">
-        <h3>SEU SUPERCARRO</h3>
-        <canvas id="prev" width="380" height="160" style="background:#0f172a;border-radius:8px;width:100%;height:160px"></canvas>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>OFICINA INTERATIVA</h3>
+          <span id="txt-peca-info" style="font-size:11px;color:#94a3b8;">Clique no carro para testar o motor</span>
+        </div>
+        <canvas id="prev" width="380" height="175" style="background:#0f172a;border-radius:8px;width:100%;height:175px;cursor:pointer;"></canvas>
         <div>
-          <small>VELOCIDADE: <b id="tv">285 KM/H</b></small><div class="bar"><div class="fill" id="bv" style="width:65%"></div></div>
-          <small>ACELERAÇÃO: <b id="ta">70%</b></small><div class="bar"><div class="fill" id="ba" style="width:70%"></div></div>
-          <small>FREIOS & GRIP: <b id="tf">65%</b></small><div class="bar"><div class="fill" id="bf" style="width:65%"></div></div>
+          <small>VELOCIDADE FINAL: <b id="tv">280 KM/H</b></small><div class="bar"><div class="fill" id="bv" style="width:55%"></div></div>
+          <small>ACELERAÇÃO: <b id="ta">65%</b></small><div class="bar"><div class="fill" id="ba" style="width:65%"></div></div>
+          <small>FREIOS & ADERÊNCIA: <b id="tf">65%</b></small><div class="bar"><div class="fill" id="bf" style="width:65%"></div></div>
         </div>
       </div>
+
       <div class="card">
-        <h3>OFICINA DE PEÇAS</h3>
+        <h3>PEÇAS & MOTORES DESBLOQUEÁVEIS</h3>
         <div>
-          <small>MOTOR</small>
-          <div class="ops">
-            <button class="ativo" onclick="setOp('m',0,this)">V6</button>
-            <button onclick="setOp('m',1,this)">V8 Turbo</button>
-            <button onclick="setOp('m',2,this)">V12 Híbrido</button>
+          <small>MOTOR (Vença missões para desbloquear)</small>
+          <div class="ops" id="ops-motor">
+            <button class="ativo" id="btn-m0" onclick="setOp('m',0,this)">V6 Stock</button>
+            <button id="btn-m1" onclick="setOp('m',1,this)">🔒 V8 Turbo</button>
+            <button id="btn-m2" onclick="setOp('m',2,this)">🔒 V10 GT</button>
+            <button id="btn-m3" onclick="setOp('m',3,this)">🔒 V12 Hyper</button>
           </div>
-          <small>FREIOS</small>
+          <small>SISTEMA DE FREIOS</small>
           <div class="ops">
             <button class="ativo" onclick="setOp('f',0,this)">Ventilado</button>
             <button onclick="setOp('f',1,this)">Cerâmica</button>
-            <button onclick="setOp('f',2,this)">Carbono</button>
+            <button onclick="setOp('f',2,this)">Carbono F1</button>
           </div>
-          <small>RODAS</small>
+          <small>JOGO DE RODAS</small>
           <div class="ops">
             <button class="ativo" onclick="setOp('r',0,this)">Prata</button>
-            <button onclick="setOp('r',1,this)">Dourada</button>
+            <button onclick="setOp('r',1,this)">Dourada BBS</button>
             <button onclick="setOp('r',2,this)">Carbono</button>
           </div>
-          <small>PINTURA</small>
+          <small>PINTURA METÁLICA</small>
           <div class="ops" style="gap:10px;margin-top:4px">
             <div class="cor ativo" style="background:#dc2626" onclick="setCor('#dc2626','#991b1b',this)"></div>
             <div class="cor" style="background:#2563eb" onclick="setCor('#2563eb','#1e40af',this)"></div>
@@ -70,14 +81,15 @@
             <div class="cor" style="background:#f8fafc" onclick="setCor('#f8fafc','#94a3b8',this)"></div>
           </div>
         </div>
-        <small style="color:#94a3b8">Setas/WASD: Dirigir | ESPAÇO: Nitro</small>
+        <small style="color:#38bdf8" id="desc-missao">Objetivo: Termine a corrida em 15º lugar ou melhor para liberar o V8 Turbo!</small>
       </div>
     </div>
-    <button id="btn-play" onclick="iniciar()">🏁 CORRER CONTRA 25 RIVAIS!</button>
+    <button id="btn-play" onclick="iniciar()">🏁 INICIAR MISSÃO 1</button>
   </div>
+
   <div id="fim">
-    <h1 id="ftit" style="font-size:38px">FIM!</h1>
-    <p id="fdesc" style="font-size:18px"></p>
+    <h1 id="ftit" style="font-size:36px">FIM!</h1>
+    <p id="fdesc" style="font-size:18px;max-width:600px;line-height:1.5;"></p>
     <button class="btn-re" onclick="voltar()">🔧 VOLTAR À OFICINA</button>
   </div>
 </div>
@@ -95,61 +107,274 @@ function som(f, t, d, v = 0.1) {
   o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
 }
 
-const MOT = [{ v: 285, a: 0.75, c: 0.85 }, { v: 315, a: 0.95, c: 1.05 }, { v: 345, a: 1.15, c: 1.25 }];
+const MOT = [
+  { nome: 'V6 Stock', v: 280, a: 0.72, c: 0.85, corBloco: '#64748b' },
+  { nome: 'V8 Biturbo', v: 315, a: 0.92, c: 1.00, corBloco: '#38bdf8' },
+  { nome: 'V10 GT-R', v: 345, a: 1.12, c: 1.15, corBloco: '#facc15' },
+  { nome: 'V12 Hyper', v: 380, a: 1.35, c: 1.30, corBloco: '#ef4444' }
+];
 const FRE = [{ f: 1.0, g: 0.95 }, { f: 1.4, g: 1.1 }, { f: 1.8, g: 1.25 }];
 const ROD = [{ aro: '#cbd5e1', g: 1.0 }, { aro: '#facc15', g: 1.15 }, { aro: '#334155', g: 1.3 }];
+
+const MISSOES = [
+  { id: 1, alvoPos: 15, comp: 3600, titulo: 'MISSÃO 1/4: Top 15', desc: 'Termine em 15º lugar ou melhor para desbloquear o Motor V8 Biturbo!' },
+  { id: 2, alvoPos: 8,  comp: 4200, titulo: 'MISSÃO 2/4: Top 8',  desc: 'Termine em 8º lugar ou melhor para desbloquear o Motor V10 GT-R!' },
+  { id: 3, alvoPos: 3,  comp: 4800, titulo: 'MISSÃO 3/4: Pódio (Top 3)', desc: 'Suba ao pódio (Top 3) para desbloquear o lendário Motor V12 Hyper!' },
+  { id: 4, alvoPos: 1,  comp: 5400, titulo: 'MISSÃO FINAL: Campeão 1º', desc: 'Vença em 1º lugar absoluto e conquiste o troféu Horizonte Turbo!' }
+];
+
+let missaoAtual = parseInt(localStorage.getItem('tg_missao') || '0');
+let maxMotor = parseInt(localStorage.getItem('tg_motor') || '0');
 let cfg = { m: 0, f: 0, r: 0, c1: '#dc2626', c2: '#991b1b' };
 
+function atualizarUIOficina() {
+  const nomesMot = ['V6 Stock', 'V8 Turbo', 'V10 GT', 'V12 Hyper'];
+  for (let i = 0; i < 4; i++) {
+    const btn = document.getElementById('btn-m' + i);
+    if (i <= maxMotor) {
+      btn.innerText = nomesMot[i];
+      btn.style.opacity = '1';
+    } else {
+      btn.innerText = '🔒 ' + nomesMot[i];
+      btn.style.opacity = '0.5';
+    }
+  }
+  const mObj = MISSOES[Math.min(missaoAtual, MISSOES.length - 1)];
+  document.getElementById('badge-missao').innerText = '🎯 ' + mObj.titulo;
+  document.getElementById('desc-missao').innerText = missaoAtual >= MISSOES.length
+    ? '🏆 Todas as missões concluídas! Todos os motores estão liberados.'
+    : mObj.desc;
+  document.getElementById('btn-play').innerText = `🏁 INICIAR ${mObj.titulo.split(':')}`;
+}
+
 function setOp(k, i, b) {
+  if (k === 'm' && i > maxMotor) {
+    som(150, 'sawtooth', 0.15);
+    document.getElementById('txt-peca-info').innerText = `🔒 Vença a Missão ${i} para liberar este motor!`;
+    document.getElementById('txt-peca-info').style.color = '#ef4444';
+    return;
+  }
   cfg[k] = i;
   [...b.parentElement.children].forEach(x => x.classList.remove('ativo'));
-  b.classList.add('ativo'); som(440, 'triangle', 0.08); desenharPrev();
+  b.classList.add('ativo');
+  som(480, 'triangle', 0.08);
+  document.getElementById('txt-peca-info').innerText = 'Peça instalada com sucesso!';
+  document.getElementById('txt-peca-info').style.color = '#22c55e';
+  desenharPrev();
 }
 
 function setCor(c1, c2, el) {
   cfg.c1 = c1; cfg.c2 = c2;
   document.querySelectorAll('.cor').forEach(x => x.classList.remove('ativo'));
-  el.classList.add('ativo'); som(520, 'sine', 0.08); desenharPrev();
-}
-function carro(g, cx, cy, esc, c1, c2, aro, inc, nitro, freio) {
-  g.save(); g.translate(cx, cy); g.scale(esc, esc); const t = inc * 10;
-  g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.ellipse(0, 32, 80, 15, 0, 0, Math.PI * 2); g.fill();
-  [-74, 50].forEach((rx, idx) => {
-    g.fillStyle = '#111'; g.fillRect(rx + t * 0.4, 4, 24, 32);
-    g.fillStyle = aro; g.fillRect(rx + t * 0.4 + (idx === 0 ? 2 : 18), 8, 4, 24);
-  });
-  if (nitro) {
-    const l = 25 + Math.random() * 25;
-    [-35, 35].forEach(ex => {
-      g.fillStyle = '#38bdf8'; g.beginPath(); g.moveTo(ex - 8 + t * 0.5, 26); g.lineTo(ex + 8 + t * 0.5, 26); g.lineTo(ex + t * 0.5, 26 + l); g.fill();
-    });
-  }
-  const gr = g.createLinearGradient(0, -15, 0, 25); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
-  g.fillStyle = gr; g.beginPath(); g.moveTo(-66 + t, -6); g.lineTo(66 + t, -6); g.lineTo(72 + t * 0.5, 22); g.lineTo(-72 + t * 0.5, 22); g.fill();
-  g.fillStyle = '#1e293b'; g.beginPath(); g.moveTo(-42 + t * 1.3, -32); g.lineTo(42 + t * 1.3, -32); g.lineTo(54 + t, -6); g.lineTo(-54 + t, -6); g.fill();
-  g.fillStyle = '#0f172a'; g.fillRect(-70 + t, -18, 140, 6);
-  g.fillStyle = freio ? '#ff2a2a' : '#b91c1c'; g.fillRect(-60 + t * 0.7, 0, 36, 8); g.fillRect(24 + t * 0.7, 0, 36, 8);
-  g.fillStyle = '#fff'; g.fillRect(-14 + t * 0.6, 5, 28, 10); g.restore();
+  el.classList.add('ativo'); som(540, 'sine', 0.08); desenharPrev();
 }
 
-function desenharPrev() {
-  pctx.clearRect(0, 0, 380, 160); pctx.fillStyle = '#1e293b'; pctx.fillRect(0, 105, 380, 55);
-  [70, 310].forEach(rx => {
-    pctx.fillStyle = '#090d16'; pctx.beginPath(); pctx.arc(rx, 80, 26, 0, Math.PI * 2); pctx.fill();
-    pctx.fillStyle = ROD[cfg.r].aro; pctx.beginPath(); pctx.arc(rx, 80, 17, 0, Math.PI * 2); pctx.fill();
+pv.addEventListener('click', () => {
+  som(110 + cfg.m * 45, 'sawtooth', 0.25, 0.15);
+  document.getElementById('txt-peca-info').innerText = `🔥 Ronco do ${MOT[cfg.m].nome} testado!`;
+  document.getElementById('txt-peca-info').style.color = '#facc15';
+  desenharPrev(true);
+  setTimeout(() => desenharPrev(false), 300);
+});
+function desenharRodaDetalhada(g, x, y, raio, aroCor) {
+  g.fillStyle = '#090d16';
+  g.beginPath(); g.arc(x, y, raio, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#1e293b'; g.lineWidth = 2; g.stroke();
+
+  g.fillStyle = aroCor;
+  g.beginPath(); g.arc(x, y, raio * 0.68, 0, Math.PI * 2); g.fill();
+
+  g.fillStyle = '#475569';
+  g.beginPath(); g.arc(x, y, raio * 0.48, 0, Math.PI * 2); g.fill();
+
+  g.fillStyle = '#ef4444';
+  g.beginPath(); g.arc(x + raio * 0.25, y - raio * 0.2, raio * 0.22, -0.8, 0.8); g.fill();
+
+  g.strokeStyle = aroCor;
+  g.lineWidth = Math.max(2, raio * 0.12);
+  for (let i = 0; i < 5; i++) {
+    const ang = (i * Math.PI * 2) / 5;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(ang) * raio * 0.66, y + Math.sin(ang) * raio * 0.66);
+    g.stroke();
+  }
+
+  g.fillStyle = '#0f172a';
+  g.beginPath(); g.arc(x, y, raio * 0.16, 0, Math.PI * 2); g.fill();
+}
+
+function carro(g, cx, cy, esc, c1, c2, aro, inc, nitro, freio) {
+  g.save();
+  g.translate(cx, cy);
+  g.scale(esc, esc);
+  const t = inc * 11;
+
+  const gradSombra = g.createRadialGradient(0, 32, 10, 0, 32, 88);
+  gradSombra.addColorStop(0, 'rgba(0,0,0,0.85)');
+  gradSombra.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gradSombra;
+  g.beginPath(); g.ellipse(0, 32, 88, 18, 0, 0, Math.PI * 2); g.fill();
+
+  [-76, 50].forEach((rx, idx) => {
+    g.fillStyle = '#0b0f19';
+    g.beginPath(); g.roundRect(rx + t * 0.35, 2, 26, 35, 5); g.fill();
+    g.strokeStyle = '#1e293b'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(rx + t * 0.35 + 8, 4); g.lineTo(rx + t * 0.35 + 8, 35); g.stroke();
+    g.beginPath(); g.moveTo(rx + t * 0.35 + 18, 4); g.lineTo(rx + t * 0.35 + 18, 35); g.stroke();
+    g.fillStyle = aro;
+    g.fillRect(rx + t * 0.35 + (idx === 0 ? 1 : 22), 6, 3, 27);
   });
-  carro(pctx, 190, 85, 1.3, cfg.c1, cfg.c2, ROD[cfg.r].aro, 0, false, false);
+
+  g.fillStyle = '#0f172a';
+  g.beginPath();
+  g.moveTo(-64 + t * 0.4, 20); g.lineTo(64 + t * 0.4, 20);
+  g.lineTo(58 + t * 0.4, 32); g.lineTo(-58 + t * 0.4, 32);
+  g.closePath(); g.fill();
+  g.strokeStyle = '#334155'; g.lineWidth = 1.5;
+  [-36, -18, 0, 18, 36].forEach(ax => {
+    g.beginPath(); g.moveTo(ax + t * 0.4, 21); g.lineTo(ax + t * 0.4, 31); g.stroke();
+  });
+
+  [-44, -32, 32, 44].forEach(ex => {
+    g.fillStyle = '#cbd5e1';
+    g.beginPath(); g.arc(ex + t * 0.4, 25, 4.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#090d16';
+    g.beginPath(); g.arc(ex + t * 0.4, 25, 2.8, 0, Math.PI * 2); g.fill();
+  });
+
+  if (nitro) {
+    const l = 32 + Math.random() * 28;
+    [-38, 38].forEach(ex => {
+      const bx = ex + t * 0.4;
+      g.fillStyle = 'rgba(56, 189, 248, 0.85)';
+      g.beginPath(); g.moveTo(bx - 10, 26); g.lineTo(bx + 10, 26); g.lineTo(bx, 26 + l); g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath(); g.moveTo(bx - 4, 26); g.lineTo(bx + 4, 26); g.lineTo(bx, 26 + l * 0.55); g.fill();
+    });
+  }
+
+  const gradCorpo = g.createLinearGradient(0, -16, 0, 24);
+  gradCorpo.addColorStop(0, c1);
+  gradCorpo.addColorStop(0.55, c1);
+  gradCorpo.addColorStop(1, c2);
+  g.fillStyle = gradCorpo;
+
+  g.beginPath();
+  g.moveTo(-68 + t * 0.9, -6);
+  g.quadraticCurveTo(0 + t * 0.9, -11, 68 + t * 0.9, -6);
+  g.lineTo(74 + t * 0.45, 21);
+  g.lineTo(-74 + t * 0.45, 21);
+  g.closePath();
+  g.fill();
+
+  g.strokeStyle = 'rgba(255,255,255,0.45)';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(-64 + t * 0.85, -4);
+  g.quadraticCurveTo(0 + t * 0.85, -8, 64 + t * 0.85, -4);
+  g.stroke();
+
+  g.fillStyle = '#090d16';
+  g.beginPath(); g.roundRect(-65 + t * 0.7, 8, 22, 10, 2); g.fill();
+  g.beginPath(); g.roundRect(43 + t * 0.7, 8, 22, 10, 2); g.fill();
+
+  g.fillStyle = '#0f172a';
+  g.beginPath();
+  g.moveTo(-40 + t * 1.25, -33);
+  g.quadraticCurveTo(0 + t * 1.25, -36, 40 + t * 1.25, -33);
+  g.lineTo(54 + t * 0.9, -6);
+  g.lineTo(-54 + t * 0.9, -6);
+  g.closePath();
+  g.fill();
+
+  g.strokeStyle = c1; g.lineWidth = 3.5; g.stroke();
+
+  g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(-18 + t * 1.15, -30); g.lineTo(-30 + t * 1.0, -10); g.stroke();
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(-10 + t * 1.15, -30); g.lineTo(-22 + t * 1.0, -10); g.stroke();
+
+  g.fillStyle = c1;
+  g.beginPath(); g.roundRect(-62 + t * 1.05, -14, 11, 6, 3); g.fill();
+  g.beginPath(); g.roundRect(51 + t * 1.05, -14, 11, 6, 3); g.fill();
+
+  g.fillStyle = '#090d16';
+  g.fillRect(-46 + t * 1.0, -15, 5, 9);
+  g.fillRect(41 + t * 1.0, -15, 5, 9);
+  g.fillStyle = '#1e293b';
+  g.beginPath(); g.roundRect(-72 + t * 1.0, -21, 144, 6, 3); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 1; g.stroke();
+  g.fillStyle = c1;
+  g.fillRect(-74 + t * 1.0, -24, 3, 12);
+  g.fillRect(71 + t * 1.0, -24, 3, 12);
+
+  if (freio) {
+    g.shadowColor = '#ff1e1e';
+    g.shadowBlur = 16;
+  }
+  g.fillStyle = freio ? '#ff3b3b' : '#dc2626';
+  g.beginPath();
+  g.roundRect(-62 + t * 0.75, -1, 38, 7, 3);
+  g.roundRect(24 + t * 0.75, -1, 38, 7, 3);
+  g.fill();
+  g.fillStyle = freio ? '#fca5a5' : '#ef4444';
+  g.fillRect(-24 + t * 0.75, 1, 48, 3);
+  g.shadowBlur = 0;
+
+  g.fillStyle = '#f8fafc';
+  g.beginPath(); g.roundRect(-15 + t * 0.6, 6, 30, 11, 2); g.fill();
+  g.fillStyle = '#1d4ed8';
+  g.fillRect(-15 + t * 0.6, 6, 30, 3);
+
+  g.restore();
+}
+
+function desenharPrev(acelerandoOficina = false) {
+  pctx.clearRect(0, 0, 380, 175);
+
+  const gradPiso = pctx.createLinearGradient(0, 100, 0, 175);
+  gradPiso.addColorStop(0, '#1e293b');
+  gradPiso.addColorStop(1, '#090d16');
+  pctx.fillStyle = gradPiso;
+  pctx.fillRect(0, 105, 380, 70);
+
+  const aroAtual = ROD[cfg.r].aro;
+  desenharRodaDetalhada(pctx, 50, 82, 26, aroAtual);
+
+  const motAtual = MOT[cfg.m];
+  pctx.fillStyle = '#0f172a';
+  pctx.beginPath(); pctx.roundRect(302, 54, 56, 52, 8); pctx.fill();
+  pctx.strokeStyle = motAtual.corBloco; pctx.lineWidth = 2; pctx.stroke();
+  pctx.fillStyle = motAtual.corBloco;
+  pctx.font = 'bold 11px sans-serif';
+  pctx.fillText(motAtual.nome.split(' '), 314, 76);
+  pctx.fillStyle = '#cbd5e1';
+  pctx.font = '10px sans-serif';
+  pctx.fillText(motAtual.v + 'km/h', 311, 94);
+
+  carro(pctx, 188, 92, 1.32, cfg.c1, cfg.c2, aroAtual, 0, acelerandoOficina, true);
+
   const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r];
-  document.getElementById('tv').innerText = m.v + ' KM/H'; document.getElementById('bv').style.width = ((m.v - 220) / 140 * 100) + '%';
-  const ap = Math.min(100, Math.round(m.a * 82)); document.getElementById('ta').innerText = ap + '%'; document.getElementById('ba').style.width = ap + '%';
-  const fp = Math.min(100, Math.round((f.f + r.g) / 3.1 * 100)); document.getElementById('tf').innerText = fp + '%'; document.getElementById('bf').style.width = fp + '%';
+  document.getElementById('tv').innerText = m.v + ' KM/H';
+  document.getElementById('bv').style.width = ((m.v - 230) / 160 * 100) + '%';
+
+  const ap = Math.min(100, Math.round((m.a / 1.4) * 100));
+  document.getElementById('ta').innerText = ap + '%';
+  document.getElementById('ba').style.width = ap + '%';
+
+  const fp = Math.min(100, Math.round((f.f + r.g) / 3.1 * 100));
+  document.getElementById('tf').innerText = fp + '%';
+  document.getElementById('bf').style.width = fp + '%';
 }
 let run = false, pos = 0, px = 0, vel = 0, comb = 100, nit = 3, tnit = 0, tempo = 0, trem = 0, segs = [], rivais = [], galoes = [], keys = {}, ult = 0;
-const COMP = 4200;
+let COMP = 3600;
 window.onkeydown = e => { keys[e.code] = true; if (e.code === 'Space' && run && nit > 0 && tnit <= 0) { nit--; tnit = 2.5; som(200, 'sawtooth', 0.35); } };
 window.onkeyup = e => { keys[e.code] = false; };
 
 function iniciar() {
+  const mObj = MISSOES[Math.min(missaoAtual, MISSOES.length - 1)];
+  COMP = mObj.comp;
   document.getElementById('garagem').style.display = 'none'; document.getElementById('fim').style.display = 'none';
   pos = 0; px = 0; vel = 0; comb = 100; nit = 3; tnit = 0; tempo = 0; trem = 0; segs = []; rivais = []; galoes = [];
   let cur = 0;
@@ -161,17 +386,48 @@ function iniciar() {
   const cols = [['#eab308', '#a16207'], ['#2563eb', '#1e40af'], ['#16a34a', '#166534'], ['#9333ea', '#581c87'], ['#f97316', '#9a3412'], ['#06b6d4', '#155e75']];
   for (let i = 1; i <= 25; i++) {
     const pc = cols[i % cols.length];
-    rivais.push({ z: i * 155 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 160 + Math.random() * 85, c1: pc[0], c2: pc[1] });
+    rivais.push({ z: i * 145 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 165 + Math.random() * 95, c1: pc, c2: pc });
   }
   for (let z = 650; z < COMP - 300; z += 650) galoes.push({ z, x: Math.random() * 1.2 - 0.6, ok: false });
   run = true; som(520, 'square', 0.2); ult = performance.now(); requestAnimationFrame(loop);
 }
 
-function voltar() { document.getElementById('fim').style.display = 'none'; document.getElementById('garagem').style.display = 'flex'; desenharPrev(); }
+function voltar() {
+  document.getElementById('fim').style.display = 'none';
+  document.getElementById('garagem').style.display = 'flex';
+  atualizarUIOficina();
+  desenharPrev();
+}
+
 function fimJogo(win, p) {
-  run = false; document.getElementById('ftit').innerText = win ? '🏆 BANDEIRADA FINAL!' : '⛽ PANE SECA!';
-  document.getElementById('fdesc').innerText = win ? `Você chegou em ${p}º lugar de 26 carros (${tempo.toFixed(1)}s)!` : 'Acabou o combustível! Pegue os galões vermelhos na pista.';
-  som(win ? 660 : 140, 'square', 0.35); document.getElementById('fim').style.display = 'flex';
+  run = false;
+  const mObj = MISSOES[Math.min(missaoAtual, MISSOES.length - 1)];
+  if (!win) {
+    document.getElementById('ftit').innerText = '⛽ PANE SECA!';
+    document.getElementById('fdesc').innerText = 'O combustível acabou! Pegue os galões vermelhos na pista.';
+    som(140, 'sawtooth', 0.4);
+  } else if (p <= mObj.alvoPos) {
+    let msgExtra = '';
+    if (missaoAtual < MISSOES.length) {
+      missaoAtual++;
+      localStorage.setItem('tg_missao', missaoAtual);
+      if (maxMotor < 3) {
+        maxMotor++;
+        localStorage.setItem('tg_motor', maxMotor);
+        msgExtra = `<br><b style="color:#38bdf8;">🔓 NOVO MOTOR DESBLOQUEADO: ${MOT[maxMotor].nome} (${MOT[maxMotor].v} KM/H)!</b>`;
+      } else {
+        msgExtra = '<br><b style="color:#facc15;">🏆 VOCÊ É O GRANDE CAMPEÃO DO HORIZONTE TURBO!</b>';
+      }
+    }
+    document.getElementById('ftit').innerText = '🏆 MISSÃO CONCLUÍDA!';
+    document.getElementById('fdesc').innerHTML = `Você chegou em <b>${p}º lugar</b> (Meta: Top ${mObj.alvoPos}) em ${tempo.toFixed(1)}s!${msgExtra}`;
+    som(680, 'square', 0.4);
+  } else {
+    document.getElementById('ftit').innerText = '⚠️ META NÃO ATINGIDA';
+    document.getElementById('fdesc').innerHTML = `Você chegou em <b>${p}º lugar</b>, mas a missão exige <b>Top ${mObj.alvoPos}</b>. Melhore suas peças ou tente novamente!`;
+    som(220, 'triangle', 0.35);
+  }
+  document.getElementById('fim').style.display = 'flex';
 }
 
 function loop(now) {
@@ -240,6 +496,8 @@ function desenhar() {
   ctx.fillStyle = 'rgba(15,23,42,0.85)'; ctx.fillRect(700, 525, 165, 40);
   ctx.fillStyle = '#facc15'; ctx.font = 'bold 22px monospace'; ctx.fillText(`${Math.floor(vel)} KM/H`, 715, 552);
 }
+
+atualizarUIOficina();
 desenharPrev();
 </script>
 </body>
