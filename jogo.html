@@ -227,7 +227,7 @@ function atualizarUIOficina() {
   const mObj = MISSOES[Math.min(nivel, MISSOES.length - 1)];
   document.getElementById('badge-missao').innerText = '🎯 ' + mObj.titulo;
   document.getElementById('desc-missao').innerText = nivel >= MISSOES.length ? '🏆 Todas as peças de elite liberadas!' : mObj.desc;
-  document.getElementById('btn-play').innerText = '🏁 INICIAR ' + mObj.titulo.split(':');
+  document.getElementById('btn-play').innerText = '🏁 INICIAR ' + mObj.titulo.split(':')[0];
 }
 
 function setOp(k, i, b) {
@@ -303,7 +303,7 @@ function desenharPrev(acelOf = false) {
   pctx.fillStyle = '#0f172a'; pctx.fillRect(306, 12, 60, 42); pctx.strokeStyle = TAN[cfg.t].cor; pctx.strokeRect(306, 12, 60, 42);
   pctx.fillStyle = TAN[cfg.t].cor; pctx.font = 'bold 10px sans-serif'; pctx.fillText('TANQUE', 315, 28); pctx.fillStyle = '#fff'; pctx.fillText(TAN[cfg.t].litros + 'L', 322, 44);
   pctx.fillStyle = '#0f172a'; pctx.fillRect(306, 62, 60, 42); pctx.strokeStyle = MOT[cfg.m].cor; pctx.strokeRect(306, 62, 60, 42);
-  pctx.fillStyle = MOT[cfg.m].cor; pctx.fillText(MOT[cfg.m].nome.split(' '), 318, 78); pctx.fillStyle = '#fff'; pctx.fillText(MOT[cfg.m].v + 'km/h', 315, 94);
+  pctx.fillStyle = MOT[cfg.m].cor; pctx.fillText(MOT[cfg.m].nome.split(' ')[0], 318, 78); pctx.fillStyle = '#fff'; pctx.fillText(MOT[cfg.m].v + 'km/h', 315, 94);
   carro(pctx, 185, 88, 1.28, cfg.c1, cfg.c2, ROD[cfg.r].aro, 0, acelOf, true);
   const m = MOT[cfg.m], f = FRE[cfg.f], r = ROD[cfg.r], t = TAN[cfg.t];
   document.getElementById('tv').innerText = m.v + ' KM/H'; document.getElementById('bv').style.width = ((m.v - 230) / 160 * 100) + '%';
@@ -339,21 +339,21 @@ function iniciar() {
   document.getElementById('controles-tela').style.display = 'flex';
   window.focus(); document.getElementById('box').focus();
 
-  pos = 0; px = 0; vel = 30; nit = 3; tnit = 0; tempo = 0; trem = 0;
+  pos = 0; px = 0; vel = 45; nit = 3; tnit = 0; tempo = 0; trem = 0;
   segs = []; rivais = []; galoes = []; gotasClima = [];
   keys = { up: false, down: false, left: false, right: false };
 
-  for (let i = 0; i < 90; i++) gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 6 + Math.random() * 8 });
+  for (let i = 0; i < 55; i++) gotasClima.push({ x: Math.random() * 880, y: Math.random() * 590, v: 7 + Math.random() * 7 });
   let cur = 0;
   for (let i = 0; i < COMP; i++) {
-    if (i % 120 === 0 && i > 100 && i < COMP - 200) cur = [-2.2, -1.4, 0, 1.4, 2.2][Math.floor(Math.random() * 5)];
+    if (i % 120 === 0 && i > 100 && i < COMP - 200) cur = [-2.0, -1.2, 0, 1.2, 2.0][Math.floor(Math.random() * 5)];
     else if (i >= COMP - 200) cur = 0;
-    segs.push({ c: cur, arv: i % 7 === 0 ? (Math.random() > 0.5 ? 1 : -1) : 0 });
+    segs.push({ c: cur, arv: i % 8 === 0 ? (Math.random() > 0.5 ? 1 : -1) : 0 });
   }
   const cols = [['#eab308', '#a16207'], ['#2563eb', '#1e40af'], ['#16a34a', '#166534'], ['#9333ea', '#581c87'], ['#f97316', '#9a3412'], ['#06b6d4', '#155e75']];
   for (let i = 1; i <= 25; i++) {
     const pc = cols[i % cols.length];
-    rivais.push({ z: i * 145 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 165 + Math.random() * 95, c1: pc, c2: pc });
+    rivais.push({ z: i * 145 + Math.random() * 35, x: Math.random() * 1.4 - 0.7, v: 165 + Math.random() * 95, c1: pc[0], c2: pc[1] });
   }
   for (let z = 750; z < COMP - 300; z += 780) galoes.push({ z, x: Math.random() * 1.2 - 0.6, ok: false });
 
@@ -390,7 +390,7 @@ function fimJogo(win, p) {
       if (nivel <= 2) {
         msgExtra = '<br><br><b style="color:#38bdf8;">🔓 NOVAS PEÇAS LIBERADAS:<br>• Motor ' + MOT[nivel].nome + ' (' + MOT[nivel].v + ' KM/H)<br>• Freios ' + FRE[nivel].nome + '<br>• Tanque ' + TAN[nivel].nome + '</b>';
       } else if (nivel === 3) {
-        msgExtra = '<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ' + MOT.nome + ' (' + MOT.v + ' KM/H)!</b>';
+        msgExtra = '<br><br><b style="color:#38bdf8;">🔓 NOVO MOTOR DE ELITE LIBERADO:<br>• Motor ' + MOT[3].nome + ' (' + MOT[3].v + ' KM/H)!</b>';
       } else {
         msgExtra = '<br><br><b style="color:#facc15;">🏆 VOCÊ VENCEU TODAS AS MISSÕES DO HORIZONTE TURBO!</b>';
       }
@@ -417,21 +417,31 @@ function passoJogo() {
   const fre = keys.down;
   const acel = (autoAcel && !fre) || keys.up;
   const esq = keys.left, dir = keys.right;
-  const vmax = m.v * (na ? 1.25 : 1);
+
+  const foraPista = Math.abs(px) > 1.08;
+  const vmax = (foraPista ? 135 : m.v) * (na ? 1.25 : 1);
 
   if (combLitros > 0) {
-    vel += (acel || na) ? 125 * m.a * (na ? 1.6 : 1) * dt : -45 * dt;
+    if (acel || na) {
+      if (vel < vmax) vel += 130 * m.a * (na ? 1.6 : 1) * dt;
+      else vel -= 90 * dt;
+    } else {
+      vel -= 45 * dt;
+    }
   } else {
     vel -= 70 * dt;
   }
+
   if (fre) vel -= 185 * f.f * dt;
-  if (Math.abs(px) > 1.05) { vel -= 110 * dt; if (vel > 50) trem = 3; }
-  vel = Math.max(0, Math.min(vmax, vel));
+  if (foraPista && vel > 60) trem = 2;
+  vel = Math.max(0, vel);
 
   const seg = segs[Math.floor(pos) % segs.length];
   pos += (vel / 60) * dt * 32;
-  px += (((esq ? -1 : 0) + (dir ? 1 : 0)) * 1.75 * f.g * r.g * pista.ader * Math.min(1, vel / 60) * dt) - (seg.c * (vel / 270) * 0.55 * dt);
-  px = Math.max(-1.85, Math.min(1.85, px));
+
+  const fatorDir = Math.max(0.45, Math.min(1, vel / 60));
+  px += (((esq ? -1 : 0) + (dir ? 1 : 0)) * 1.85 * f.g * r.g * pista.ader * fatorDir * dt) - (seg.c * (vel / 280) * 0.5 * dt);
+  px = Math.max(-1.65, Math.min(1.65, px));
 
   if (vel > 5) combLitros = Math.max(0, combLitros - (0.65 + vel / 220) * m.c * (na ? 1.35 : 1) * dt);
   if (combLitros <= 0 && vel <= 2) return fimJogo(false, 26);
@@ -439,7 +449,10 @@ function passoJogo() {
   for (let rv of rivais) {
     rv.z += (rv.v / 60) * dt * 32;
     if (rv.z - pos > 0 && rv.z - pos < 2.3 && Math.abs(rv.x - px) < 0.34) {
-      vel *= 0.52; rv.z += 4.5; trem = 10; som(120, 'sawtooth', 0.2);
+      vel = Math.max(65, vel * 0.58);
+      rv.z += 5.0;
+      trem = 8;
+      som(120, 'sawtooth', 0.2);
     }
   }
   for (let g of galoes) {
@@ -454,39 +467,107 @@ function passoJogo() {
 }
 function desenhar() {
   const pista = PISTAS[pistaIdxAtual];
-  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0, hor = 255 + oy;
-  const gc = ctx.createLinearGradient(0, 0, 0, hor); gc.addColorStop(0, pista.ceu1); gc.addColorStop(0.6, pista.ceu2); gc.addColorStop(1, pista.ceu3);
+  const ox = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0;
+  const oy = trem > 0 ? (Math.random() - 0.5) * trem * 2 : 0;
+  const hor = 255 + oy;
+
+  const gc = ctx.createLinearGradient(0, 0, 0, hor);
+  gc.addColorStop(0, pista.ceu1); gc.addColorStop(0.6, pista.ceu2); gc.addColorStop(1, pista.ceu3);
   ctx.fillStyle = gc; ctx.fillRect(0, 0, 880, hor);
 
-  if (pista.clima === 'chuva') { ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 45, 25, 0, Math.PI * 2); ctx.fill(); }
-  else if (pista.clima !== 'neve') { ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill(); }
-
-  const lv = 590 - hor; let ca = 0, dc = 0, objs = [];
-  for (let y = 589; y > hor; y--) {
-    const dt = y - hor, z = (lv / dt) * 12, si = Math.floor(pos + z), s = segs[si % segs.length];
-    ca += s.c * 0.0045; dc += ca; const esc = dt / lv, cen = 440 - (px * 330 * esc) + dc + ox, lp = 36 + 430 * esc, lz = lp * 0.11;
-    const alt = Math.floor(si / 3) % 2 === 0, cheg = si >= COMP - 55 && si <= COMP - 48;
-    ctx.fillStyle = alt ? pista.g1 : pista.g2; ctx.fillRect(0, y, 880, 1);
-    ctx.fillStyle = alt ? pista.z1 : pista.z2; ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, 1);
-    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.a1 : pista.a2); ctx.fillRect(cen - lp, y, lp * 2, 1);
-    if (alt) { ctx.fillStyle = '#f8fafc'; const fw = Math.max(1, 4 * esc); ctx.fillRect(cen - lp * 0.33 - fw, y, fw * 2, 1); ctx.fillRect(cen + lp * 0.33 - fw, y, fw * 2, 1); }
-    if (s.arv !== 0) objs.push({ t: 'a', x: cen + s.arv * (lp + lz + 48 * esc), y, esc });
+  if (pista.clima === 'chuva') {
+    ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 45, 25, 0, Math.PI * 2); ctx.fill();
+  } else if (pista.clima !== 'neve') {
+    ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(440 + ox * 0.3, hor - 20, 42, 0, Math.PI * 2); ctx.fill();
   }
-  for (let rv of rivais) { const dz = rv.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), ry = hor + lv * esc; if (ry > hor && ry < 590) objs.push({ t: 'r', x: 440 + (rv.x - px) * 330 * esc + ox, y: ry, esc, c1: rv.c1, c2: rv.c2 }); } }
-  for (let g of galoes) { if (!g.ok) { const dz = g.z - pos; if (dz > 1 && dz < 145) { const esc = Math.min(1.15, 12 / dz), gy = hor + lv * esc; if (gy > hor && gy < 590) objs.push({ t: 'g', x: 440 + (g.x - px) * 330 * esc + ox, y: gy, esc }); } } }
+
+  ctx.fillStyle = pista.g2;
+  ctx.fillRect(0, hor, 880, 590 - hor);
+
+  const lv = 590 - hor;
+  let ca = 0, dc = 0, objs = [];
+  const passoY = 4;
+
+  for (let y = 586; y > hor; y -= passoY) {
+    const dt = y - hor;
+    const z = (lv / dt) * 12;
+    const si = Math.floor(pos + z);
+    const s = segs[si % segs.length];
+    ca += s.c * 0.0045 * passoY;
+    dc += ca;
+
+    const esc = dt / lv;
+    const cen = 440 - (px * 330 * esc) + dc + ox;
+    const lp = 36 + 430 * esc;
+    const lz = lp * 0.11;
+    const alt = Math.floor(si / 3) % 2 === 0;
+    const cheg = si >= COMP - 55 && si <= COMP - 48;
+
+    if (alt) {
+      ctx.fillStyle = pista.g1;
+      ctx.fillRect(0, y, 880, passoY);
+    }
+
+    ctx.fillStyle = alt ? pista.z1 : pista.z2;
+    ctx.fillRect(cen - lp - lz, y, (lp + lz) * 2, passoY);
+
+    ctx.fillStyle = cheg ? (si % 2 === 0 ? '#fff' : '#111') : (alt ? pista.a1 : pista.a2);
+    ctx.fillRect(cen - lp, y, lp * 2, passoY);
+
+    if (alt) {
+      ctx.fillStyle = '#f8fafc';
+      const fw = Math.max(1, 4 * esc);
+      ctx.fillRect(cen - lp * 0.33 - fw, y, fw * 2, passoY);
+      ctx.fillRect(cen + lp * 0.33 - fw, y, fw * 2, passoY);
+    }
+
+    if (s.arv !== 0 && si % 8 === 0) {
+      objs.push({ t: 'a', x: cen + s.arv * (lp + lz + 48 * esc), y: y, esc: esc });
+    }
+  }
+
+  for (let rv of rivais) {
+    const dz = rv.z - pos;
+    if (dz > 1 && dz < 140) {
+      const esc = Math.min(1.15, 12 / dz);
+      const ry = hor + lv * esc;
+      if (ry > hor && ry < 590) objs.push({ t: 'r', x: 440 + (rv.x - px) * 330 * esc + ox, y: ry, esc, c1: rv.c1, c2: rv.c2 });
+    }
+  }
+  for (let g of galoes) {
+    if (!g.ok) {
+      const dz = g.z - pos;
+      if (dz > 1 && dz < 140) {
+        const esc = Math.min(1.15, 12 / dz);
+        const gy = hor + lv * esc;
+        if (gy > hor && gy < 590) objs.push({ t: 'g', x: 440 + (g.x - px) * 330 * esc + ox, y: gy, esc });
+      }
+    }
+  }
   objs.sort((a, b) => a.y - b.y);
 
   for (let o of objs) {
     if (o.t === 'a') {
       const th = 85 * o.esc, tw = Math.max(2, 12 * o.esc);
-      if (pista.clima === 'poeira') { ctx.fillStyle = '#15803d'; ctx.fillRect(o.x - tw / 2, o.y - th * 0.7, tw, th * 0.7); }
-      else { ctx.fillStyle = '#78350f'; ctx.fillRect(o.x - tw / 2, o.y - th / 2, tw, th / 2); ctx.fillStyle = pista.clima === 'neve' ? '#f8fafc' : '#14532d'; ctx.beginPath(); ctx.arc(o.x, o.y - th / 2, Math.max(4, 30 * o.esc), 0, Math.PI * 2); ctx.fill(); }
-    } else if (o.t === 'r') carro(ctx, o.x, o.y - 24 * o.esc, o.esc * 0.9, o.c1, o.c2, '#cbd5e1', 0, false, false);
-    else { const gw = Math.max(6, 30 * o.esc), gh = Math.max(8, 40 * o.esc); ctx.fillStyle = '#ef4444'; ctx.fillRect(o.x - gw / 2, o.y - gh, gw, gh); ctx.fillStyle = '#facc15'; ctx.fillRect(o.x - gw / 4, o.y - gh - 4 * o.esc, gw / 2, 4 * o.esc); }
+      if (pista.clima === 'poeira') {
+        ctx.fillStyle = '#15803d'; ctx.fillRect(o.x - tw / 2, o.y - th * 0.7, tw, th * 0.7);
+      } else {
+        ctx.fillStyle = '#78350f'; ctx.fillRect(o.x - tw / 2, o.y - th / 2, tw, th / 2);
+        ctx.fillStyle = pista.clima === 'neve' ? '#f8fafc' : '#14532d';
+        ctx.beginPath(); ctx.arc(o.x, o.y - th / 2, Math.max(4, 30 * o.esc), 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (o.t === 'r') {
+      carro(ctx, o.x, o.y - 24 * o.esc, o.esc * 0.9, o.c1, o.c2, '#cbd5e1', 0, false, false);
+    } else {
+      const gw = Math.max(6, 30 * o.esc), gh = Math.max(8, 40 * o.esc);
+      ctx.fillStyle = '#ef4444'; ctx.fillRect(o.x - gw / 2, o.y - gh, gw, gh);
+      ctx.fillStyle = '#facc15'; ctx.fillRect(o.x - gw / 4, o.y - gh - 4 * o.esc, gw / 2, 4 * o.esc);
+    }
   }
 
   if (pista.clima === 'chuva') {
-    ctx.fillStyle = 'rgba(255, 250, 200, 0.16)'; ctx.beginPath(); ctx.moveTo(400 + ox, 495 + oy); ctx.lineTo(480 + ox, 495 + oy); ctx.lineTo(630 + ox, hor + 30); ctx.lineTo(250 + ox, hor + 30); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 250, 200, 0.16)';
+    ctx.beginPath(); ctx.moveTo(400 + ox, 495 + oy); ctx.lineTo(480 + ox, 495 + oy); ctx.lineTo(630 + ox, hor + 30); ctx.lineTo(250 + ox, hor + 30); ctx.fill();
   }
 
   const dv = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
